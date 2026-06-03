@@ -2,7 +2,7 @@
 
 **GitHub Copilot session token usage analyzer.**
 
-`tscope` is a command-line tool that reads your local Copilot CLI session files, measures tokens used per model (input, output, cache read, cache write, reasoning), and displays a clear report — in the terminal, as JSON, or as an interactive HTML dashboard.
+`tscope` is a command-line tool that reads your local Copilot CLI session files, measures tokens used per model (input, output, cache read, cache write), and displays a clear report — in the terminal, as JSON, or as an interactive HTML dashboard.
 
 ## Features
 
