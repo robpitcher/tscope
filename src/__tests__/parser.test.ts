@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { parseEventsFile } from "../parser";
+import { parseEventsFile, readSessionStartTime } from "../parser";
 
 /** Write a JSONL events file to a temp directory for testing */
 function writeTempEvents(tmpDir: string, lines: object[]): string {
@@ -153,5 +153,166 @@ describe("parser", () => {
     expect(session.models["claude-haiku-4.5"].inputTokens).toBe(500);
     expect(session.models["claude-haiku-4.5"].outputTokens).toBe(0);
     expect(session.models["claude-haiku-4.5"].cacheReadTokens).toBe(0);
+  });
+
+  test("handles empty file (in-progress, no crash)", async () => {
+    const filePath = path.join(tmpDir, "events.jsonl");
+    fs.writeFileSync(filePath, "", "utf8");
+    const session = await parseEventsFile("empty-session", filePath);
+    expect(session.inProgress).toBe(true);
+    expect(session.startTime).toBeUndefined();
+  });
+
+  test("handles file with only whitespace lines (in-progress, no crash)", async () => {
+    const filePath = path.join(tmpDir, "events.jsonl");
+    fs.writeFileSync(filePath, "   \n\n   \n", "utf8");
+    const session = await parseEventsFile("ws-session", filePath);
+    expect(session.inProgress).toBe(true);
+  });
+
+  test("handles file with only session.start (in-progress)", async () => {
+    const eventsPath = writeTempEvents(tmpDir, [sessionStart]);
+    const session = await parseEventsFile("start-only", eventsPath);
+    expect(session.inProgress).toBe(true);
+    expect(session.startTime).toBe("2026-06-02T22:58:00.000Z");
+  });
+
+  test("startTime falls back to session.start timestamp when data.startTime missing", async () => {
+    const startNoData = {
+      type: "session.start",
+      data: { sessionId: "x" }, // no startTime in data
+      timestamp: "2026-06-02T10:00:00.000Z",
+    };
+    const eventsPath = writeTempEvents(tmpDir, [startNoData, shutdownEvent]);
+    const session = await parseEventsFile("fallback-ts", eventsPath);
+    expect(session.inProgress).toBe(false);
+    if (session.inProgress) return;
+    expect(session.startTime).toBe("2026-06-02T10:00:00.000Z");
+  });
+
+  test("startTime falls back to shutdown timestamp when no session.start found", async () => {
+    const eventsPath = writeTempEvents(tmpDir, [shutdownEvent]);
+    const session = await parseEventsFile("no-start", eventsPath);
+    expect(session.inProgress).toBe(false);
+    if (session.inProgress) return;
+    // Should use shutdownEvent.timestamp as last resort
+    expect(session.startTime).toBe("2026-06-02T23:06:00.000Z");
+  });
+
+  test("shutdown with empty modelMetrics produces empty models dict", async () => {
+    const emptyMetricsShutdown = {
+      type: "session.shutdown",
+      data: { totalPremiumRequests: 0, modelMetrics: {} },
+      timestamp: "2026-06-02T23:06:00.000Z",
+    };
+    const eventsPath = writeTempEvents(tmpDir, [sessionStart, emptyMetricsShutdown]);
+    const session = await parseEventsFile("empty-metrics", eventsPath);
+    expect(session.inProgress).toBe(false);
+    if (session.inProgress) return;
+    expect(Object.keys(session.models)).toHaveLength(0);
+    expect(session.totalPremiumRequests).toBe(0);
+  });
+
+  test("shutdown with null usage for a model defaults all token counts to 0", async () => {
+    const nullUsageShutdown = {
+      type: "session.shutdown",
+      data: {
+        modelMetrics: {
+          "claude-haiku-4.5": {
+            // no usage field at all
+          },
+        },
+      },
+      timestamp: "2026-06-02T23:06:00.000Z",
+    };
+    const eventsPath = writeTempEvents(tmpDir, [sessionStart, nullUsageShutdown]);
+    const session = await parseEventsFile("null-usage", eventsPath);
+    expect(session.inProgress).toBe(false);
+    if (session.inProgress) return;
+    const counts = session.models["claude-haiku-4.5"];
+    expect(counts.inputTokens).toBe(0);
+    expect(counts.outputTokens).toBe(0);
+    expect(counts.cacheReadTokens).toBe(0);
+    expect(counts.cacheWriteTokens).toBe(0);
+    expect(counts.reasoningTokens).toBe(0);
+  });
+
+  test("handles CRLF line endings without crashing", async () => {
+    const lines = [sessionStart, shutdownEvent]
+      .map((l) => JSON.stringify(l))
+      .join("\r\n");
+    const filePath = path.join(tmpDir, "events.jsonl");
+    fs.writeFileSync(filePath, lines + "\r\n", "utf8");
+    const session = await parseEventsFile("crlf-session", filePath);
+    expect(session.inProgress).toBe(false);
+    if (session.inProgress) return;
+    expect(session.models["claude-opus-4.7"].inputTokens).toBe(243772);
+  });
+
+  test("totalPremiumRequests defaults to 0 when missing from shutdown", async () => {
+    const shutdownNoPremium = {
+      type: "session.shutdown",
+      data: { modelMetrics: {} },
+      timestamp: "2026-06-02T23:06:00.000Z",
+    };
+    const eventsPath = writeTempEvents(tmpDir, [sessionStart, shutdownNoPremium]);
+    const session = await parseEventsFile("no-premium", eventsPath);
+    expect(session.inProgress).toBe(false);
+    if (session.inProgress) return;
+    expect(session.totalPremiumRequests).toBe(0);
+  });
+
+  test("only uses first session.start found (ignores subsequent ones)", async () => {
+    const secondStart = {
+      type: "session.start",
+      data: { sessionId: "second", startTime: "2026-06-02T23:00:00.000Z" },
+      timestamp: "2026-06-02T23:00:00.000Z",
+    };
+    const eventsPath = writeTempEvents(tmpDir, [sessionStart, secondStart, shutdownEvent]);
+    const session = await parseEventsFile("multi-start", eventsPath);
+    expect(session.inProgress).toBe(false);
+    if (session.inProgress) return;
+    // First session.start wins
+    expect(session.startTime).toBe("2026-06-02T22:58:00.000Z");
+  });
+
+  describe("readSessionStartTime", () => {
+    test("reads startTime from session.start data", async () => {
+      const eventsPath = writeTempEvents(tmpDir, [sessionStart, shutdownEvent]);
+      const startTime = await readSessionStartTime(eventsPath);
+      expect(startTime).toBe("2026-06-02T22:58:00.000Z");
+    });
+
+    test("falls back to event timestamp when data.startTime missing", async () => {
+      const startNoData = {
+        type: "session.start",
+        data: {},
+        timestamp: "2026-06-02T10:00:00.000Z",
+      };
+      const eventsPath = writeTempEvents(tmpDir, [startNoData]);
+      const startTime = await readSessionStartTime(eventsPath);
+      expect(startTime).toBe("2026-06-02T10:00:00.000Z");
+    });
+
+    test("returns null for file with no session.start event", async () => {
+      const eventsPath = writeTempEvents(tmpDir, [shutdownEvent]);
+      const startTime = await readSessionStartTime(eventsPath);
+      expect(startTime).toBeNull();
+    });
+
+    test("returns null for empty file", async () => {
+      const filePath = path.join(tmpDir, "events.jsonl");
+      fs.writeFileSync(filePath, "", "utf8");
+      const startTime = await readSessionStartTime(filePath);
+      expect(startTime).toBeNull();
+    });
+
+    test("does not crash for malformed lines", async () => {
+      const content = "not json\n" + JSON.stringify(sessionStart) + "\nalso not json\n";
+      const filePath = path.join(tmpDir, "events.jsonl");
+      fs.writeFileSync(filePath, content, "utf8");
+      const startTime = await readSessionStartTime(filePath);
+      expect(startTime).toBe("2026-06-02T22:58:00.000Z");
+    });
   });
 });
