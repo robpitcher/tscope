@@ -8,6 +8,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
+import { createRequire } from "module";
 import { discoverSessions, getSessionStateDir } from "./discovery";
 import { parseEventsFile } from "./parser";
 import {
@@ -20,7 +21,9 @@ import {
 import { Renderer, createRenderer } from "./render";
 import { ParsedSession, InProgressSession, Report, SessionRef } from "./types";
 
-const VERSION = "0.3.0";
+const packageJson = createRequire(__filename)("../package.json") as { version: string };
+const VERSION = packageJson.version;
+const FILTER_CONCURRENCY = 16;
 
 const HELP_TEXT = `
 tscope — GitHub Copilot session token usage viewer
@@ -70,6 +73,7 @@ NOTES
 `.trim();
 
 type FilterMode = "today" | "date" | "range" | "lastdays" | "all";
+type SessionPredicate = (ref: SessionRef) => Promise<boolean>;
 
 interface ParsedArgs {
   help: boolean;
@@ -93,7 +97,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   const all = args.includes("--all");
 
   const htmlIdx = args.indexOf("--html");
-  let html = htmlIdx !== -1;
+  const html = htmlIdx !== -1;
   let htmlOutputPath: string | undefined;
   if (html) {
     // Next arg is the output path if it doesn't start with '--'
@@ -187,6 +191,31 @@ function validateArgs(args: ParsedArgs): void {
   }
 }
 
+async function filterRefsWithConcurrency(
+  refs: SessionRef[],
+  predicate: SessionPredicate,
+  concurrency: number
+): Promise<SessionRef[]> {
+  if (refs.length === 0) {
+    return [];
+  }
+
+  const keep = new Array<boolean>(refs.length).fill(false);
+  const workerCount = Math.min(Math.max(1, concurrency), refs.length);
+  let nextIndex = 0;
+
+  async function worker(): Promise<void> {
+    while (nextIndex < refs.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      keep[index] = await predicate(refs[index]);
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return refs.filter((_, index) => keep[index]);
+}
+
 /** Apply the active filter and return matching SessionRefs */
 async function applyFilter(
   allRefs: SessionRef[],
@@ -206,10 +235,7 @@ async function applyFilter(
       ? makeRangeDateFilter(localDateNDaysAgo(Number(args.filterLastDays!) - 1), today)
       : makeRangeDateFilter(args.filterStart!, args.filterEnd!);
 
-  const results = await Promise.all(
-    allRefs.map(async (ref) => ({ ref, keep: await predicate(ref) }))
-  );
-  return results.filter(({ keep }) => keep).map(({ ref }) => ref);
+  return filterRefsWithConcurrency(allRefs, predicate, FILTER_CONCURRENCY);
 }
 
 /** Build the human-readable filter description for reports */

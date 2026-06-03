@@ -1,7 +1,7 @@
 /**
  * Tests for HtmlRenderer — verifies self-contained output, content, escaping,
  * and edge-case handling.
- * Updated for tscope/report/v2: no credit fields.
+ * Updated for tscope/report/v3: no credit fields.
  */
 
 import * as fs from "fs";
@@ -511,12 +511,27 @@ describe("HtmlRenderer", () => {
   });
 
   describe("dynamic date-range filtering", () => {
-    function extractPayload(html: string): any {
+    interface HtmlPayloadSession {
+      id: string;
+      start: string | null;
+      inProgress: boolean;
+      totalTokens: number;
+      input: number;
+      cacheRead: number;
+    }
+
+    interface HtmlPayload {
+      reportDate: string;
+      generatedAtIso: string;
+      sessions: HtmlPayloadSession[];
+    }
+
+    function extractPayload(html: string): HtmlPayload {
       const m = html.match(
         /<script id="tscope-data" type="application\/json">([\s\S]*?)<\/script>/
       );
       if (!m) throw new Error("data payload script not found");
-      return JSON.parse(m[1]);
+      return JSON.parse(m[1]) as HtmlPayload;
     }
 
     test("embeds a JSON payload with per-session token data", () => {
@@ -534,7 +549,8 @@ describe("HtmlRenderer", () => {
       expect(Array.isArray(data.sessions)).toBe(true);
       expect(data.sessions).toHaveLength(2);
 
-      const done = data.sessions.find((s: any) => !s.inProgress);
+      const done = data.sessions.find((s) => !s.inProgress);
+      if (!done) throw new Error("completed session not found");
       expect(done.id).toBe(SAMPLE_SESSION.sessionId);
       expect(done.start).toBe(SAMPLE_SESSION.startTime);
       // total = input + output (cache is part of input): (1000+500)+(300+100) = 1900
@@ -543,7 +559,8 @@ describe("HtmlRenderer", () => {
       expect(done.input).toBe(500);
       expect(done.cacheRead).toBe(700);
 
-      const live = data.sessions.find((s: any) => s.inProgress);
+      const live = data.sessions.find((s) => s.inProgress);
+      if (!live) throw new Error("in-progress session not found");
       expect(live.id).toBe(SAMPLE_IN_PROGRESS.sessionId);
       expect(live.totalTokens).toBe(0);
     });

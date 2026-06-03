@@ -284,7 +284,14 @@ export async function parseEventsFile(
 export async function readSessionStartTime(eventsPath: string): Promise<string | null> {
   return new Promise<string | null>((resolve) => {
     let found: string | null = null;
+    let resolved = false;
     let stream: fs.ReadStream;
+
+    const finish = () => {
+      if (resolved) return;
+      resolved = true;
+      resolve(found);
+    };
 
     try {
       stream = fs.createReadStream(eventsPath, { encoding: "utf8" });
@@ -296,18 +303,22 @@ export async function readSessionStartTime(eventsPath: string): Promise<string |
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
     rl.on("line", (line) => {
-      if (found !== null) return; // already found, drain remaining lines
+      if (found !== null) return;
       const event = parseLine(line);
       if (event && event.type === "session.start") {
         const se = event as RawSessionStart;
         found = se.data?.startTime ?? se.timestamp ?? null;
-        // Don't close early — readline doesn't support that cleanly; just drain
+        if (found !== null) {
+          rl.close();
+          stream.destroy();
+          finish();
+        }
       }
     });
 
-    rl.on("close", () => resolve(found));
-    rl.on("error", () => resolve(found));
-    stream.on("error", () => resolve(found));
+    rl.on("close", finish);
+    rl.on("error", finish);
+    stream.on("error", finish);
   });
 }
 
@@ -324,7 +335,14 @@ export async function readSessionStartOrFirstEventTime(
   return new Promise<string | null>((resolve) => {
     let startTime: string | null = null;
     let firstEventTime: string | null = null;
+    let resolved = false;
     let stream: fs.ReadStream;
+
+    const finish = () => {
+      if (resolved) return;
+      resolved = true;
+      resolve(startTime ?? firstEventTime);
+    };
 
     try {
       stream = fs.createReadStream(eventsPath, { encoding: "utf8" });
@@ -336,13 +354,18 @@ export async function readSessionStartOrFirstEventTime(
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
     rl.on("line", (line) => {
-      if (startTime !== null) return; // session.start found — drain remaining lines
+      if (startTime !== null) return;
       const event = parseLine(line);
       if (!event) return;
 
       if (event.type === "session.start") {
         const se = event as RawSessionStart;
         startTime = se.data?.startTime ?? se.timestamp ?? null;
+        if (startTime !== null) {
+          rl.close();
+          stream.destroy();
+          finish();
+        }
         return;
       }
 
@@ -352,7 +375,6 @@ export async function readSessionStartOrFirstEventTime(
       }
     });
 
-    const finish = () => resolve(startTime ?? firstEventTime);
     rl.on("close", finish);
     rl.on("error", finish);
     stream.on("error", finish);

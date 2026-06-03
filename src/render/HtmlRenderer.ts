@@ -300,16 +300,18 @@ function renderMarkdownToHtml(md: string): string {
     // Protect inline code spans so bold/italic/link passes can't alter their
     // contents, then restore them afterwards.
     const codes: string[] = [];
+    const codeSentinel = "\u0000";
     s = s.replace(/`([^`]+)`/g, (_m, c) => {
       codes.push(c);
-      return `\u0000CODE${codes.length - 1}\u0000`;
+      return `${codeSentinel}CODE${codes.length - 1}${codeSentinel}`;
     });
     // Links [text](url) -> "text (url)" as plain text (no anchors, keeps the
     // report's "only repo links" guarantee and avoids unsafe schemes).
     s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, t, u) => `${t} (${u})`);
     s = s.replace(/\*\*([^*]+)\*\*/g, (_m, b) => `<strong>${b}</strong>`);
     s = s.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, (_m, pre, i) => `${pre}<em>${i}</em>`);
-    s = s.replace(/\u0000CODE(\d+)\u0000/g, (_m, idx) => `<code>${codes[Number(idx)]}</code>`);
+    const codePattern = new RegExp(`${codeSentinel}CODE(\\d+)${codeSentinel}`, "g");
+    s = s.replace(codePattern, (_m, idx) => `<code>${codes[Number(idx)]}</code>`);
     return s;
   };
 

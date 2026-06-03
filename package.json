@@ -1,9 +1,10 @@
 {
   "name": "tscope",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "CLI tool to inspect local GitHub Copilot session token usage and estimated AI credits",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": ["dist"],
   "bin": {
     "tscope": "dist/index.js"
   },
