@@ -65,6 +65,19 @@ tscope --range 2026-06-01 2026-06-02  # Sessions in a date range
 tscope --all                     # All sessions (no date filter)
 ```
 
+> **How a session's date is determined.** Sessions are bucketed by their **start
+> date** — the timestamp of the `session.start` event (or, for sessions without
+> one, the timestamp of the first recorded event), converted to your local
+> timezone. A session is only counted on the day it *started*.
+>
+> This means if you **continue a session from a previous day**, it stays under
+> the day it started and will **not** appear in today's report — even though you
+> worked on it today. Use `--all`, or `--date`/`--range` for the original start
+> day, to see it. Bucketing by start date keeps each session's token totals
+> attributed to a single day (token metrics are cumulative for the whole
+> session, so counting a multi-day session on every active day would
+> double-count usage).
+
 ### Output Formats
 
 ```bash

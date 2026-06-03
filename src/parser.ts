@@ -217,3 +217,51 @@ export async function readSessionStartTime(eventsPath: string): Promise<string |
     stream.on("error", () => resolve(found));
   });
 }
+
+/**
+ * Read the best-effort start timestamp for date filtering. Prefers the
+ * `session.start` event's startTime (or its timestamp); when no session.start
+ * event exists (e.g. imported conversations), falls back to the timestamp of
+ * the first event that carries one. Returns null only when the file has no
+ * usable timestamp at all (callers may then fall back to file mtime).
+ */
+export async function readSessionStartOrFirstEventTime(
+  eventsPath: string
+): Promise<string | null> {
+  return new Promise<string | null>((resolve) => {
+    let startTime: string | null = null;
+    let firstEventTime: string | null = null;
+    let stream: fs.ReadStream;
+
+    try {
+      stream = fs.createReadStream(eventsPath, { encoding: "utf8" });
+    } catch {
+      resolve(null);
+      return;
+    }
+
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+
+    rl.on("line", (line) => {
+      if (startTime !== null) return; // session.start found — drain remaining lines
+      const event = parseLine(line);
+      if (!event) return;
+
+      if (event.type === "session.start") {
+        const se = event as RawSessionStart;
+        startTime = se.data?.startTime ?? se.timestamp ?? null;
+        return;
+      }
+
+      if (firstEventTime === null) {
+        const ts = (event as { timestamp?: string }).timestamp;
+        if (typeof ts === "string") firstEventTime = ts;
+      }
+    });
+
+    const finish = () => resolve(startTime ?? firstEventTime);
+    rl.on("close", finish);
+    rl.on("error", finish);
+    stream.on("error", finish);
+  });
+}

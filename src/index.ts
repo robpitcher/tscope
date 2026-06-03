@@ -53,6 +53,8 @@ DATA SOURCE
   ~/.copilot/session-state/<session-id>/events.jsonl
 
 NOTES
+  • Sessions are bucketed by their start date, so a session continued from a
+    previous day appears under the day it started (not today).
   • In-progress sessions (no shutdown event) are shown as [IN PROGRESS].
   • Premium requests (raw count from session data) are shown when available.
 `.trim();

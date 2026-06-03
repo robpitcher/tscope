@@ -1,5 +1,5 @@
 import { SessionRef } from "./types";
-import { readSessionStartTime } from "./parser";
+import { readSessionStartOrFirstEventTime } from "./parser";
 
 /**
  * Validates that a string is a well-formed, calendar-valid YYYY-MM-DD date.
@@ -40,11 +40,13 @@ export function todayLocalDateString(): string {
 }
 
 /**
- * Resolves the local date string for a SessionRef, using the start time from the
- * events file, falling back to file mtime, and emitting a stderr warning on failure.
+ * Resolves the local date string for a SessionRef, using the session start time
+ * (or, absent a session.start event, the first event's timestamp) from the
+ * events file, falling back to file mtime only when no event carries a
+ * timestamp, and emitting a stderr warning on failure.
  */
 async function resolveSessionLocalDate(ref: SessionRef): Promise<string | null> {
-  const startTime = await readSessionStartTime(ref.eventsPath);
+  const startTime = await readSessionStartOrFirstEventTime(ref.eventsPath);
   if (startTime !== null) {
     return utcToLocalDateString(startTime);
   }

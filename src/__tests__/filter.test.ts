@@ -140,12 +140,46 @@ describe("filter", () => {
       }
     });
 
-    test("falls back to file mtime when events file has no session.start", async () => {
-      // Write a file with no session.start — just a tool event
+    test("uses first event timestamp when events file has no session.start", async () => {
+      // Write a file with no session.start — just a tool event timestamped now
       const toolEvent = {
         type: "tool.execution_complete",
         data: { toolName: "bash", exitCode: 0 },
         timestamp: new Date().toISOString(),
+      };
+      const filePath = path.join(tmpDir, "events.jsonl");
+      fs.writeFileSync(filePath, JSON.stringify(toolEvent) + "\n", "utf8");
+
+      const ref: SessionRef = { sessionId: "first-event-session", eventsPath: filePath };
+      const filter = makeDateFilter(todayLocalDateString());
+      await expect(filter(ref)).resolves.toBe(true);
+    });
+
+    test("excludes session whose first event was yesterday even if mtime is today", async () => {
+      // Regression: a session lacking session.start (e.g. imported conversation)
+      // whose earliest event is yesterday must NOT be bucketed into today via mtime.
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      yesterday.setHours(12, 0, 0, 0);
+      const toolEvent = {
+        type: "tool.execution_complete",
+        data: { toolName: "bash", exitCode: 0 },
+        timestamp: yesterday.toISOString(),
+      };
+      const filePath = path.join(tmpDir, "events.jsonl");
+      // File is written now, so mtime is today — only the event timestamp is yesterday.
+      fs.writeFileSync(filePath, JSON.stringify(toolEvent) + "\n", "utf8");
+
+      const ref: SessionRef = { sessionId: "yesterday-first-event", eventsPath: filePath };
+      const filter = makeDateFilter(todayLocalDateString());
+      await expect(filter(ref)).resolves.toBe(false);
+    });
+
+    test("falls back to file mtime when no event carries a timestamp", async () => {
+      // No session.start and no timestamps anywhere — mtime (today) is the last resort.
+      const toolEvent = {
+        type: "tool.execution_complete",
+        data: { toolName: "bash", exitCode: 0 },
       };
       const filePath = path.join(tmpDir, "events.jsonl");
       fs.writeFileSync(filePath, JSON.stringify(toolEvent) + "\n", "utf8");

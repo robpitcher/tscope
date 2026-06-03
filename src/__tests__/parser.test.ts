@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { parseEventsFile, readSessionStartTime } from "../parser";
+import { parseEventsFile, readSessionStartTime, readSessionStartOrFirstEventTime } from "../parser";
 
 /** Write a JSONL events file to a temp directory for testing */
 function writeTempEvents(tmpDir: string, lines: object[]): string {
@@ -313,6 +313,39 @@ describe("parser", () => {
       fs.writeFileSync(filePath, content, "utf8");
       const startTime = await readSessionStartTime(filePath);
       expect(startTime).toBe("2026-06-02T22:58:00.000Z");
+    });
+  });
+
+  describe("readSessionStartOrFirstEventTime", () => {
+    test("prefers session.start startTime when present", async () => {
+      const eventsPath = writeTempEvents(tmpDir, [sessionStart, shutdownEvent]);
+      const result = await readSessionStartOrFirstEventTime(eventsPath);
+      expect(result).toBe("2026-06-02T22:58:00.000Z");
+    });
+
+    test("falls back to first event timestamp when no session.start", async () => {
+      const toolEvent = {
+        type: "tool.execution_complete",
+        data: { toolName: "bash" },
+        timestamp: "2026-06-02T18:51:05.793Z",
+      };
+      const eventsPath = writeTempEvents(tmpDir, [toolEvent, shutdownEvent]);
+      const result = await readSessionStartOrFirstEventTime(eventsPath);
+      expect(result).toBe("2026-06-02T18:51:05.793Z");
+    });
+
+    test("returns null when no event carries a timestamp", async () => {
+      const noTs = { type: "tool.execution_complete", data: { toolName: "bash" } };
+      const eventsPath = writeTempEvents(tmpDir, [noTs]);
+      const result = await readSessionStartOrFirstEventTime(eventsPath);
+      expect(result).toBeNull();
+    });
+
+    test("returns null for empty file", async () => {
+      const filePath = path.join(tmpDir, "events.jsonl");
+      fs.writeFileSync(filePath, "", "utf8");
+      const result = await readSessionStartOrFirstEventTime(filePath);
+      expect(result).toBeNull();
     });
   });
 });
