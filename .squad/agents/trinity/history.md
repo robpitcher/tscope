@@ -55,3 +55,21 @@
 - Confirmed final tech stack for phase 1: **Node.js + TypeScript**, installed via `npm i -g tscope`, binary name `tscope`.
 - Ready-now work is #1 (scaffolding) and #2 (model rate table); all other phase-1 issues are dependency-blocked.
 - Issue map written to `.squad/files/tscope-issue-map.md`; issue creation decision note written to `.squad/decisions/inbox/trinity-issues-created.md`.
+
+## Learnings
+- **2026-06-02**: Reviewed PR #18 (Phase 1 implementation). The PR was APPROVED. The implementation by Tank accurately matched the plan and decisions, properly decoupling parsing, credit calculation, and rendering. The math for AI credits (cost / 1e6 * 100) is correct, and edge cases like missing models and in-progress sessions were correctly handled. Minor optimization opportunity noted for the future: aborting readline streams early instead of draining them when searching for session.start.
+
+### 2026-06-02 — Renderer Interface (#10) — PR #19
+
+**Renderer seam design:**
+- `src/render/Renderer.ts` — `Renderer` interface (`render(report: Report): void`); unchanged from Tank's phase-1 foundation.
+- `src/render/index.ts` (NEW) — `RENDERER_REGISTRY: Map<string, () => Renderer>` + `createRenderer(format): Renderer` factory. This is the sole extension point for phase-2 renderers.
+- `src/index.ts` — pipeline now typed against `Renderer` interface; uses `createRenderer('text')`. No concrete class imported.
+
+**To add a phase-2 renderer:**
+1. Create `src/render/JsonRenderer.ts` implementing `Renderer`.
+2. One line in `src/render/index.ts`: `RENDERER_REGISTRY.set('json', () => new JsonRenderer())`.
+3. Pass format string from CLI flag to `createRenderer(format)` — already wired.
+4. No other changes to the core pipeline.
+
+**Outcome:** 20/20 tests pass, strict TS build clean, CLI output byte-identical to pre-refactor.

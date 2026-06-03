@@ -9,7 +9,7 @@ import { discoverSessions, getSessionStateDir } from "./discovery";
 import { parseEventsFile } from "./parser";
 import { makeDateFilter, todayLocalDateString } from "./filter";
 import { calcSessionCredits } from "./credits";
-import { TextRenderer } from "./render/TextRenderer";
+import { Renderer, createRenderer } from "./render";
 import { ParsedSession, InProgressSession, Report } from "./types";
 
 const VERSION = "0.1.0";
@@ -125,7 +125,7 @@ async function main(): Promise<void> {
     reportDate: today,
   };
 
-  const renderer = new TextRenderer();
+  const renderer: Renderer = createRenderer("text");
   renderer.render(report);
 
   process.exit(0);
