@@ -4,6 +4,9 @@ dist/
 *.js.map
 *.d.ts.map
 
+# Generated HTML reports — do not commit
+tscope-report-*.html
+
 # Squad: ignore runtime state (logs, inbox, sessions)
 .squad/orchestration-log/
 .squad/log/

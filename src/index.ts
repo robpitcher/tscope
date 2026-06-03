@@ -2,10 +2,12 @@
 /**
  * tscope — GitHub Copilot session token usage viewer
  * Discovers Copilot CLI sessions, parses token metrics, computes estimated AI
- * credits, and renders a formatted report (text or JSON).
+ * credits, and renders a formatted report (text, JSON, or HTML).
  */
 
 import * as fs from "fs";
+import * as path from "path";
+import { execSync } from "child_process";
 import { discoverSessions, getSessionStateDir } from "./discovery";
 import { parseEventsFile } from "./parser";
 import {
@@ -30,6 +32,10 @@ OPTIONS
   --help              Show this help text and exit
   --version           Print version and exit
   --json              Output JSON to stdout instead of formatted text
+  --html [FILE]       Write a self-contained HTML dashboard to FILE
+                      (default: ./tscope-report-YYYY-MM-DD.html)
+  --open              Open the generated HTML file in the default browser
+                      (only valid with --html; default OFF)
   --all               Show all sessions (no date filter)
   --date YYYY-MM-DD   Show sessions for a specific local date
   --range START END   Show sessions in a local-date range (inclusive)
@@ -43,6 +49,8 @@ DESCRIPTION
   Use --json to get machine-readable output suitable for piping to jq or
   other tools. Warnings (e.g., unknown model rates) go to stderr so stdout
   remains valid JSON.
+
+  Use --html to generate a polished, dark-mode HTML dashboard with charts.
 
 DATA SOURCE
   ~/.copilot/session-state/<session-id>/events.jsonl
@@ -61,6 +69,9 @@ interface ParsedArgs {
   help: boolean;
   version: boolean;
   json: boolean;
+  html: boolean;
+  htmlOutputPath: string | undefined;
+  openAfterWrite: boolean;
   filterMode: FilterMode;
   filterDate?: string;
   filterStart?: string;
@@ -74,6 +85,18 @@ function parseArgs(argv: string[]): ParsedArgs {
   const version = args.includes("--version") || args.includes("-v");
   const json = args.includes("--json");
   const all = args.includes("--all");
+  const openAfterWrite = args.includes("--open");
+
+  const htmlIdx = args.indexOf("--html");
+  let html = htmlIdx !== -1;
+  let htmlOutputPath: string | undefined;
+  if (html) {
+    // Next arg is the output path if it doesn't start with '--'
+    const next = args[htmlIdx + 1];
+    if (next && !next.startsWith("--")) {
+      htmlOutputPath = next;
+    }
+  }
 
   const dateIdx = args.indexOf("--date");
   const rangeIdx = args.indexOf("--range");
@@ -94,7 +117,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     filterEnd = args[rangeIdx + 2];
   }
 
-  return { help, version, json, filterMode, filterDate, filterStart, filterEnd };
+  return { help, version, json, html, htmlOutputPath, openAfterWrite, filterMode, filterDate, filterStart, filterEnd };
 }
 
 function validateArgs(args: ParsedArgs): void {
@@ -239,9 +262,34 @@ async function main(): Promise<void> {
     filterDescription,
   };
 
-  const format = args.json ? "json" : "text";
-  const renderer: Renderer = createRenderer(format);
+  let format: string;
+  let htmlPath: string | undefined;
+
+  if (args.html) {
+    format = "html";
+    htmlPath = args.htmlOutputPath ?? path.resolve(process.cwd(), `tscope-report-${today}.html`);
+  } else if (args.json) {
+    format = "json";
+  } else {
+    format = "text";
+  }
+
+  const renderer: Renderer = createRenderer(format, htmlPath);
   renderer.render(report);
+
+  if (args.html && args.openAfterWrite && htmlPath) {
+    try {
+      const platform = process.platform;
+      const opener =
+        platform === "win32" ? `start "" "${htmlPath}"` :
+        platform === "darwin" ? `open "${htmlPath}"` :
+        `xdg-open "${htmlPath}"`;
+      const shellOpt: string | boolean = platform === "win32" ? "cmd.exe" : true;
+      execSync(opener, { stdio: "ignore", shell: shellOpt as string });
+    } catch {
+      process.stderr.write(`Warning: could not open ${htmlPath} in browser\n`);
+    }
+  }
 
   process.exit(0);
 }

@@ -12,30 +12,34 @@
 
 import { TextRenderer } from "./TextRenderer";
 import { JsonRenderer } from "./JsonRenderer";
+import { HtmlRenderer } from "./HtmlRenderer";
 
 export { Renderer } from "./Renderer";
 export { JsonRenderer } from "./JsonRenderer";
+export { HtmlRenderer } from "./HtmlRenderer";
 
-type RendererFactory = () => import("./Renderer").Renderer;
+type RendererFactory = (outputPath?: string) => import("./Renderer").Renderer;
 
 /**
  * Registry of available output-format renderers keyed by format name.
- * Phase 1: 'text' only.  Phase 2: add 'json' and 'html' here.
+ * Phase 1: 'text' only.  Phase 2: 'json' and 'html'.
+ *
+ * Note: 'html' requires an outputPath — pass it via createRenderer's second arg.
  */
-const RENDERER_REGISTRY: Map<string, RendererFactory> = new Map([
+const RENDERER_REGISTRY = new Map<string, RendererFactory>([
   ["text", () => new TextRenderer()],
   ["json", () => new JsonRenderer()],
+  ["html", (outputPath?: string) => new HtmlRenderer(outputPath ?? "./tscope-report.html")],
 ]);
 
 /**
  * Returns a `Renderer` for the requested format.
  *
- * Phase 1 supports `'text'` only.  Future formats ('json', 'html') are
- * registered in `RENDERER_REGISTRY` — no other pipeline code needs to change.
- *
+ * @param format      One of 'text', 'json', 'html'.
+ * @param outputPath  Required for 'html' — path to write the .html file.
  * @throws {Error} if `format` is not registered
  */
-export function createRenderer(format: string): import("./Renderer").Renderer {
+export function createRenderer(format: string, outputPath?: string): import("./Renderer").Renderer {
   const factory = RENDERER_REGISTRY.get(format);
   if (!factory) {
     const supported = [...RENDERER_REGISTRY.keys()].join(", ");
@@ -43,5 +47,5 @@ export function createRenderer(format: string): import("./Renderer").Renderer {
       `Unknown renderer format: "${format}". Supported: ${supported}`
     );
   }
-  return factory();
+  return factory(outputPath);
 }
