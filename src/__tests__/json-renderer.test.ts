@@ -1,9 +1,10 @@
 /**
  * Tests for JsonRenderer — verifies JSON shape, field types, and edge cases.
+ * Schema: tscope/report/v2 (credit fields removed)
  */
 
 import { JsonRenderer } from "../render/JsonRenderer";
-import { Report, ParsedSession, InProgressSession, SessionCredits } from "../types";
+import { Report, ParsedSession, InProgressSession } from "../types";
 
 /** Capture stdout output from a renderer call */
 function captureOutput(report: Report): string {
@@ -26,8 +27,6 @@ function captureJson(report: Report): ReturnType<typeof JSON.parse> {
 const EMPTY_REPORT: Report = {
   sessions: [],
   inProgressSessions: [],
-  totalCredits: 0,
-  hasUnknownRates: false,
   reportDate: "2026-06-02",
   filterDescription: "today",
 };
@@ -56,37 +55,6 @@ const SAMPLE_SESSION: ParsedSession = {
   inProgress: false,
 };
 
-const SAMPLE_CREDITS: SessionCredits = {
-  models: [
-    {
-      modelName: "claude-sonnet-4-5",
-      tokens: {
-        inputTokens: 1000,
-        outputTokens: 500,
-        cacheReadTokens: 200,
-        cacheWriteTokens: 100,
-        reasoningTokens: 50,
-      },
-      estimatedCredits: 2.5,
-      unknownRate: false,
-    },
-    {
-      modelName: "claude-haiku-4-5",
-      tokens: {
-        inputTokens: 300,
-        outputTokens: 100,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        reasoningTokens: 0,
-      },
-      estimatedCredits: 0.3,
-      unknownRate: false,
-    },
-  ],
-  totalCredits: 2.8,
-  hasUnknownRates: false,
-};
-
 const SAMPLE_IN_PROGRESS: InProgressSession = {
   sessionId: "xyz-99999999-8888-7777-6666-555555555555",
   eventsPath: "/home/user/.copilot/session-state/xyz/events.jsonl",
@@ -103,17 +71,16 @@ describe("JsonRenderer", () => {
     test("report with sessions produces valid JSON", () => {
       const report: Report = {
         ...EMPTY_REPORT,
-        sessions: [{ session: SAMPLE_SESSION, credits: SAMPLE_CREDITS }],
-        totalCredits: 2.8,
+        sessions: [SAMPLE_SESSION],
       };
       expect(() => captureJson(report)).not.toThrow();
     });
   });
 
   describe("top-level schema fields", () => {
-    test("includes schema field with correct value", () => {
+    test("includes schema field with v2 value", () => {
       const out = captureJson(EMPTY_REPORT);
-      expect(out.schema).toBe("tscope/report/v1");
+      expect(out.schema).toBe("tscope/report/v2");
     });
 
     test("includes generatedAt as ISO 8601 UTC string", () => {
@@ -154,28 +121,35 @@ describe("JsonRenderer", () => {
       expect(out.summary.sessionCount).toBe(0);
       expect(out.summary.completedCount).toBe(0);
       expect(out.summary.inProgressCount).toBe(0);
-      expect(out.summary.totalEstimatedCredits).toBe(0);
-      expect(out.summary.hasUnknownRates).toBe(false);
+      expect(out.summary.totalTokens).toBe(0);
+    });
+
+    test("summary has no credit fields", () => {
+      const out = captureJson(EMPTY_REPORT);
+      expect(out.summary.totalEstimatedCredits).toBeUndefined();
+      expect(out.summary.hasUnknownRates).toBeUndefined();
     });
 
     test("counts completed and in-progress correctly", () => {
       const report: Report = {
         ...EMPTY_REPORT,
-        sessions: [{ session: SAMPLE_SESSION, credits: SAMPLE_CREDITS }],
+        sessions: [SAMPLE_SESSION],
         inProgressSessions: [SAMPLE_IN_PROGRESS],
-        totalCredits: 2.8,
       };
       const out = captureJson(report);
       expect(out.summary.sessionCount).toBe(2);
       expect(out.summary.completedCount).toBe(1);
       expect(out.summary.inProgressCount).toBe(1);
-      expect(out.summary.totalEstimatedCredits).toBe(2.8);
     });
 
-    test("hasUnknownRates propagates to summary", () => {
-      const report: Report = { ...EMPTY_REPORT, hasUnknownRates: true };
+    test("totalTokens sums input+output+cacheRead+cacheWrite across sessions", () => {
+      const report: Report = {
+        ...EMPTY_REPORT,
+        sessions: [SAMPLE_SESSION],
+      };
       const out = captureJson(report);
-      expect(out.summary.hasUnknownRates).toBe(true);
+      // 1000+500+200+100 + 300+100+0+0 = 2200
+      expect(out.summary.totalTokens).toBe(2200);
     });
   });
 
@@ -186,8 +160,7 @@ describe("JsonRenderer", () => {
     beforeEach(() => {
       const report: Report = {
         ...EMPTY_REPORT,
-        sessions: [{ session: SAMPLE_SESSION, credits: SAMPLE_CREDITS }],
-        totalCredits: 2.8,
+        sessions: [SAMPLE_SESSION],
       };
       out = captureJson(report);
       sessionOut = out.sessions[0];
@@ -215,11 +188,15 @@ describe("JsonRenderer", () => {
       expect(sessionOut.inProgress).toBe(false);
     });
 
+    test("session has premiumRequests field", () => {
+      expect(sessionOut.premiumRequests).toBe(5);
+    });
+
     test("session has correct number of models", () => {
       expect(sessionOut.models).toHaveLength(2);
     });
 
-    test("model has correct structure", () => {
+    test("model has correct structure (no credit fields)", () => {
       const model = sessionOut.models[0];
       expect(model.modelName).toBe("claude-sonnet-4-5");
       expect(typeof model.usage.input).toBe("number");
@@ -227,8 +204,9 @@ describe("JsonRenderer", () => {
       expect(typeof model.usage.cacheRead).toBe("number");
       expect(typeof model.usage.cacheWrite).toBe("number");
       expect(typeof model.usage.reasoning).toBe("number");
-      expect(typeof model.estimatedCredits).toBe("number");
-      expect(typeof model.unknownRate).toBe("boolean");
+      // No credit fields
+      expect(model.estimatedCredits).toBeUndefined();
+      expect(model.unknownRate).toBeUndefined();
     });
 
     test("model usage token counts are correct", () => {
@@ -240,53 +218,16 @@ describe("JsonRenderer", () => {
       expect(model.usage.reasoning).toBe(50);
     });
 
-    test("model estimatedCredits is a number for known rate", () => {
-      const model = sessionOut.models[0];
-      expect(model.estimatedCredits).toBe(2.5);
-      expect(model.unknownRate).toBe(false);
-    });
-
-    test("session totals sum across all models", () => {
+    test("session totals sum across all models (no credit fields)", () => {
       const totals = sessionOut.totals;
       expect(totals.input).toBe(1300); // 1000 + 300
       expect(totals.output).toBe(600); // 500 + 100
       expect(totals.cacheRead).toBe(200);
       expect(totals.cacheWrite).toBe(100);
       expect(totals.reasoning).toBe(50);
-      expect(totals.estimatedCredits).toBe(2.8);
-      expect(totals.hasUnknownRates).toBe(false);
-    });
-  });
-
-  describe("unknown rate model", () => {
-    test("estimatedCredits is null for unknown-rate model", () => {
-      const unknownCredits: SessionCredits = {
-        models: [
-          {
-            modelName: "unknown-model-xyz",
-            tokens: {
-              inputTokens: 1000,
-              outputTokens: 500,
-              cacheReadTokens: 0,
-              cacheWriteTokens: 0,
-              reasoningTokens: 0,
-            },
-            estimatedCredits: undefined,
-            unknownRate: true,
-          },
-        ],
-        totalCredits: 0,
-        hasUnknownRates: true,
-      };
-      const report: Report = {
-        ...EMPTY_REPORT,
-        sessions: [{ session: SAMPLE_SESSION, credits: unknownCredits }],
-        hasUnknownRates: true,
-      };
-      const out = captureJson(report);
-      const model = out.sessions[0].models[0];
-      expect(model.estimatedCredits).toBeNull();
-      expect(model.unknownRate).toBe(true);
+      // No credit fields in totals
+      expect(totals.estimatedCredits).toBeUndefined();
+      expect(totals.hasUnknownRates).toBeUndefined();
     });
   });
 
@@ -316,7 +257,10 @@ describe("JsonRenderer", () => {
 
     test("totals are zeroed", () => {
       expect(sessionOut.totals.input).toBe(0);
-      expect(sessionOut.totals.estimatedCredits).toBe(0);
+    });
+
+    test("premiumRequests is null for in-progress session", () => {
+      expect(sessionOut.premiumRequests).toBeNull();
     });
 
     test("startTime is ISO string when available", () => {
@@ -344,9 +288,8 @@ describe("JsonRenderer", () => {
     test("completed sessions appear before in-progress sessions", () => {
       const report: Report = {
         ...EMPTY_REPORT,
-        sessions: [{ session: SAMPLE_SESSION, credits: SAMPLE_CREDITS }],
+        sessions: [SAMPLE_SESSION],
         inProgressSessions: [SAMPLE_IN_PROGRESS],
-        totalCredits: 2.8,
       };
       const out = captureJson(report);
       expect(out.sessions[0].inProgress).toBe(false);
@@ -365,14 +308,32 @@ describe("JsonRenderer", () => {
     test("token counts are numeric in JSON", () => {
       const report: Report = {
         ...EMPTY_REPORT,
-        sessions: [{ session: SAMPLE_SESSION, credits: SAMPLE_CREDITS }],
-        totalCredits: 2.8,
+        sessions: [SAMPLE_SESSION],
       };
       const out = captureJson(report);
       const model = out.sessions[0].models[0];
       expect(typeof model.usage.input).toBe("number");
-      expect(typeof model.estimatedCredits).toBe("number");
-      expect(typeof out.summary.totalEstimatedCredits).toBe("number");
+      expect(typeof out.summary.totalTokens).toBe("number");
+    });
+  });
+
+  describe("zero-token session", () => {
+    test("session with no models has zero totalTokens contribution", () => {
+      const emptyModelsSession: ParsedSession = {
+        sessionId: "empty-models",
+        eventsPath: "/some/path",
+        startTime: "2026-06-02T20:00:00.000Z",
+        models: {},
+        totalPremiumRequests: 0,
+        inProgress: false,
+      };
+      const report: Report = {
+        ...EMPTY_REPORT,
+        sessions: [emptyModelsSession],
+      };
+      const out = captureJson(report);
+      expect(out.summary.totalTokens).toBe(0);
+      expect(out.sessions[0].premiumRequests).toBe(0);
     });
   });
 });

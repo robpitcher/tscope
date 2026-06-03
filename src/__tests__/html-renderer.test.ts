@@ -1,6 +1,7 @@
 /**
  * Tests for HtmlRenderer — verifies self-contained output, content, escaping,
  * and edge-case handling.
+ * Updated for tscope/report/v2: no credit fields.
  */
 
 import * as fs from "fs";
@@ -10,7 +11,6 @@ import {
   Report,
   ParsedSession,
   InProgressSession,
-  SessionCredits,
 } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -20,8 +20,6 @@ import {
 const EMPTY_REPORT: Report = {
   sessions: [],
   inProgressSessions: [],
-  totalCredits: 0,
-  hasUnknownRates: false,
   reportDate: "2026-06-02",
   filterDescription: "today",
 };
@@ -50,37 +48,6 @@ const SAMPLE_SESSION: ParsedSession = {
   inProgress: false,
 };
 
-const SAMPLE_CREDITS: SessionCredits = {
-  models: [
-    {
-      modelName: "claude-sonnet-4-5",
-      tokens: {
-        inputTokens: 1000,
-        outputTokens: 500,
-        cacheReadTokens: 700,
-        cacheWriteTokens: 100,
-        reasoningTokens: 50,
-      },
-      estimatedCredits: 2.5,
-      unknownRate: false,
-    },
-    {
-      modelName: "claude-haiku-4-5",
-      tokens: {
-        inputTokens: 300,
-        outputTokens: 100,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        reasoningTokens: 0,
-      },
-      estimatedCredits: 0.3,
-      unknownRate: false,
-    },
-  ],
-  totalCredits: 2.8,
-  hasUnknownRates: false,
-};
-
 const SAMPLE_IN_PROGRESS: InProgressSession = {
   sessionId: "xyz-99999999-8888-7777-6666-555555555555",
   eventsPath: "/home/user/.copilot/session-state/xyz/events.jsonl",
@@ -88,7 +55,7 @@ const SAMPLE_IN_PROGRESS: InProgressSession = {
   inProgress: true,
 };
 
-/** Write to a temp file, read back contents, delete the file */
+/** Write to a file path in cwd, read back contents, delete the file */
 function renderToString(report: Report, filename = "test-report.html"): string {
   const outPath = path.join(process.cwd(), filename);
   const renderer = new HtmlRenderer(outPath);
@@ -109,7 +76,7 @@ describe("HtmlRenderer", () => {
       expect(html.length).toBeGreaterThan(100);
     });
 
-    test("contains <html opening tag", () => {
+    test("contains <!DOCTYPE html> and <html opening tag", () => {
       const html = renderToString(EMPTY_REPORT, "html-test-html-tag.html");
       expect(html).toContain("<!DOCTYPE html>");
       expect(html).toContain("<html");
@@ -124,12 +91,10 @@ describe("HtmlRenderer", () => {
       const html = renderToString(
         {
           ...EMPTY_REPORT,
-          sessions: [{ session: SAMPLE_SESSION, credits: SAMPLE_CREDITS }],
-          totalCredits: 2.8,
+          sessions: [SAMPLE_SESSION],
         },
         "html-test-cdn.html"
       );
-      // Must not reference any external resource in src/href/url()
       const externalPatterns = [
         /src=["']https?:\/\//i,
         /href=["']https?:\/\//i,
@@ -152,8 +117,7 @@ describe("HtmlRenderer", () => {
       const html = renderToString(
         {
           ...EMPTY_REPORT,
-          sessions: [{ session: SAMPLE_SESSION, credits: SAMPLE_CREDITS }],
-          totalCredits: 2.8,
+          sessions: [SAMPLE_SESSION],
         },
         "html-test-session-id.html"
       );
@@ -164,8 +128,7 @@ describe("HtmlRenderer", () => {
       const html = renderToString(
         {
           ...EMPTY_REPORT,
-          sessions: [{ session: SAMPLE_SESSION, credits: SAMPLE_CREDITS }],
-          totalCredits: 2.8,
+          sessions: [SAMPLE_SESSION],
         },
         "html-test-model-names.html"
       );
@@ -188,40 +151,72 @@ describe("HtmlRenderer", () => {
       );
       expect(html).toContain("all time");
     });
+
+    test("shows premium requests chip when > 0", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-premium.html"
+      );
+      expect(html).toContain("premium req");
+    });
+
+    test("shows tokens chip", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-tokens-chip.html"
+      );
+      expect(html).toContain("tokens");
+    });
+  });
+
+  describe("no credit references in output", () => {
+    test("does not contain credit-related text", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-no-credits.html"
+      );
+      expect(html.toLowerCase()).not.toContain("estimated credits");
+      expect(html.toLowerCase()).not.toContain("rate table");
+      expect(html).not.toContain("Est. Credits");
+    });
+
+    test("contains tokens-over-time section title", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-timeline-title.html"
+      );
+      expect(html.toLowerCase()).toContain("tokens over time");
+    });
+
+    test("contains tokens by model section title", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-tokens-by-model.html"
+      );
+      expect(html.toLowerCase()).toContain("tokens by model");
+    });
   });
 
   describe("HTML-escapes dangerous strings", () => {
     test("escapes <script> in model name", () => {
       const maliciousModel = "<script>alert('xss')</script>";
-      const evilCredits: SessionCredits = {
-        models: [
-          {
-            modelName: maliciousModel,
-            tokens: {
-              inputTokens: 100,
-              outputTokens: 50,
-              cacheReadTokens: 0,
-              cacheWriteTokens: 0,
-              reasoningTokens: 0,
-            },
-            estimatedCredits: 0.1,
-            unknownRate: false,
+      const evilSession: ParsedSession = {
+        ...SAMPLE_SESSION,
+        models: {
+          [maliciousModel]: {
+            inputTokens: 100,
+            outputTokens: 50,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            reasoningTokens: 0,
           },
-        ],
-        totalCredits: 0.1,
-        hasUnknownRates: false,
+        },
       };
       const html = renderToString(
-        {
-          ...EMPTY_REPORT,
-          sessions: [{ session: SAMPLE_SESSION, credits: evilCredits }],
-          totalCredits: 0.1,
-        },
+        { ...EMPTY_REPORT, sessions: [evilSession] },
         "html-test-escape-model.html"
       );
-      // Raw unescaped script tag must not appear
       expect(html).not.toContain("<script>alert(");
-      // Escaped version should be present
       expect(html).toContain("&lt;script&gt;");
     });
 
@@ -231,11 +226,7 @@ describe("HtmlRenderer", () => {
         eventsPath: `"><img src=x onerror=alert(1)>`,
       };
       const html = renderToString(
-        {
-          ...EMPTY_REPORT,
-          sessions: [{ session: evil, credits: SAMPLE_CREDITS }],
-          totalCredits: 2.8,
-        },
+        { ...EMPTY_REPORT, sessions: [evil] },
         "html-test-escape-path.html"
       );
       expect(html).not.toContain(`"><img src=x onerror=alert(1)>`);
@@ -260,49 +251,6 @@ describe("HtmlRenderer", () => {
     test("shows no-sessions message for empty report", () => {
       const html = renderToString(EMPTY_REPORT, "html-test-empty-state.html");
       expect(html.toLowerCase()).toMatch(/no sessions/i);
-    });
-  });
-
-  describe("handles unknown-rate models", () => {
-    test("does not crash when model has unknown rate", () => {
-      const unknownCredits: SessionCredits = {
-        models: [
-          {
-            modelName: "mystery-model-9000",
-            tokens: {
-              inputTokens: 500,
-              outputTokens: 200,
-              cacheReadTokens: 0,
-              cacheWriteTokens: 0,
-              reasoningTokens: 0,
-            },
-            estimatedCredits: undefined,
-            unknownRate: true,
-          },
-        ],
-        totalCredits: 0,
-        hasUnknownRates: true,
-      };
-      expect(() =>
-        renderToString(
-          {
-            ...EMPTY_REPORT,
-            sessions: [{ session: SAMPLE_SESSION, credits: unknownCredits }],
-            hasUnknownRates: true,
-          },
-          "html-test-unknown-rate.html"
-        )
-      ).not.toThrow();
-
-      const html = renderToString(
-        {
-          ...EMPTY_REPORT,
-          sessions: [{ session: SAMPLE_SESSION, credits: unknownCredits }],
-          hasUnknownRates: true,
-        },
-        "html-test-unknown-rate2.html"
-      );
-      expect(html).toContain("mystery-model-9000");
     });
   });
 
@@ -337,16 +285,26 @@ describe("HtmlRenderer", () => {
       const html = renderToString(
         {
           ...EMPTY_REPORT,
-          sessions: [
-            { session: SAMPLE_SESSION, credits: SAMPLE_CREDITS },
-            { session: session2, credits: SAMPLE_CREDITS },
-          ],
-          totalCredits: 5.6,
+          sessions: [SAMPLE_SESSION, session2],
         },
         "html-test-multi-session.html"
       );
       expect(html).toContain(SAMPLE_SESSION.sessionId);
       expect(html).toContain(session2.sessionId);
+    });
+  });
+
+  describe("session with no premium requests", () => {
+    test("does not show premium chip when totalPremiumRequests is 0", () => {
+      const noPremiumSession: ParsedSession = {
+        ...SAMPLE_SESSION,
+        totalPremiumRequests: 0,
+      };
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [noPremiumSession] },
+        "html-test-no-premium.html"
+      );
+      expect(html).not.toContain("premium req");
     });
   });
 });

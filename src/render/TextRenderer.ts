@@ -1,4 +1,4 @@
-import { Report, ParsedSession, SessionCredits, InProgressSession, ModelCredits } from "../types";
+import { Report, ParsedSession, InProgressSession, TokenCounts } from "../types";
 import { Renderer } from "./Renderer";
 
 const HEAVY = "═".repeat(79);
@@ -7,14 +7,6 @@ const LIGHT = "─".repeat(79);
 /** Format a number with comma thousands separators */
 function fmt(n: number): string {
   return n.toLocaleString("en-US");
-}
-
-/** Format credits to 2 decimal places, trimming trailing zeros */
-function fmtCredits(n: number): string {
-  if (n === 0) return "0";
-  if (n >= 10) return n.toFixed(0);
-  if (n >= 1) return n.toFixed(2).replace(/\.?0+$/, "");
-  return n.toFixed(2).replace(/\.?0+$/, "") || "0";
 }
 
 /** Convert UTC ISO string to local datetime string: "YYYY-MM-DD HH:MM (local)" */
@@ -29,10 +21,6 @@ function toLocalDateTimeStr(utcIso: string): string {
   return `${year}-${month}-${day} ${hour}:${min} (local)`;
 }
 
-/**
- * Render a two-column token row.
- * Layout: "    Label1:  RightAligned    Label2:  RightAligned"
- */
 function tokenRow(
   label1: string,
   val1: number,
@@ -46,42 +34,29 @@ function tokenRow(
   return `    ${l1}${v1}    ${l2}${v2}`;
 }
 
-function renderModelBlock(mc: ModelCredits): string {
+function renderModelBlock(modelName: string, tokens: TokenCounts): string {
   const lines: string[] = [];
-  lines.push(`  ${mc.modelName}`);
-  lines.push(tokenRow("Input", mc.tokens.inputTokens, "Cache Read", mc.tokens.cacheReadTokens));
-  lines.push(tokenRow("Cache Write", mc.tokens.cacheWriteTokens, "Output", mc.tokens.outputTokens));
-
-  if (!mc.unknownRate && mc.estimatedCredits !== undefined) {
-    lines.push(`    → ~${fmtCredits(mc.estimatedCredits)} credits (estimated)`);
-  }
-  // If unknown rate, warning already emitted by credits.ts; no credit line here
-
+  lines.push(`  ${modelName}`);
+  lines.push(tokenRow("Input", tokens.inputTokens, "Cache Read", tokens.cacheReadTokens));
+  lines.push(tokenRow("Cache Write", tokens.cacheWriteTokens, "Output", tokens.outputTokens));
   return lines.join("\n");
 }
 
-function renderSessionBlock(session: ParsedSession, credits: SessionCredits): string {
+function renderSessionBlock(session: ParsedSession): string {
   const lines: string[] = [];
-
   lines.push(HEAVY);
   lines.push(`SESSION: ${session.sessionId}`);
   lines.push(`Date:    ${toLocalDateTimeStr(session.startTime)}`);
-
-  if (credits.hasUnknownRates && credits.totalCredits === 0) {
-    lines.push(`Credits: (unknown — model not in rate table)`);
-  } else if (credits.hasUnknownRates) {
-    lines.push(`Credits: ~${fmtCredits(credits.totalCredits)} AI credits (partial — some models unknown)`);
-  } else {
-    lines.push(`Credits: ~${fmtCredits(credits.totalCredits)} AI credits`);
-  }
-
   lines.push(`Path:    ${session.eventsPath}`);
+  if (session.totalPremiumRequests > 0) {
+    lines.push(`Premium: ${session.totalPremiumRequests} requests`);
+  }
   lines.push(LIGHT);
 
-  // Per-model blocks
-  const modelEntries = credits.models;
+  const modelEntries = Object.entries(session.models);
   for (let i = 0; i < modelEntries.length; i++) {
-    lines.push(renderModelBlock(modelEntries[i]));
+    const [modelName, tokens] = modelEntries[i];
+    lines.push(renderModelBlock(modelName, tokens));
     if (i < modelEntries.length - 1) {
       lines.push("");
     }
@@ -89,19 +64,17 @@ function renderSessionBlock(session: ParsedSession, credits: SessionCredits): st
 
   lines.push(LIGHT);
 
-  // Totals
   let totalInput = 0, totalCacheRead = 0, totalCacheWrite = 0, totalOutput = 0;
-  for (const mc of credits.models) {
-    totalInput += mc.tokens.inputTokens;
-    totalCacheRead += mc.tokens.cacheReadTokens;
-    totalCacheWrite += mc.tokens.cacheWriteTokens;
-    totalOutput += mc.tokens.outputTokens;
+  for (const tokens of Object.values(session.models)) {
+    totalInput += tokens.inputTokens;
+    totalCacheRead += tokens.cacheReadTokens;
+    totalCacheWrite += tokens.cacheWriteTokens;
+    totalOutput += tokens.outputTokens;
   }
 
   lines.push("  TOTALS");
   lines.push(tokenRow("Input", totalInput, "Cache Read", totalCacheRead));
   lines.push(tokenRow("Cache Write", totalCacheWrite, "Output", totalOutput));
-
   lines.push(HEAVY);
 
   return lines.join("\n");
@@ -122,18 +95,16 @@ function renderInProgressBlock(session: InProgressSession): string {
 }
 
 /**
- * TextRenderer — renders the report to stdout in the specified text format.
+ * TextRenderer — renders the report to stdout in plain text format.
  */
 export class TextRenderer implements Renderer {
   render(report: Report): void {
     const allSessions: string[] = [];
 
-    // Completed sessions
-    for (const { session, credits } of report.sessions) {
-      allSessions.push(renderSessionBlock(session, credits));
+    for (const session of report.sessions) {
+      allSessions.push(renderSessionBlock(session));
     }
 
-    // In-progress sessions
     for (const inProgress of report.inProgressSessions) {
       allSessions.push(renderInProgressBlock(inProgress));
     }
@@ -147,12 +118,7 @@ export class TextRenderer implements Renderer {
       process.stdout.write(block + "\n\n");
     }
 
-    // Footer
     const totalSessions = report.sessions.length + report.inProgressSessions.length;
-    const creditStr = report.hasUnknownRates
-      ? `~${fmtCredits(report.totalCredits)} AI credits (partial)`
-      : `~${fmtCredits(report.totalCredits)} AI credits`;
-
-    process.stdout.write(`SUMMARY: ${totalSessions} session${totalSessions !== 1 ? "s" : ""} | ${creditStr} total\n`);
+    process.stdout.write(`SUMMARY: ${totalSessions} session${totalSessions !== 1 ? "s" : ""}\n`);
   }
 }

@@ -1,8 +1,8 @@
-import { Report, ParsedSession, InProgressSession, SessionCredits } from "../types";
+import { Report, ParsedSession, InProgressSession } from "../types";
 import { Renderer } from "./Renderer";
 
-/** Schema version — bump when the shape changes in a breaking way */
-const SCHEMA_VERSION = "tscope/report/v1";
+/** Schema version — bumped to v2 (breaking: credit fields removed) */
+const SCHEMA_VERSION = "tscope/report/v2";
 
 /** Convert UTC ISO string to local "YYYY-MM-DD HH:MM" or null if invalid */
 function toLocalDateTime(utcIso: string): string | null {
@@ -16,30 +16,28 @@ function toLocalDateTime(utcIso: string): string | null {
   return `${year}-${month}-${day} ${hour}:${min}`;
 }
 
-function serializeCompletedSession(session: ParsedSession, credits: SessionCredits) {
+function serializeCompletedSession(session: ParsedSession) {
   let totalInput = 0;
   let totalOutput = 0;
   let totalCacheRead = 0;
   let totalCacheWrite = 0;
   let totalReasoning = 0;
 
-  const models = credits.models.map((mc) => {
-    totalInput += mc.tokens.inputTokens;
-    totalOutput += mc.tokens.outputTokens;
-    totalCacheRead += mc.tokens.cacheReadTokens;
-    totalCacheWrite += mc.tokens.cacheWriteTokens;
-    totalReasoning += mc.tokens.reasoningTokens;
+  const models = Object.entries(session.models).map(([modelName, tokens]) => {
+    totalInput += tokens.inputTokens;
+    totalOutput += tokens.outputTokens;
+    totalCacheRead += tokens.cacheReadTokens;
+    totalCacheWrite += tokens.cacheWriteTokens;
+    totalReasoning += tokens.reasoningTokens;
     return {
-      modelName: mc.modelName,
+      modelName,
       usage: {
-        input: mc.tokens.inputTokens,
-        output: mc.tokens.outputTokens,
-        cacheRead: mc.tokens.cacheReadTokens,
-        cacheWrite: mc.tokens.cacheWriteTokens,
-        reasoning: mc.tokens.reasoningTokens,
+        input: tokens.inputTokens,
+        output: tokens.outputTokens,
+        cacheRead: tokens.cacheReadTokens,
+        cacheWrite: tokens.cacheWriteTokens,
+        reasoning: tokens.reasoningTokens,
       },
-      estimatedCredits: mc.unknownRate ? null : (mc.estimatedCredits ?? null),
-      unknownRate: mc.unknownRate,
     };
   });
 
@@ -49,6 +47,7 @@ function serializeCompletedSession(session: ParsedSession, credits: SessionCredi
     startTime: session.startTime,
     localDateTime: toLocalDateTime(session.startTime),
     inProgress: false as const,
+    premiumRequests: session.totalPremiumRequests,
     models,
     totals: {
       input: totalInput,
@@ -56,8 +55,6 @@ function serializeCompletedSession(session: ParsedSession, credits: SessionCredi
       cacheRead: totalCacheRead,
       cacheWrite: totalCacheWrite,
       reasoning: totalReasoning,
-      estimatedCredits: credits.totalCredits,
-      hasUnknownRates: credits.hasUnknownRates,
     },
   };
 }
@@ -69,6 +66,7 @@ function serializeInProgressSession(session: InProgressSession) {
     startTime: session.startTime ?? null,
     localDateTime: session.startTime ? toLocalDateTime(session.startTime) : null,
     inProgress: true as const,
+    premiumRequests: null,
     models: [] as never[],
     totals: {
       input: 0,
@@ -76,8 +74,6 @@ function serializeInProgressSession(session: InProgressSession) {
       cacheRead: 0,
       cacheWrite: 0,
       reasoning: 0,
-      estimatedCredits: 0,
-      hasUnknownRates: false,
     },
   };
 }
@@ -86,32 +82,31 @@ function serializeInProgressSession(session: InProgressSession) {
  * JsonRenderer — serializes the report to stdout as clean, stable JSON.
  *
  * Stdout receives only valid JSON (pipeable to jq, etc.).
- * Warnings (e.g., unknown model rates) are written to stderr by the upstream
- * credit calculator and remain there — stdout is never polluted.
  *
- * ## Schema: tscope/report/v1
+ * ## Schema: tscope/report/v2
  * Top-level fields:
  *   schema         — stable identifier, bump on breaking changes
  *   generatedAt    — ISO 8601 UTC timestamp of report generation
  *   filter         — description and reportDate of the active filter
- *   summary        — sessionCount, completedCount, inProgressCount,
- *                    totalEstimatedCredits, hasUnknownRates
+ *   summary        — sessionCount, completedCount, inProgressCount, totalTokens
  *   sessions[]     — one entry per session (completed + in-progress)
  *     sessionId, path, startTime (ISO UTC | null), localDateTime (YYYY-MM-DD HH:MM | null),
- *     inProgress, models[], totals
- *   models[]       — modelName, usage{input,output,cacheRead,cacheWrite,reasoning},
- *                    estimatedCredits (number | null), unknownRate
- *   totals         — summed token counts + estimatedCredits + hasUnknownRates
+ *     inProgress, premiumRequests (number | null), models[], totals
+ *   models[]       — modelName, usage{input,output,cacheRead,cacheWrite,reasoning}
+ *   totals         — summed token counts
  */
 export class JsonRenderer implements Renderer {
   render(report: Report): void {
     const completedCount = report.sessions.length;
     const inProgressCount = report.inProgressSessions.length;
 
+    let totalTokens = 0;
     const sessions = [
-      ...report.sessions.map(({ session, credits }) =>
-        serializeCompletedSession(session, credits)
-      ),
+      ...report.sessions.map((session) => {
+        const s = serializeCompletedSession(session);
+        totalTokens += s.totals.input + s.totals.output + s.totals.cacheRead + s.totals.cacheWrite;
+        return s;
+      }),
       ...report.inProgressSessions.map(serializeInProgressSession),
     ];
 
@@ -126,8 +121,7 @@ export class JsonRenderer implements Renderer {
         sessionCount: completedCount + inProgressCount,
         completedCount,
         inProgressCount,
-        totalEstimatedCredits: report.totalCredits,
-        hasUnknownRates: report.hasUnknownRates,
+        totalTokens,
       },
       sessions,
     };

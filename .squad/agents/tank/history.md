@@ -106,3 +106,23 @@ npm i -g .         # global install → tscope command
 **Test count:** 87 → 134 (all passing). Build: `npm run build` clean, strict mode.
 
 **PR #22:** `squad/phase2-json-daterange` → main
+
+### Issue #24 — Remove Pricing / Pivot to Pure Token Analytics — 2026-06-02
+
+**What changed:**
+- **Deleted:** `src/rates.ts`, `src/credits.ts`, `src/__tests__/rates.test.ts`, `src/__tests__/credits.test.ts`
+- **Updated types.ts:** Removed `ModelCredits`, `SessionCredits` interfaces; simplified `Report.sessions` to `ParsedSession[]`; removed `totalCredits` and `hasUnknownRates` from `Report`
+- **Updated src/index.ts:** Removed `calcSessionCredits` import and pipeline; bumped VERSION to `0.3.0`
+- **Updated TextRenderer.ts:** Removed credits line and per-model credit lines; added `Premium: N requests` when `> 0`; simplified footer to session count only
+- **Updated JsonRenderer.ts:** Bumped schema to `tscope/report/v2`; removed `estimatedCredits`, `unknownRate`, `hasUnknownRates`, `totalEstimatedCredits`; added `premiumRequests` per session; `summary.totalTokens` replaces credit total
+- **Updated HtmlRenderer.ts:** Replaced `buildCreditsBars()` with `buildTokensByModelBars()`, replaced `buildCreditsTimelineChart()` with `buildTokensTimelineChart()`; updated stat cards; removed credit chips
+- **Updated tests:** 134 → 123 tests (credits.test.ts + rates.test.ts removed = -29 tests; new token-focused assertions added); all 123 passing
+- **Updated README.md:** Removed AI credit estimation sections; reframed as pure token analyzer; documented JSON schema v2
+
+**Learnings:**
+- PowerShell here-strings (`@"..."@`) corrupt TypeScript template literals with backticks. Use Python scripts (via `create` + `powershell python script.py`) to write TS files with template literals.
+- `Report` type is the central hub — changing it requires coordinated updates to all three renderers and all tests simultaneously. One branch = clean atomic change.
+- `totalPremiumRequests` is a raw Copilot value (not computed pricing) — retained in all renderers as-is.
+- JSON schema v2 is a clean break from v1; the `schema` field guards downstream consumers.
+
+**PR:** `squad/24-remove-pricing` → main (Closes #24)

@@ -1,16 +1,17 @@
 # tscope
 
-**GitHub Copilot session token usage viewer for local analysis and AI credit estimation.**
+**GitHub Copilot session token usage analyzer.**
 
-`tscope` is a command-line tool that helps you understand and track your Copilot CLI token consumption. It reads session data from your local Copilot session files, measures tokens used (input, output, cached read, cached write), and estimates AI credits based on GitHub's published pricing. Perfect for optimizing Copilot usage and managing AI credits in GitHub usage-based billing.
+`tscope` is a command-line tool that helps you understand your Copilot CLI token consumption. It reads session data from your local Copilot session files, measures tokens used per model (input, output, cache read, cache write, reasoning), and displays a clear report. Perfect for understanding your AI usage patterns.
 
 ## Features
 
 - 📊 **Local-only analysis** — no network calls, no credentials needed
 - 🔍 **Per-session breakdown** — view token usage by session and model
-- 💰 **AI credit estimation** — automatic calculation from bundled rate table
 - 📅 **Today's default** — shows current day's sessions by default
-- ⚠️ **Transparent about uncertainty** — clearly marks estimates and handles unknown models
+- 📈 **HTML dashboard** — sleek, dark-mode dashboard with token charts
+- 🔢 **Premium requests** — shows raw premium request count from session data
+- 📤 **JSON output** — machine-readable schema (`tscope/report/v2`) for scripting
 
 ## Installation
 
@@ -56,57 +57,42 @@ tscope --help       # Show usage and options
 tscope --version    # Show version
 ```
 
+### Date Filtering
+
+```bash
+tscope --date 2026-06-02         # Sessions for a specific date
+tscope --range 2026-06-01 2026-06-02  # Sessions in a date range
+tscope --all                     # All sessions (no date filter)
+```
+
+### Output Formats
+
+```bash
+tscope --json               # Machine-readable JSON to stdout
+tscope --html               # Generate HTML dashboard (default filename)
+tscope --html report.html   # Generate HTML dashboard at specified path
+tscope --html --open        # Generate and open in browser
+```
+
 ### Sample Output
 
 ```
 ═══════════════════════════════════════════════════════════════════════════════
 SESSION: 7d15eea1-4d69-49e9-bb21-8370594afd6a
 Date:    2026-06-02 22:58 (local)
-Credits: ~6.85 AI credits
 Path:    C:\Users\rober\.copilot\session-state\7d15eea1-...\events.jsonl
+Premium: 3 requests
 ───────────────────────────────────────────────────────────────────────────────
   claude-opus-4.7
     Input:        243,772    Cache Read:    155,776
     Cache Write:   87,988    Output:          2,272
-    → ~6.85 credits (estimated)
 ───────────────────────────────────────────────────────────────────────────────
   TOTALS
     Input:        243,772    Cache Read:    155,776
     Cache Write:   87,988    Output:          2,272
 ═══════════════════════════════════════════════════════════════════════════════
 
-═══════════════════════════════════════════════════════════════════════════════
-SESSION: 0d46718a-c723-4adb-99ef-738e84aeed91
-Date:    2026-04-10 21:32 (local)
-Credits: ~542 AI credits
-Path:    C:\Users\rober\.copilot\session-state\0d46718a-...\events.jsonl
-───────────────────────────────────────────────────────────────────────────────
-  claude-opus-4.6-1m
-    Input:      6,932,350    Cache Read:  6,572,169
-    Cache Write:        0    Output:         49,259
-    → ~417 credits (estimated)
-
-  claude-haiku-4.5
-    Input:      1,369,155    Cache Read:  1,248,935
-    Cache Write:        0    Output:         11,309
-    → ~73 credits (estimated)
-
-  claude-sonnet-4.5
-    Input:        479,610    Cache Read:    354,006
-    Cache Write:        0    Output:          3,865
-    → ~49 credits (estimated)
-
-  claude-sonnet-4.6
-    Input:        200,680    Cache Read:     48,128
-    Cache Write:        0    Output:            246
-    → ~3 credits (estimated)
-───────────────────────────────────────────────────────────────────────────────
-  TOTALS
-    Input:      8,981,795    Cache Read:  8,223,238
-    Cache Write:        0    Output:         64,679
-═══════════════════════════════════════════════════════════════════════════════
-
-SUMMARY: 2 sessions | ~549 AI credits total
+SUMMARY: 1 session
 ```
 
 ## How It Works
@@ -114,8 +100,7 @@ SUMMARY: 2 sessions | ~549 AI credits total
 1. **Discovers sessions** — tscope scans `~/.copilot/session-state/` for session folders
 2. **Reads events** — parses `events.jsonl` from each session (newline-delimited JSON)
 3. **Extracts tokens** — looks for the `session.shutdown` event containing per-model token metrics
-4. **Estimates credits** — maps tokens to AI credits using a bundled rate table
-5. **Renders report** — displays sessions, token breakdowns, and credit totals
+4. **Renders report** — displays sessions, per-model token breakdowns, and totals
 
 ### Session Data Format
 
@@ -129,42 +114,80 @@ Each session's `events.jsonl` contains event records, including a `session.shutd
 - **Output tokens** — tokens generated by the model
 - **Cache read tokens** — cached prompt tokens (avoid re-processing)
 - **Cache write tokens** — tokens written to cache
+- **Reasoning tokens** — internal reasoning tokens (not billed, shown for reference)
 
 In-progress sessions (still active) have no `session.shutdown` event and are marked `[IN PROGRESS]`.
 
-## AI Credit Estimation
+### Premium Requests
 
-### Credit Formula
+The `totalPremiumRequests` field comes directly from the `session.shutdown` event and is provided by Copilot — it is **not** computed or estimated by tscope. It is shown in text output when > 0, and always included in JSON output as `premiumRequests`.
 
-Credits are estimated as:
+## JSON Output
+
+Use `--json` for machine-readable output:
+
+```bash
+tscope --json | jq '.summary'
+tscope --all --json | jq '.sessions[].totals'
 ```
-credits = (
-  (inputTokens × inputRate) 
-  + (cacheReadTokens × cacheReadRate) 
-  + (cacheWriteTokens × cacheWriteRate) 
-  + (outputTokens × outputRate)
-) / 1,000,000 × 100
+
+### JSON Schema: `tscope/report/v2`
+
+```json
+{
+  "schema": "tscope/report/v2",
+  "generatedAt": "2026-06-02T23:53:14.000Z",
+  "filter": { "description": "today", "reportDate": "2026-06-02" },
+  "summary": {
+    "sessionCount": 1,
+    "completedCount": 1,
+    "inProgressCount": 0,
+    "totalTokens": 489808
+  },
+  "sessions": [
+    {
+      "sessionId": "7d15eea1-...",
+      "path": "~/.copilot/session-state/.../events.jsonl",
+      "startTime": "2026-06-02T22:58:00.000Z",
+      "localDateTime": "2026-06-02 22:58",
+      "inProgress": false,
+      "premiumRequests": 3,
+      "models": [
+        {
+          "modelName": "claude-opus-4.7",
+          "usage": {
+            "input": 243772,
+            "output": 2272,
+            "cacheRead": 155776,
+            "cacheWrite": 87988,
+            "reasoning": 0
+          }
+        }
+      ],
+      "totals": {
+        "input": 243772,
+        "output": 2272,
+        "cacheRead": 155776,
+        "cacheWrite": 87988,
+        "reasoning": 0
+      }
+    }
+  ]
+}
 ```
 
-Where rates (USD per million tokens) come from GitHub's published Copilot pricing.
+## HTML Dashboard
 
-### Important Caveats
+Use `--html` to generate a self-contained, dark-mode HTML report with:
+- **Total Tokens** summary stat card
+- **Tokens Over Time** chart (one bar per session, chronological)
+- Per-session cards with:
+  - **Token Usage by Model** — stacked bar chart (input/cacheRead/cacheWrite/output)
+  - **Tokens by Model** — horizontal bars (total tokens per model)
+  - **Cache Efficiency** — % cache hit rate per model
+  - Premium requests chip (when available)
 
-⚠️ **Credits are ESTIMATES**. The bundled rate table is static and may drift from GitHub's current pricing. Use these estimates for relative comparison and optimization, not as invoice predictions.
-
-- Rate table version: see `src/rates.ts` (`RATE_TABLE_VERSION`)
-- Unknown models show tokens but skip credit estimation with a warning to stderr
-- In-progress sessions show `[IN PROGRESS]` with no credit data
-- Prices reflect Claude, GPT, and Gemini models available to Copilot CLI as of June 2026
-
-### Supported Models
-
-- **Claude:** haiku-4.5, sonnet-4.5, sonnet-4.6, opus-4.5, opus-4.6, opus-4.6-1m, opus-4.7, opus-4.7-1m-internal, opus-4.7-high, opus-4.7-xhigh, opus-4.8, opus-4.8-1m
-- **GPT:** gpt-5.2, gpt-5.2-codex, gpt-5.3-codex, gpt-5.4, gpt-5.4-mini, gpt-5.5, gpt-5-mini
-- **Gemini:** gemini-3.1-pro, gemini-3.1-pro-preview, gemini-3.5-flash
-- **MAI:** mai-code-1-flash-internal
-
-Run `tscope --help` for current details.
+The HTML file is fully self-contained (no external dependencies, works offline).
 
 ## Project Structure
 
@@ -175,13 +198,13 @@ tscope/
 │   ├── discovery.ts          # Session discovery logic
 │   ├── parser.ts             # events.jsonl parsing
 │   ├── filter.ts             # Date filtering (default: today)
-│   ├── credits.ts            # Token-to-credit computation
-│   ├── rates.ts              # Bundled model-rate lookup table
 │   ├── types.ts              # TypeScript types
 │   └── render/
 │       ├── Renderer.ts       # Renderer interface
-│       └── TextRenderer.ts   # Text output implementation
-├── src/__tests__/            # Unit and integration tests (87 tests)
+│       ├── TextRenderer.ts   # Text output implementation
+│       ├── JsonRenderer.ts   # JSON output (schema v2)
+│       └── HtmlRenderer.ts   # HTML dashboard
+├── src/__tests__/            # Unit and integration tests
 ├── package.json              # Dependencies, scripts, metadata
 ├── tsconfig.json             # TypeScript config
 └── README.md                 # This file
@@ -203,7 +226,7 @@ Compiles TypeScript to `dist/` directory.
 npm test
 ```
 
-Runs 87 tests via Jest.
+Runs tests via Jest.
 
 ### Lint
 
@@ -223,27 +246,10 @@ Run directly via ts-node (no build step).
 
 ## Roadmap / Future Features
 
-Phase 2 planned features (not yet implemented):
-
-- **Date range filtering** — `--date YYYY-MM-DD`, `--range START END`, `--all`
-- **JSON output** — machine-readable reports via `--json`
-- **HTML dashboard** — generate an interactive HTML report with `--html FILE`
-- **/chronicle tips integration** — correlate token usage with code review insights
-- **Rate table updates** — automatic rate fetching (phase 2); manual updates for now
+- **/chronicle tips integration** — correlate token usage with code review insights (#15)
+- **Session comparison** — diff token usage across sessions
 
 ## Contributing
-
-### Updating the Rate Table
-
-When GitHub changes Copilot pricing:
-
-1. Update `RATE_TABLE_VERSION` in `src/rates.ts` (YYYY-MM-DD format)
-2. Add/modify entries in `RATE_TABLE` with new rates (USD per million tokens)
-3. Test locally: `npm test`
-4. Update documentation: this README if new models are added
-5. Commit and release a new patch version
-
-### Reporting Issues
 
 Found a bug or have a feature request? Open an issue on GitHub.
 

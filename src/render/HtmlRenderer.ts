@@ -5,15 +5,15 @@
  * dependencies, fully offline/email-able.
  *
  * Visuals (in order of priority):
- *   ① Per-model token stacked bar (input/cacheRead/cacheWrite/output)
- *   ② Credits-by-model horizontal bars
- *   ③ Cache-efficiency % pill per model
- *   ④ Credits-over-time mini bar chart across sessions
- *   ⑤ Session header cards (id, datetime, path, totals, premium requests)
+ *   1 Per-model token stacked bar (input/cacheRead/cacheWrite/output)
+ *   2 Tokens-by-model horizontal bars (total tokens per model)
+ *   3 Cache-efficiency % pill per model
+ *   4 Tokens-over-time mini bar chart across sessions
+ *   5 Session header cards (id, datetime, path, totals, premium requests)
  */
 
 import * as fs from "fs";
-import { Report, ParsedSession, SessionCredits, InProgressSession, ModelCredits } from "../types";
+import { Report, ParsedSession, InProgressSession, TokenCounts } from "../types";
 import { Renderer } from "./Renderer";
 
 // ---------------------------------------------------------------------------
@@ -35,12 +35,11 @@ function fmtNum(n: number): string {
   return n.toLocaleString("en-US");
 }
 
-/** Format credits to a readable precision */
-function fmtCredits(n: number): string {
-  if (n === 0) return "0";
-  if (n >= 10) return n.toFixed(0);
-  if (n >= 1) return n.toFixed(2).replace(/\.?0+$/, "");
-  return n.toFixed(4).replace(/\.?0+$/, "") || "0";
+/** Format large token counts compactly (e.g. 1.2M, 45K) */
+function fmtTokensCompact(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, "") + "K";
+  return String(n);
 }
 
 /** Convert UTC ISO string to local "YYYY-MM-DD HH:MM" */
@@ -71,7 +70,9 @@ const TOKEN_COLORS = {
   output: "#a371f7",
 };
 
-function buildTokenBar(models: ModelCredits[]): string {
+interface ModelEntry { modelName: string; tokens: TokenCounts; }
+
+function buildTokenBar(models: ModelEntry[]): string {
   if (models.length === 0) return "";
 
   const BAR_H = 22;
@@ -79,42 +80,39 @@ function buildTokenBar(models: ModelCredits[]): string {
   const LABEL_W = 200;
   const ROW_GAP = 8;
   const LEGEND_H = 28;
-  const SVG_W = LABEL_W + BAR_MAX_W + 80; // +80 for trailing token count text
+  const SVG_W = LABEL_W + BAR_MAX_W + 80;
   const SVG_H = LEGEND_H + models.length * (BAR_H + ROW_GAP) + ROW_GAP;
 
-  // Find max total to scale bars
   const totals = models.map(
-    (mc) =>
-      mc.tokens.inputTokens +
-      mc.tokens.cacheReadTokens +
-      mc.tokens.cacheWriteTokens +
-      mc.tokens.outputTokens
+    (m) =>
+      m.tokens.inputTokens +
+      m.tokens.cacheReadTokens +
+      m.tokens.cacheWriteTokens +
+      m.tokens.outputTokens
   );
   const maxTotal = Math.max(...totals, 1);
 
   let bars = "";
   for (let i = 0; i < models.length; i++) {
-    const mc = models[i];
+    const m = models[i];
     const y = LEGEND_H + i * (BAR_H + ROW_GAP);
     const totalTokens =
-      mc.tokens.inputTokens +
-      mc.tokens.cacheReadTokens +
-      mc.tokens.cacheWriteTokens +
-      mc.tokens.outputTokens;
+      m.tokens.inputTokens +
+      m.tokens.cacheReadTokens +
+      m.tokens.cacheWriteTokens +
+      m.tokens.outputTokens;
     const scale = BAR_MAX_W / maxTotal;
 
     const segments: Array<{ tokens: number; color: string }> = [
-      { tokens: mc.tokens.inputTokens, color: TOKEN_COLORS.input },
-      { tokens: mc.tokens.cacheReadTokens, color: TOKEN_COLORS.cacheRead },
-      { tokens: mc.tokens.cacheWriteTokens, color: TOKEN_COLORS.cacheWrite },
-      { tokens: mc.tokens.outputTokens, color: TOKEN_COLORS.output },
+      { tokens: m.tokens.inputTokens, color: TOKEN_COLORS.input },
+      { tokens: m.tokens.cacheReadTokens, color: TOKEN_COLORS.cacheRead },
+      { tokens: m.tokens.cacheWriteTokens, color: TOKEN_COLORS.cacheWrite },
+      { tokens: m.tokens.outputTokens, color: TOKEN_COLORS.output },
     ];
 
-    // Model name label (truncated at ~28 chars)
-    const name = mc.modelName.length > 28 ? mc.modelName.slice(0, 26) + "…" : mc.modelName;
+    const name = m.modelName.length > 28 ? m.modelName.slice(0, 26) + "\u2026" : m.modelName;
     bars += `<text x="${LABEL_W - 8}" y="${y + BAR_H / 2 + 5}" text-anchor="end" class="bar-label">${esc(name)}</text>`;
 
-    // Stacked bar segments
     let xOff = LABEL_W;
     for (const seg of segments) {
       if (seg.tokens <= 0) continue;
@@ -123,11 +121,9 @@ function buildTokenBar(models: ModelCredits[]): string {
       xOff += w;
     }
 
-    // Total token count after bar
     bars += `<text x="${xOff + 6}" y="${y + BAR_H / 2 + 5}" class="bar-count">${fmtNum(totalTokens)}</text>`;
   }
 
-  // Legend
   const legendItems = [
     { label: "Input", color: TOKEN_COLORS.input },
     { label: "Cache Read", color: TOKEN_COLORS.cacheRead },
@@ -155,34 +151,30 @@ function buildTokenBar(models: ModelCredits[]): string {
 }
 
 // ---------------------------------------------------------------------------
-// Credits-by-model horizontal bars (HTML/CSS)
+// Tokens-by-model horizontal bars (HTML/CSS)
 // ---------------------------------------------------------------------------
 
-function buildCreditsBars(models: ModelCredits[]): string {
-  const knownModels = models.filter((mc) => !mc.unknownRate && mc.estimatedCredits !== undefined);
-  if (knownModels.length === 0) {
-    const hasUnknown = models.some((mc) => mc.unknownRate);
-    return hasUnknown
-      ? `<p class="muted-note">Credits unavailable — model rate unknown</p>`
-      : `<p class="muted-note">No credits to display</p>`;
-  }
+function buildTokensByModelBars(models: ModelEntry[]): string {
+  if (models.length === 0) return `<p class="muted-note">No model data</p>`;
 
-  const maxCredits = Math.max(...knownModels.map((mc) => mc.estimatedCredits ?? 0), 0.001);
+  const totals = models.map((m) =>
+    m.tokens.inputTokens + m.tokens.cacheReadTokens +
+    m.tokens.cacheWriteTokens + m.tokens.outputTokens
+  );
+  const maxTotal = Math.max(...totals, 1);
 
-  let html = `<div class="credits-bars">`;
-  for (const mc of models) {
-    const credits = mc.estimatedCredits ?? 0;
-    const pct = clamp01(credits / maxCredits) * 100;
-    const label = mc.unknownRate
-      ? `<span class="unknown-badge">rate unknown</span>`
-      : `~${fmtCredits(credits)} cr`;
+  let html = `<div class="token-bars">`;
+  for (let i = 0; i < models.length; i++) {
+    const m = models[i];
+    const total = totals[i];
+    const pct = clamp01(total / maxTotal) * 100;
     html += `
-  <div class="credits-row">
-    <div class="credits-model-name">${esc(mc.modelName)}</div>
-    <div class="credits-bar-wrap">
-      <div class="credits-bar-fill" style="width:${pct.toFixed(1)}%"></div>
+  <div class="token-bar-row">
+    <div class="token-bar-model-name">${esc(m.modelName)}</div>
+    <div class="token-bar-wrap">
+      <div class="token-bar-fill" style="width:${pct.toFixed(1)}%"></div>
     </div>
-    <div class="credits-value">${label}</div>
+    <div class="token-bar-value">${fmtTokensCompact(total)}</div>
   </div>`;
   }
   html += `</div>`;
@@ -199,19 +191,19 @@ function cacheEfficiencyColor(pct: number): string {
   return "pill-red";
 }
 
-function buildCachePills(models: ModelCredits[]): string {
+function buildCachePills(models: ModelEntry[]): string {
   if (models.length === 0) return "";
   let html = `<div class="cache-pills">`;
-  for (const mc of models) {
-    const input = mc.tokens.inputTokens;
-    const cacheRead = mc.tokens.cacheReadTokens;
+  for (const m of models) {
+    const input = m.tokens.inputTokens;
+    const cacheRead = m.tokens.cacheReadTokens;
     let pct = input > 0 ? (cacheRead / input) * 100 : 0;
     pct = Math.min(pct, 100);
     const cls = cacheEfficiencyColor(pct);
     const label = input === 0 ? "n/a" : `${pct.toFixed(0)}%`;
     html += `
   <div class="cache-pill-row">
-    <span class="cache-model-name">${esc(mc.modelName)}</span>
+    <span class="cache-model-name">${esc(m.modelName)}</span>
     <span class="pill ${cls}">${label} cache hit</span>
   </div>`;
   }
@@ -220,16 +212,16 @@ function buildCachePills(models: ModelCredits[]): string {
 }
 
 // ---------------------------------------------------------------------------
-// Credits-over-time chart (SVG vertical bars)
+// Tokens-over-time chart (SVG vertical bars)
 // ---------------------------------------------------------------------------
 
-interface SessionSummary {
+interface SessionTokenSummary {
   label: string;
-  credits: number;
+  totalTokens: number;
   inProgress: boolean;
 }
 
-function buildCreditsTimelineChart(summaries: SessionSummary[]): string {
+function buildTokensTimelineChart(summaries: SessionTokenSummary[]): string {
   if (summaries.length === 0) return `<p class="muted-note">No sessions to chart</p>`;
 
   const BAR_W = 40;
@@ -239,24 +231,22 @@ function buildCreditsTimelineChart(summaries: SessionSummary[]): string {
   const SVG_H = CHART_H + LABEL_H + 4;
   const SVG_W = summaries.length * (BAR_W + BAR_GAP) + BAR_GAP;
 
-  const maxCredits = Math.max(...summaries.map((s) => s.credits), 0.001);
+  const maxTokens = Math.max(...summaries.map((s) => s.totalTokens), 1);
 
   let bars = "";
   for (let i = 0; i < summaries.length; i++) {
     const s = summaries[i];
     const x = BAR_GAP + i * (BAR_W + BAR_GAP);
-    const barH = Math.max(2, clamp01(s.credits / maxCredits) * CHART_H);
+    const barH = Math.max(2, clamp01(s.totalTokens / maxTokens) * CHART_H);
     const y = CHART_H - barH;
     const color = s.inProgress ? "#484f58" : "#58a6ff";
-    const labelText =
-      s.label.length > 5 ? s.label.slice(-5) : s.label; // last 5 chars of session id
+    const labelText = s.label.length > 5 ? s.label.slice(-5) : s.label;
     bars += `<rect x="${x}" y="${y.toFixed(1)}" width="${BAR_W}" height="${barH.toFixed(1)}" fill="${color}" rx="3">
-    <title>${esc(s.label)}: ~${fmtCredits(s.credits)} cr</title>
+    <title>${esc(s.label)}: ${fmtNum(s.totalTokens)} tokens</title>
   </rect>`;
     bars += `<text x="${x + BAR_W / 2}" y="${SVG_H - 2}" text-anchor="middle" class="tl-label">${esc(labelText)}</text>`;
-    // Credit value above bar
-    if (!s.inProgress && s.credits > 0) {
-      bars += `<text x="${x + BAR_W / 2}" y="${Math.max(10, y - 3).toFixed(1)}" text-anchor="middle" class="tl-value">~${fmtCredits(s.credits)}</text>`;
+    if (!s.inProgress && s.totalTokens > 0) {
+      bars += `<text x="${x + BAR_W / 2}" y="${Math.max(10, y - 3).toFixed(1)}" text-anchor="middle" class="tl-value">${fmtTokensCompact(s.totalTokens)}</text>`;
     }
   }
 
@@ -274,22 +264,20 @@ function buildCreditsTimelineChart(summaries: SessionSummary[]): string {
 // Session card
 // ---------------------------------------------------------------------------
 
-function buildSessionCard(session: ParsedSession, credits: SessionCredits): string {
+function buildSessionCard(session: ParsedSession): string {
   const dateStr = toLocalDateTime(session.startTime);
-  const creditsLabel = credits.hasUnknownRates && credits.totalCredits === 0
-    ? "n/a (unknown rate)"
-    : credits.hasUnknownRates
-    ? `~${fmtCredits(credits.totalCredits)} cr (partial)`
-    : `~${fmtCredits(credits.totalCredits)} cr`;
+  const modelEntries: ModelEntry[] = Object.entries(session.models).map(
+    ([modelName, tokens]) => ({ modelName, tokens })
+  );
 
-  // Token totals
   let totalInput = 0, totalOutput = 0, totalCacheRead = 0, totalCacheWrite = 0;
-  for (const mc of credits.models) {
-    totalInput += mc.tokens.inputTokens;
-    totalOutput += mc.tokens.outputTokens;
-    totalCacheRead += mc.tokens.cacheReadTokens;
-    totalCacheWrite += mc.tokens.cacheWriteTokens;
+  for (const m of modelEntries) {
+    totalInput += m.tokens.inputTokens;
+    totalOutput += m.tokens.outputTokens;
+    totalCacheRead += m.tokens.cacheReadTokens;
+    totalCacheWrite += m.tokens.cacheWriteTokens;
   }
+  const totalTokens = totalInput + totalOutput + totalCacheRead + totalCacheWrite;
 
   return `
 <article class="session-card">
@@ -299,33 +287,32 @@ function buildSessionCard(session: ParsedSession, credits: SessionCredits): stri
       <span class="session-datetime">${dateStr}</span>
     </div>
     <div class="session-summary-chips">
-      <span class="chip chip-credits">${esc(creditsLabel)}</span>
-      <span class="chip chip-tokens">${fmtNum(totalInput + totalOutput + totalCacheRead + totalCacheWrite)} tokens</span>
+      <span class="chip chip-tokens">${fmtNum(totalTokens)} tokens</span>
       ${session.totalPremiumRequests > 0 ? `<span class="chip chip-premium">${session.totalPremiumRequests} premium req</span>` : ""}
     </div>
   </div>
   <div class="session-path">${esc(session.eventsPath)}</div>
 
-  ${credits.models.length > 0 ? `
+  ${modelEntries.length > 0 ? `
   <div class="session-charts">
     <div class="chart-section">
       <h3 class="chart-title">Token Usage by Model</h3>
-      ${buildTokenBar(credits.models)}
+      ${buildTokenBar(modelEntries)}
     </div>
     <div class="chart-columns">
       <div class="chart-section">
-        <h3 class="chart-title">Credits by Model</h3>
-        ${buildCreditsBars(credits.models)}
+        <h3 class="chart-title">Tokens by Model</h3>
+        ${buildTokensByModelBars(modelEntries)}
       </div>
       <div class="chart-section">
         <h3 class="chart-title">Cache Efficiency</h3>
-        ${buildCachePills(credits.models)}
+        ${buildCachePills(modelEntries)}
       </div>
     </div>
   </div>
   ` : `<p class="muted-note">No model data</p>`}
 
-  ${credits.models.length > 0 ? `
+  ${modelEntries.length > 0 ? `
   <div class="token-totals-row">
     <span class="token-total-item"><span class="token-dot" style="background:${TOKEN_COLORS.input}"></span>Input: ${fmtNum(totalInput)}</span>
     <span class="token-total-item"><span class="token-dot" style="background:${TOKEN_COLORS.cacheRead}"></span>Cache Read: ${fmtNum(totalCacheRead)}</span>
@@ -350,7 +337,7 @@ function buildInProgressCard(session: InProgressSession): string {
     </div>
   </div>
   <div class="session-path">${esc(session.eventsPath)}</div>
-  <p class="muted-note in-progress-note">⏳ Session is ongoing — no token data yet</p>
+  <p class="muted-note in-progress-note">&#x23F3; Session is ongoing &#x2014; no token data yet</p>
 </article>`;
 }
 
@@ -411,7 +398,6 @@ a:hover { text-decoration: underline; }
   padding: 0 20px;
 }
 
-/* ── Header ─────────────────────────────────────────────────────────────── */
 .site-header {
   border-bottom: 1px solid var(--border);
   padding: 20px 0;
@@ -476,7 +462,6 @@ a:hover { text-decoration: underline; }
 }
 .theme-toggle:hover { background: var(--border); color: var(--text-primary); }
 
-/* ── Summary strip ────────────────────────────────────────────────────────── */
 .summary-strip {
   display: flex;
   gap: 16px;
@@ -519,7 +504,6 @@ a:hover { text-decoration: underline; }
   margin-top: 4px;
 }
 
-/* ── Credits timeline ───────────────────────────────────────────────────── */
 .timeline-section {
   background: var(--bg-surface);
   border: 1px solid var(--border);
@@ -537,7 +521,6 @@ a:hover { text-decoration: underline; }
   margin-bottom: 16px;
 }
 
-/* ── Session cards ──────────────────────────────────────────────────────── */
 .sessions-list { display: flex; flex-direction: column; gap: 20px; }
 
 .session-card {
@@ -579,7 +562,6 @@ a:hover { text-decoration: underline; }
 
 .session-summary-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 
-/* Chips */
 .chip {
   font-size: 11px;
   font-weight: 600;
@@ -587,7 +569,6 @@ a:hover { text-decoration: underline; }
   padding: 2px 9px;
   white-space: nowrap;
 }
-.chip-credits   { background: rgba(88,166,255,.12); color: var(--accent-blue); border: 1px solid rgba(88,166,255,.25); }
 .chip-tokens    { background: rgba(163,113,247,.12); color: var(--accent-purple); border: 1px solid rgba(163,113,247,.25); }
 .chip-premium   { background: rgba(63,185,80,.12);  color: var(--accent-green); border: 1px solid rgba(63,185,80,.25); }
 .chip-in-progress { background: rgba(72,79,88,.3); color: var(--text-secondary); border: 1px solid var(--border); }
@@ -600,7 +581,6 @@ a:hover { text-decoration: underline; }
   margin-bottom: 16px;
 }
 
-/* ── Charts inside cards ────────────────────────────────────────────────── */
 .session-charts { display: flex; flex-direction: column; gap: 20px; }
 
 .chart-columns {
@@ -627,17 +607,16 @@ a:hover { text-decoration: underline; }
 .chart-svg { display: block; max-width: 100%; overflow: visible; }
 .timeline-svg { overflow: visible; }
 
-/* Credits bars */
-.credits-bars { display: flex; flex-direction: column; gap: 7px; }
+.token-bars { display: flex; flex-direction: column; gap: 7px; }
 
-.credits-row {
+.token-bar-row {
   display: grid;
-  grid-template-columns: 160px 1fr 80px;
+  grid-template-columns: 160px 1fr 60px;
   align-items: center;
   gap: 8px;
 }
 
-.credits-model-name {
+.token-bar-model-name {
   font-size: 11px;
   font-family: 'SF Mono','Consolas',monospace;
   color: var(--text-secondary);
@@ -646,14 +625,14 @@ a:hover { text-decoration: underline; }
   white-space: nowrap;
 }
 
-.credits-bar-wrap {
+.token-bar-wrap {
   background: var(--bg-elevated);
   border-radius: 3px;
   height: 12px;
   overflow: hidden;
 }
 
-.credits-bar-fill {
+.token-bar-fill {
   height: 100%;
   background: linear-gradient(90deg, #58a6ff, #a371f7);
   border-radius: 3px;
@@ -661,20 +640,13 @@ a:hover { text-decoration: underline; }
   transition: width 0.3s ease;
 }
 
-.credits-value {
+.token-bar-value {
   font-size: 11px;
   color: var(--text-secondary);
   text-align: right;
   white-space: nowrap;
 }
 
-.unknown-badge {
-  font-size: 10px;
-  color: var(--text-muted);
-  font-style: italic;
-}
-
-/* Cache pills */
 .cache-pills { display: flex; flex-direction: column; gap: 7px; }
 
 .cache-pill-row {
@@ -706,7 +678,6 @@ a:hover { text-decoration: underline; }
 .pill-amber { background: rgba(227,179,65,.15); color: var(--accent-amber); border: 1px solid rgba(227,179,65,.3); }
 .pill-red   { background: rgba(248,81,73,.12);  color: var(--accent-red);   border: 1px solid rgba(248,81,73,.25); }
 
-/* Token totals row */
 .token-totals-row {
   display: flex;
   gap: 16px;
@@ -732,7 +703,6 @@ a:hover { text-decoration: underline; }
   flex-shrink: 0;
 }
 
-/* Muted notes */
 .muted-note {
   font-size: 12px;
   color: var(--text-muted);
@@ -743,11 +713,9 @@ a:hover { text-decoration: underline; }
   margin-top: 12px;
 }
 
-/* ── Insights seam (reserved for #15 /chronicle tips) ───────────────────── */
-/* DEFERRED: this section is intentionally empty — Tank will fill it in #15  */
+/* Insights seam reserved for #15 */
 /* .insights-section { } */
 
-/* ── Empty-state ─────────────────────────────────────────────────────────── */
 .empty-state {
   text-align: center;
   padding: 64px 24px;
@@ -760,7 +728,6 @@ a:hover { text-decoration: underline; }
   margin-bottom: 8px;
 }
 
-/* ── Footer ──────────────────────────────────────────────────────────────── */
 .site-footer {
   border-top: 1px solid var(--border);
   margin-top: 48px;
@@ -782,17 +749,17 @@ const JS = `
   var stored = localStorage.getItem('tscope-theme');
   if (stored === 'light') {
     document.documentElement.setAttribute('data-theme', 'light');
-    btn.textContent = '☀ Light';
+    btn.textContent = '\u2600 Light';
   }
   btn.addEventListener('click', function() {
     var current = document.documentElement.getAttribute('data-theme');
     if (current === 'light') {
       document.documentElement.removeAttribute('data-theme');
-      btn.textContent = '☾ Dark';
+      btn.textContent = '\u263E Dark';
       localStorage.setItem('tscope-theme', 'dark');
     } else {
       document.documentElement.setAttribute('data-theme', 'light');
-      btn.textContent = '☀ Light';
+      btn.textContent = '\u2600 Light';
       localStorage.setItem('tscope-theme', 'light');
     }
   });
@@ -804,23 +771,26 @@ const JS = `
 // ---------------------------------------------------------------------------
 
 function buildHtml(report: Report, generatedAt: string): string {
-  const { sessions, inProgressSessions, totalCredits, hasUnknownRates, filterDescription, reportDate } = report;
+  const { sessions, inProgressSessions, filterDescription, reportDate } = report;
 
   const completedCount = sessions.length;
   const inProgressCount = inProgressSessions.length;
   const totalSessions = completedCount + inProgressCount;
 
-  // Summary stats
-  const creditsDisplay = hasUnknownRates
-    ? `~${fmtCredits(totalCredits)}<small style="font-size:14px;font-weight:400;color:var(--text-muted)"> + unknowns</small>`
-    : `~${fmtCredits(totalCredits)}`;
+  let grandTotalTokens = 0;
+  for (const session of sessions) {
+    for (const tokens of Object.values(session.models)) {
+      grandTotalTokens += tokens.inputTokens + tokens.outputTokens +
+        tokens.cacheReadTokens + tokens.cacheWriteTokens;
+    }
+  }
 
   const statCards = `
 <div class="summary-strip container">
   <div class="stat-card">
-    <div class="stat-label">Est. Credits</div>
-    <div class="stat-value accent-blue">${creditsDisplay}</div>
-    <div class="stat-sub">AI credits (estimated)</div>
+    <div class="stat-label">Total Tokens</div>
+    <div class="stat-value accent-blue">${fmtTokensCompact(grandTotalTokens)}</div>
+    <div class="stat-sub">${fmtNum(grandTotalTokens)} tokens</div>
   </div>
   <div class="stat-card">
     <div class="stat-label">Sessions</div>
@@ -832,24 +802,20 @@ function buildHtml(report: Report, generatedAt: string): string {
     <div class="stat-value" style="font-size:16px;">${esc(filterDescription)}</div>
     <div class="stat-sub">Report date: ${esc(reportDate)}</div>
   </div>
-  ${hasUnknownRates ? `
-  <div class="stat-card" style="border-color: rgba(248,81,73,.25);">
-    <div class="stat-label" style="color:var(--accent-red)">Unknown Rates</div>
-    <div class="stat-value accent-amber" style="font-size:18px;">⚠</div>
-    <div class="stat-sub">Some models not in rate table</div>
-  </div>` : ""}
 </div>`;
 
-  // Credits-over-time chart (render for all sessions incl. in-progress)
-  const allSummaries: SessionSummary[] = [
-    ...sessions.map(({ session, credits }) => ({
-      label: session.sessionId.slice(-8),
-      credits: credits.totalCredits,
-      inProgress: false,
-    })),
+  const allSummaries: SessionTokenSummary[] = [
+    ...sessions.map((session) => {
+      let total = 0;
+      for (const tokens of Object.values(session.models)) {
+        total += tokens.inputTokens + tokens.outputTokens +
+          tokens.cacheReadTokens + tokens.cacheWriteTokens;
+      }
+      return { label: session.sessionId.slice(-8), totalTokens: total, inProgress: false };
+    }),
     ...inProgressSessions.map((s) => ({
       label: s.sessionId.slice(-8),
-      credits: 0,
+      totalTokens: 0,
       inProgress: true,
     })),
   ];
@@ -858,13 +824,12 @@ function buildHtml(report: Report, generatedAt: string): string {
     totalSessions > 0
       ? `
 <section class="timeline-section container">
-  <h2 class="section-title">Credits Over Time</h2>
-  ${buildCreditsTimelineChart(allSummaries)}
-  <p style="font-size:11px;color:var(--text-muted);margin-top:8px;">Each bar = one session · hover for details</p>
+  <h2 class="section-title">Tokens Over Time</h2>
+  ${buildTokensTimelineChart(allSummaries)}
+  <p style="font-size:11px;color:var(--text-muted);margin-top:8px;">Each bar = one session &middot; hover for details</p>
 </section>`
       : "";
 
-  // Session cards
   let sessionCardsHtml = "";
   if (totalSessions === 0) {
     sessionCardsHtml = `
@@ -874,8 +839,8 @@ function buildHtml(report: Report, generatedAt: string): string {
 </div>`;
   } else {
     let cards = "";
-    for (const { session, credits } of sessions) {
-      cards += buildSessionCard(session, credits);
+    for (const session of sessions) {
+      cards += buildSessionCard(session);
     }
     for (const s of inProgressSessions) {
       cards += buildInProgressCard(s);
@@ -888,7 +853,7 @@ function buildHtml(report: Report, generatedAt: string): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>tscope — ${esc(filterDescription)} — Token Report</title>
+  <title>tscope \u2014 ${esc(filterDescription)} \u2014 Token Report</title>
   <style>${CSS}</style>
 </head>
 <body>
@@ -900,9 +865,9 @@ function buildHtml(report: Report, generatedAt: string): string {
       tscope
     </div>
     <div class="header-meta">
-      <span class="filter-badge">🗓 ${esc(filterDescription)}</span>
+      <span class="filter-badge">&#x1F5D3; ${esc(filterDescription)}</span>
       <span style="font-size:12px;color:var(--text-muted)">Generated ${esc(generatedAt)}</span>
-      <button class="theme-toggle" id="theme-toggle" aria-label="Toggle colour theme">☾ Dark</button>
+      <button class="theme-toggle" id="theme-toggle" aria-label="Toggle colour theme">&#x263E; Dark</button>
     </div>
   </div>
 </header>
@@ -912,7 +877,7 @@ ${timelineSection}
 ${sessionCardsHtml}
 
 <footer class="site-footer">
-  <p>tscope · GitHub Copilot Token Usage Report · Credits are estimated using a bundled rate table</p>
+  <p>tscope &middot; GitHub Copilot Token Usage Report</p>
 </footer>
 
 <script>${JS}</script>
@@ -928,7 +893,6 @@ ${sessionCardsHtml}
  * HtmlRenderer — renders the report as a self-contained HTML dashboard.
  *
  * @param outputPath  Absolute or relative path to write the .html file.
- *                    The caller is responsible for setting a sensible default.
  */
 export class HtmlRenderer implements Renderer {
   constructor(private readonly outputPath: string) {}

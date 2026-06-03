@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * tscope — GitHub Copilot session token usage viewer
- * Discovers Copilot CLI sessions, parses token metrics, computes estimated AI
- * credits, and renders a formatted report (text, JSON, or HTML).
+ * Discovers Copilot CLI sessions, parses token metrics, and renders a
+ * formatted report (text, JSON, or HTML).
  */
 
 import * as fs from "fs";
@@ -16,11 +16,10 @@ import {
   isValidDateString,
   todayLocalDateString,
 } from "./filter";
-import { calcSessionCredits } from "./credits";
 import { Renderer, createRenderer } from "./render";
 import { ParsedSession, InProgressSession, Report, SessionRef } from "./types";
 
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 
 const HELP_TEXT = `
 tscope — GitHub Copilot session token usage viewer
@@ -43,12 +42,10 @@ OPTIONS
 DESCRIPTION
   With no arguments, tscope discovers all Copilot CLI sessions from today
   (current local date), parses token usage from each session's events.jsonl,
-  and prints a formatted report with per-model token counts and estimated
-  AI credits.
+  and prints a formatted report with per-model token counts and session totals.
 
   Use --json to get machine-readable output suitable for piping to jq or
-  other tools. Warnings (e.g., unknown model rates) go to stderr so stdout
-  remains valid JSON.
+  other tools.
 
   Use --html to generate a polished, dark-mode HTML dashboard with charts.
 
@@ -56,11 +53,8 @@ DATA SOURCE
   ~/.copilot/session-state/<session-id>/events.jsonl
 
 NOTES
-  • Credits are estimated using a bundled rate table and displayed as "~N credits".
   • In-progress sessions (no shutdown event) are shown as [IN PROGRESS].
-  • Unknown models show token counts but no credit estimate; a warning is printed
-    to stderr.
-  • Rate table version: see --version output.
+  • Premium requests (raw count from session data) are shown when available.
 `.trim();
 
 type FilterMode = "today" | "date" | "range" | "all";
@@ -221,13 +215,8 @@ async function main(): Promise<void> {
   const allRefs = discoverSessions(sessionStateDir);
   const filteredRefs = await applyFilter(allRefs, args);
 
-  const completedSessions: Array<{
-    session: ParsedSession;
-    credits: ReturnType<typeof calcSessionCredits>;
-  }> = [];
+  const completedSessions: ParsedSession[] = [];
   const inProgressSessions: InProgressSession[] = [];
-  let totalCredits = 0;
-  let hasUnknownRates = false;
 
   for (const ref of filteredRefs) {
     let session;
@@ -243,11 +232,7 @@ async function main(): Promise<void> {
     if (session.inProgress) {
       inProgressSessions.push(session as InProgressSession);
     } else {
-      const parsed = session as ParsedSession;
-      const credits = calcSessionCredits(parsed);
-      completedSessions.push({ session: parsed, credits });
-      totalCredits += credits.totalCredits;
-      if (credits.hasUnknownRates) hasUnknownRates = true;
+      completedSessions.push(session as ParsedSession);
     }
   }
 
@@ -256,8 +241,6 @@ async function main(): Promise<void> {
   const report: Report = {
     sessions: completedSessions,
     inProgressSessions,
-    totalCredits,
-    hasUnknownRates,
     reportDate: today,
     filterDescription,
   };
@@ -298,4 +281,3 @@ main().catch((err) => {
   process.stderr.write(`Fatal error: ${String(err)}\n`);
   process.exit(1);
 });
-
