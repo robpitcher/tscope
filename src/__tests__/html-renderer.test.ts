@@ -45,6 +45,7 @@ const SAMPLE_SESSION: ParsedSession = {
     },
   },
   totalPremiumRequests: 5,
+  chronicleTips: [],
   inProgress: false,
 };
 
@@ -52,6 +53,7 @@ const SAMPLE_IN_PROGRESS: InProgressSession = {
   sessionId: "xyz-99999999-8888-7777-6666-555555555555",
   eventsPath: "/home/user/.copilot/session-state/xyz/events.jsonl",
   startTime: "2026-06-02T21:00:00.000Z",
+  chronicleTips: [],
   inProgress: true,
 };
 
@@ -381,6 +383,133 @@ describe("HtmlRenderer", () => {
     });
   });
 
+  describe("chronicle tips rendering", () => {
+    const tipSession = (
+      markdown: string,
+      variant: "tips" | "cost-tips" = "cost-tips",
+      timestamp = "2026-06-02T23:00:00.000Z",
+      sessionId = SAMPLE_SESSION.sessionId
+    ): ParsedSession => ({
+      ...SAMPLE_SESSION,
+      sessionId,
+      chronicleTips: [{ variant, timestamp, markdown }],
+    });
+
+    test("renders a standalone, collapsible Chronicle Insights box (closed by default)", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [tipSession("## Where your tokens go\n\nUse **/compact** more.")] },
+        "html-test-chronicle.html"
+      );
+      expect(html).toContain("Chronicle Insights");
+      expect(html).toContain('<section class="timeline-section chronicle-box">');
+      // Collapsible via a <details>/<summary>, closed by default (no `open`).
+      expect(html).toContain('<details class="chronicle-details">');
+      expect(html).not.toContain('<details class="chronicle-details" open>');
+      expect(html).toContain('class="chronicle-summary"');
+    });
+
+    test("summary carries a detection note referencing the variant", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [tipSession("## Tips\n\nbody", "cost-tips")] },
+        "html-test-chronicle-note.html"
+      );
+      expect(html).toContain("was detected within the session scope of this report");
+      expect(html).toContain("<code>/chronicle cost-tips</code>");
+    });
+
+    test("places the chronicle box after the timeline and before the session list", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [tipSession("## Tips\n\nbody")] },
+        "html-test-chronicle-order.html"
+      );
+      const timelineIdx = html.indexOf("Tokens Over Time");
+      const chronicleIdx = html.indexOf('<section class="timeline-section chronicle-box">');
+      const sessionsIdx = html.indexOf('id="sessions-host"');
+      expect(timelineIdx).toBeGreaterThan(-1);
+      expect(chronicleIdx).toBeGreaterThan(timelineIdx);
+      expect(sessionsIdx).toBeGreaterThan(chronicleIdx);
+    });
+
+    test("is not nested inside a session card", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [tipSession("## Tips\n\nbody")] },
+        "html-test-chronicle-outside.html"
+      );
+      // The chronicle box must appear before the sessions list container, i.e.
+      // it is not rendered within any session card.
+      const chronicleIdx = html.indexOf("chronicle-box");
+      const sessionsIdx = html.indexOf('id="sessions-host"');
+      expect(chronicleIdx).toBeLessThan(sessionsIdx);
+    });
+
+    test("shows only the most recent tip when multiple sessions have tips", () => {
+      const older = tipSession("OLD INSIGHT", "tips", "2026-06-01T10:00:00.000Z", "old-session-1234");
+      const newer = tipSession("NEW INSIGHT", "cost-tips", "2026-06-02T22:00:00.000Z", "new-session-5678");
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [older, newer] },
+        "html-test-chronicle-recent.html"
+      );
+      expect(html).toContain("NEW INSIGHT");
+      expect(html).not.toContain("OLD INSIGHT");
+      // Exactly one chronicle box is rendered.
+      expect(html.split('class="timeline-section chronicle-box"').length - 1).toBe(1);
+      // Provenance points at the most recent session.
+      expect(html).toContain("new-session");
+    });
+
+    test("converts markdown headings, bold and lists to HTML", () => {
+      const md = "## Tips\n\n- First **bold** item\n- Second `code` item";
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [tipSession(md)] },
+        "html-test-chronicle-md.html"
+      );
+      expect(html).toContain("<h4 class=\"ct-h\">Tips</h4>");
+      expect(html).toContain("<ul>");
+      expect(html).toContain("<strong>bold</strong>");
+      expect(html).toContain("<code>code</code>");
+    });
+
+    test("does not render a box when there are no tips", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-chronicle-none.html"
+      );
+      expect(html).not.toContain('class="timeline-section chronicle-box"');
+    });
+
+    test("HTML-escapes dangerous markdown content", () => {
+      const md = "## <script>alert('xss')</script>\n\n- <img src=x onerror=alert(1)>";
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [tipSession(md)] },
+        "html-test-chronicle-xss.html"
+      );
+      expect(html).not.toContain("<script>alert(");
+      expect(html).not.toContain("<img src=x onerror=alert(1)>");
+      expect(html).toContain("&lt;script&gt;");
+      expect(html).toContain("&lt;img");
+    });
+
+    test("does not apply bold/italic inside inline code spans", () => {
+      const md = "Run `npm run **build**` first.";
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [tipSession(md)] },
+        "html-test-chronicle-code.html"
+      );
+      expect(html).toContain("<code>npm run **build**</code>");
+      expect(html).not.toContain("<code>npm run <strong>build</strong></code>");
+    });
+
+    test("renders markdown links as plain text (no external anchors)", () => {
+      const md = "See [the docs](https://example.com/evil) for details.";
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [tipSession(md)] },
+        "html-test-chronicle-link.html"
+      );
+      expect(html).toContain("the docs (https://example.com/evil)");
+      expect(html).not.toContain('href="https://example.com/evil"');
+    });
+  });
+
   describe("dynamic date-range filtering", () => {
     function extractPayload(html: string): any {
       const m = html.match(
@@ -408,9 +537,10 @@ describe("HtmlRenderer", () => {
       const done = data.sessions.find((s: any) => !s.inProgress);
       expect(done.id).toBe(SAMPLE_SESSION.sessionId);
       expect(done.start).toBe(SAMPLE_SESSION.startTime);
-      // 1000+500+700+100 + 300+100 = 2700
-      expect(done.totalTokens).toBe(2700);
-      expect(done.input).toBe(1300);
+      // total = input + output (cache is part of input): (1000+500)+(300+100) = 1900
+      expect(done.totalTokens).toBe(1900);
+      // input column is fresh (uncached) input: (1000-700-100)+(300-0-0) = 200+300 = 500
+      expect(done.input).toBe(500);
       expect(done.cacheRead).toBe(700);
 
       const live = data.sessions.find((s: any) => s.inProgress);

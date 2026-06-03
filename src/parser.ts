@@ -1,6 +1,25 @@
 import * as fs from "fs";
 import * as readline from "readline";
-import { ParsedSession, InProgressSession, Session, TokenCounts } from "./types";
+import { ParsedSession, InProgressSession, Session, TokenCounts, ChronicleTip } from "./types";
+import { addTokenCounts } from "./tokens";
+
+interface RawUserMessage {
+  type: "user.message";
+  data?: {
+    content?: string;
+    interactionId?: string;
+  };
+  timestamp?: string;
+}
+
+interface RawAssistantMessage {
+  type: "assistant.message";
+  data?: {
+    content?: string;
+    interactionId?: string;
+  };
+  timestamp?: string;
+}
 
 interface RawSessionStart {
   type: "session.start";
@@ -33,7 +52,43 @@ interface RawSessionShutdown {
   timestamp?: string;
 }
 
-type RawEvent = RawSessionStart | RawSessionShutdown | { type: string };
+type RawEvent = RawSessionStart | RawSessionShutdown | RawUserMessage | RawAssistantMessage | { type: string };
+
+/** A detected /chronicle command invocation, pending its assistant response */
+interface ChronicleInvocation {
+  variant: "tips" | "cost-tips";
+  timestamp: string;
+  interactionId: string;
+}
+
+/**
+ * Match a /chronicle tips or /chronicle cost-tips command. Returns the variant
+ * or null. "cost-tips" is tried first so it isn't shadowed by "tips".
+ */
+function matchChronicleCommand(content: string): "tips" | "cost-tips" | null {
+  const m = content.trim().match(/^\/chronicle\s+(cost-tips|tips)\s*$/);
+  return m ? (m[1] as "tips" | "cost-tips") : null;
+}
+
+/**
+ * Build the chronological list of chronicle tips by pairing each detected
+ * invocation with the last non-empty assistant message that shares its
+ * interactionId (the final rendered tips, after any tool/intermediate turns).
+ */
+function buildChronicleTips(
+  invocations: ChronicleInvocation[],
+  lastAssistantByInteraction: Map<string, string>
+): ChronicleTip[] {
+  const tips: ChronicleTip[] = [];
+  for (const inv of invocations) {
+    const markdown = lastAssistantByInteraction.get(inv.interactionId);
+    if (typeof markdown === "string" && markdown.trim() !== "") {
+      tips.push({ variant: inv.variant, timestamp: inv.timestamp, markdown });
+    }
+  }
+  tips.sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0));
+  return tips;
+}
 
 /** Parse a single line of JSONL, returning null on failure */
 function parseLine(line: string): RawEvent | null {
@@ -43,21 +98,6 @@ function parseLine(line: string): RawEvent | null {
     const obj = JSON.parse(trimmed) as unknown;
     if (typeof obj === "object" && obj !== null && "type" in obj) {
       return obj as RawEvent;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/** Safely read the last non-empty line of a file */
-function readLastLine(filePath: string): string | null {
-  try {
-    const content = fs.readFileSync(filePath, "utf8");
-    const lines = content.split("\n");
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const trimmed = lines[i].trim();
-      if (trimmed) return trimmed;
     }
     return null;
   } catch {
@@ -80,10 +120,17 @@ function extractTokenCounts(raw: RawModelUsage | undefined): TokenCounts {
  * Parse an events.jsonl file asynchronously.
  *
  * Strategy:
- * 1. Fast path: check last line — if it's session.shutdown, use it.
- * 2. Fallback: scan entire file for session.shutdown.
- * 3. If no shutdown found: return InProgressSession.
- * 4. Always scan for session.start to get startTime.
+ * 1. Scan the entire file collecting EVERY session.shutdown event.
+ *    A resumed session emits one shutdown per run, and each run's
+ *    modelMetrics is reset (per-run, not cumulative), so the true session
+ *    totals are the SUM of all shutdowns' per-model usage.
+ * 2. If no shutdown found: return InProgressSession.
+ * 3. Always scan for session.start to get startTime.
+ *
+ * Note: if a session was resumed and the latest run has not shut down yet,
+ * the file still contains earlier shutdown(s). We report the summed
+ * completed-run totals as a parsed session; tokens from the still-running
+ * final run are not yet recorded in any shutdown and are therefore omitted.
  *
  * Malformed lines are silently skipped.
  */
@@ -91,27 +138,23 @@ export async function parseEventsFile(
   sessionId: string,
   eventsPath: string
 ): Promise<Session> {
-  // Fast path: check last line
-  const lastLine = readLastLine(eventsPath);
-  let shutdownEvent: RawSessionShutdown | null = null;
   let startEvent: RawSessionStart | null = null;
-
-  if (lastLine) {
-    const parsed = parseLine(lastLine);
-    if (parsed && parsed.type === "session.shutdown") {
-      shutdownEvent = parsed as RawSessionShutdown;
-    }
-  }
-
-  // Always scan the file for session.start, and fallback scan for shutdown if needed
-  const needsShutdownScan = shutdownEvent === null;
 
   // Use a container to hold mutable scan results so TypeScript control flow
   // doesn't narrow variables to `never` after the async scan completes.
   const scanResult: {
     startEvent: RawSessionStart | null;
-    shutdownEvent: RawSessionShutdown | null;
-  } = { startEvent: null, shutdownEvent: shutdownEvent };
+    shutdownEvents: RawSessionShutdown[];
+    chronicleInvocations: ChronicleInvocation[];
+    chronicleInteractionIds: Set<string>;
+    lastAssistantByInteraction: Map<string, string>;
+  } = {
+    startEvent: null,
+    shutdownEvents: [],
+    chronicleInvocations: [],
+    chronicleInteractionIds: new Set<string>(),
+    lastAssistantByInteraction: new Map<string, string>(),
+  };
 
   await new Promise<void>((resolve, reject) => {
     let stream: fs.ReadStream;
@@ -132,8 +175,42 @@ export async function parseEventsFile(
         scanResult.startEvent = event as RawSessionStart;
       }
 
-      if (needsShutdownScan && event.type === "session.shutdown" && scanResult.shutdownEvent === null) {
-        scanResult.shutdownEvent = event as RawSessionShutdown;
+      if (event.type === "session.shutdown") {
+        scanResult.shutdownEvents.push(event as RawSessionShutdown);
+      }
+
+      if (event.type === "user.message") {
+        const um = event as RawUserMessage;
+        const content = um.data?.content;
+        const interactionId = um.data?.interactionId;
+        if (typeof content === "string" && typeof interactionId === "string") {
+          const variant = matchChronicleCommand(content);
+          if (variant) {
+            scanResult.chronicleInvocations.push({
+              variant,
+              timestamp: um.timestamp ?? "",
+              interactionId,
+            });
+            scanResult.chronicleInteractionIds.add(interactionId);
+          }
+        }
+      }
+
+      if (event.type === "assistant.message") {
+        const am = event as RawAssistantMessage;
+        const interactionId = am.data?.interactionId;
+        const content = am.data?.content;
+        if (
+          typeof interactionId === "string" &&
+          scanResult.chronicleInteractionIds.has(interactionId) &&
+          typeof content === "string" &&
+          content.trim() !== ""
+        ) {
+          // Last non-empty assistant message for a chronicle interaction wins
+          // (the final rendered tips). The command always precedes its response,
+          // so its interactionId is already registered by this point.
+          scanResult.lastAssistantByInteraction.set(interactionId, content);
+        }
       }
     });
 
@@ -143,7 +220,12 @@ export async function parseEventsFile(
   });
 
   startEvent = scanResult.startEvent;
-  shutdownEvent = scanResult.shutdownEvent;
+  const shutdownEvents = scanResult.shutdownEvents;
+
+  const chronicleTips = buildChronicleTips(
+    scanResult.chronicleInvocations,
+    scanResult.lastAssistantByInteraction
+  );
 
   // Determine start time
   const startTime: string | undefined =
@@ -151,33 +233,44 @@ export async function parseEventsFile(
     startEvent?.timestamp ??
     undefined;
 
-  if (shutdownEvent === null) {
+  if (shutdownEvents.length === 0) {
     // Session is in-progress — no shutdown event found
     const inProgress: InProgressSession = {
       sessionId,
       eventsPath,
       startTime,
+      chronicleTips,
       inProgress: true,
     };
     return inProgress;
   }
 
-  // Extract model metrics
-  const rawMetrics = shutdownEvent.data?.modelMetrics ?? {};
+  // Sum per-model usage and premium requests across ALL shutdowns. A resumed
+  // session has one shutdown per run, each reporting only that run's metrics,
+  // so the cumulative session totals are the sum across runs.
   const models: Record<string, TokenCounts> = {};
+  let totalPremiumRequests = 0;
 
-  for (const [modelName, metrics] of Object.entries(rawMetrics)) {
-    if (typeof modelName === "string" && metrics && typeof metrics === "object") {
-      models[modelName] = extractTokenCounts(metrics.usage);
+  for (const shutdown of shutdownEvents) {
+    totalPremiumRequests += shutdown.data?.totalPremiumRequests ?? 0;
+    const rawMetrics = shutdown.data?.modelMetrics ?? {};
+    for (const [modelName, metrics] of Object.entries(rawMetrics)) {
+      if (typeof modelName === "string" && metrics && typeof metrics === "object") {
+        const counts = extractTokenCounts(metrics.usage);
+        models[modelName] = models[modelName]
+          ? addTokenCounts(models[modelName], counts)
+          : counts;
+      }
     }
   }
 
   const session: ParsedSession = {
     sessionId,
     eventsPath,
-    startTime: startTime ?? shutdownEvent.timestamp ?? new Date(0).toISOString(),
+    startTime: startTime ?? shutdownEvents[0].timestamp ?? new Date(0).toISOString(),
     models,
-    totalPremiumRequests: shutdownEvent.data?.totalPremiumRequests ?? 0,
+    totalPremiumRequests,
+    chronicleTips,
     inProgress: false,
   };
 

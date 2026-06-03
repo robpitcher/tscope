@@ -1,4 +1,5 @@
 import { Report, ParsedSession, InProgressSession, TokenCounts } from "../types";
+import { tokenPartition, totalTokens } from "../tokens";
 import { Renderer } from "./Renderer";
 
 const HEAVY = "═".repeat(79);
@@ -34,11 +35,20 @@ function tokenRow(
   return `    ${l1}${v1}    ${l2}${v2}`;
 }
 
+/** A single label/value pair on its own row (left column only). */
+function singleRow(label: string, val: number): string {
+  const v = fmt(val).padStart(12);
+  const l = (label + ":").padEnd(14);
+  return `    ${l}${v}`;
+}
+
 function renderModelBlock(modelName: string, tokens: TokenCounts): string {
+  const p = tokenPartition(tokens);
   const lines: string[] = [];
   lines.push(`  ${modelName}`);
-  lines.push(tokenRow("Input", tokens.inputTokens, "Cache Read", tokens.cacheReadTokens));
-  lines.push(tokenRow("Cache Write", tokens.cacheWriteTokens, "Output", tokens.outputTokens));
+  lines.push(tokenRow("Fresh Input", p.freshInput, "Output", p.output));
+  lines.push(tokenRow("Cache Read", p.cacheRead, "Cache Write", p.cacheWrite));
+  lines.push(singleRow("Total (I/O)", p.total));
   return lines.join("\n");
 }
 
@@ -61,17 +71,20 @@ function renderSessionBlock(session: ParsedSession): string {
 
   lines.push(LIGHT);
 
-  let totalInput = 0, totalCacheRead = 0, totalCacheWrite = 0, totalOutput = 0;
+  let totalFreshInput = 0, totalCacheRead = 0, totalCacheWrite = 0, totalOutput = 0, grandTotal = 0;
   for (const tokens of Object.values(session.models)) {
-    totalInput += tokens.inputTokens;
-    totalCacheRead += tokens.cacheReadTokens;
-    totalCacheWrite += tokens.cacheWriteTokens;
-    totalOutput += tokens.outputTokens;
+    const p = tokenPartition(tokens);
+    totalFreshInput += p.freshInput;
+    totalCacheRead += p.cacheRead;
+    totalCacheWrite += p.cacheWrite;
+    totalOutput += p.output;
+    grandTotal += totalTokens(tokens);
   }
 
   lines.push("  TOTALS");
-  lines.push(tokenRow("Input", totalInput, "Cache Read", totalCacheRead));
-  lines.push(tokenRow("Cache Write", totalCacheWrite, "Output", totalOutput));
+  lines.push(tokenRow("Fresh Input", totalFreshInput, "Output", totalOutput));
+  lines.push(tokenRow("Cache Read", totalCacheRead, "Cache Write", totalCacheWrite));
+  lines.push(singleRow("Total (I/O)", grandTotal));
   lines.push(HEAVY);
 
   return lines.join("\n");

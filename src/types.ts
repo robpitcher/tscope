@@ -12,6 +12,19 @@ export interface TokenCounts {
   reasoningTokens: number;
 }
 
+/**
+ * A `/chronicle tips` or `/chronicle cost-tips` insight captured from a session.
+ * The markdown is the assistant's final rendered response to the command.
+ */
+export interface ChronicleTip {
+  /** Which chronicle command produced this insight */
+  variant: "tips" | "cost-tips";
+  /** ISO 8601 UTC timestamp of the command invocation (may be empty if unknown) */
+  timestamp: string;
+  /** The assistant's final response text, as raw markdown */
+  markdown: string;
+}
+
 /** Fully parsed session with token data */
 export interface ParsedSession {
   sessionId: string;
@@ -22,6 +35,8 @@ export interface ParsedSession {
   models: Record<string, TokenCounts>;
   /** Total premium requests from shutdown event (raw value from Copilot, not computed) */
   totalPremiumRequests: number;
+  /** /chronicle tips insights captured in this session (chronological) */
+  chronicleTips: ChronicleTip[];
   inProgress: false;
 }
 
@@ -31,6 +46,8 @@ export interface InProgressSession {
   eventsPath: string;
   /** May be available from session.start even if shutdown missing */
   startTime: string | undefined;
+  /** /chronicle tips insights captured in this session (chronological) */
+  chronicleTips: ChronicleTip[];
   inProgress: true;
 }
 

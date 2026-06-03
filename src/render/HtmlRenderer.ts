@@ -6,15 +6,20 @@
  * by default, with a manual override toggle.
  *
  * Visuals (in order of priority):
- *   1 Per-model token stacked bar (input/cacheRead/cacheWrite/output)
+ *   1 Per-model token stacked bar (freshInput/cacheRead/cacheWrite/output)
  *   2 Tokens-by-model horizontal bars (total tokens per model, hover for breakdown)
  *   3 Cache-efficiency % pill per model
  *   4 Tokens-over-time bar chart across sessions (hover for token breakdown)
  *   5 Session header cards (id, datetime, path, totals)
+ *
+ * Token math note: Copilot's `inputTokens` already includes cache read/write, so
+ * the only non-overlapping total is `input + output`. Bars/tooltips use the
+ * disjoint partition `freshInput + cacheRead + cacheWrite + output` (see tokens.ts).
  */
 
 import * as fs from "fs";
-import { Report, ParsedSession, InProgressSession, TokenCounts } from "../types";
+import { Report, ParsedSession, InProgressSession, TokenCounts, ChronicleTip } from "../types";
+import { tokenPartition, totalTokens } from "../tokens";
 import { Renderer } from "./Renderer";
 
 /** Public repository URL, surfaced in the header logo link and footer. */
@@ -87,31 +92,22 @@ function buildTokenBar(models: ModelEntry[]): string {
   const SVG_W = LABEL_W + BAR_MAX_W + 80;
   const SVG_H = LEGEND_H + models.length * (BAR_H + ROW_GAP) + ROW_GAP;
 
-  const totals = models.map(
-    (m) =>
-      m.tokens.inputTokens +
-      m.tokens.cacheReadTokens +
-      m.tokens.cacheWriteTokens +
-      m.tokens.outputTokens
-  );
+  const totals = models.map((m) => totalTokens(m.tokens));
   const maxTotal = Math.max(...totals, 1);
 
   let bars = "";
   for (let i = 0; i < models.length; i++) {
     const m = models[i];
     const y = LEGEND_H + i * (BAR_H + ROW_GAP);
-    const totalTokens =
-      m.tokens.inputTokens +
-      m.tokens.cacheReadTokens +
-      m.tokens.cacheWriteTokens +
-      m.tokens.outputTokens;
+    const p = tokenPartition(m.tokens);
+    const totalTokensForBar = p.total;
     const scale = BAR_MAX_W / maxTotal;
 
     const segments: Array<{ tokens: number; color: string; label: string }> = [
-      { tokens: m.tokens.inputTokens, color: TOKEN_COLORS.input, label: "Input" },
-      { tokens: m.tokens.cacheReadTokens, color: TOKEN_COLORS.cacheRead, label: "Cache Read" },
-      { tokens: m.tokens.cacheWriteTokens, color: TOKEN_COLORS.cacheWrite, label: "Cache Write" },
-      { tokens: m.tokens.outputTokens, color: TOKEN_COLORS.output, label: "Output" },
+      { tokens: p.freshInput, color: TOKEN_COLORS.input, label: "Fresh Input" },
+      { tokens: p.cacheRead, color: TOKEN_COLORS.cacheRead, label: "Cache Read" },
+      { tokens: p.cacheWrite, color: TOKEN_COLORS.cacheWrite, label: "Cache Write" },
+      { tokens: p.output, color: TOKEN_COLORS.output, label: "Output" },
     ];
 
     const name = m.modelName.length > 28 ? m.modelName.slice(0, 26) + "\u2026" : m.modelName;
@@ -125,11 +121,11 @@ function buildTokenBar(models: ModelEntry[]): string {
       xOff += w;
     }
 
-    bars += `<text x="${xOff + 6}" y="${y + BAR_H / 2 + 5}" class="bar-count">${fmtNum(totalTokens)}</text>`;
+    bars += `<text x="${xOff + 6}" y="${y + BAR_H / 2 + 5}" class="bar-count">${fmtNum(totalTokensForBar)}</text>`;
   }
 
   const legendItems = [
-    { label: "Input", color: TOKEN_COLORS.input },
+    { label: "Fresh Input", color: TOKEN_COLORS.input },
     { label: "Cache Read", color: TOKEN_COLORS.cacheRead },
     { label: "Cache Write", color: TOKEN_COLORS.cacheWrite },
     { label: "Output", color: TOKEN_COLORS.output },
@@ -161,19 +157,17 @@ function buildTokenBar(models: ModelEntry[]): string {
 function buildTokensByModelBars(models: ModelEntry[]): string {
   if (models.length === 0) return `<p class="muted-note">No model data</p>`;
 
-  const totals = models.map((m) =>
-    m.tokens.inputTokens + m.tokens.cacheReadTokens +
-    m.tokens.cacheWriteTokens + m.tokens.outputTokens
-  );
+  const totals = models.map((m) => totalTokens(m.tokens));
   const maxTotal = Math.max(...totals, 1);
 
   let html = `<div class="token-bars">`;
   for (let i = 0; i < models.length; i++) {
     const m = models[i];
     const total = totals[i];
+    const p = tokenPartition(m.tokens);
     const pct = clamp01(total / maxTotal) * 100;
     html += `
-  <div class="token-bar-row has-tip" data-title="${esc(m.modelName)}" data-input="${m.tokens.inputTokens}" data-cacheread="${m.tokens.cacheReadTokens}" data-cachewrite="${m.tokens.cacheWriteTokens}" data-output="${m.tokens.outputTokens}" data-total="${total}">
+  <div class="token-bar-row has-tip" data-title="${esc(m.modelName)}" data-input="${p.freshInput}" data-cacheread="${p.cacheRead}" data-cachewrite="${p.cacheWrite}" data-output="${p.output}" data-total="${total}">
     <div class="token-bar-model-name">${esc(m.modelName)}</div>
     <div class="token-bar-wrap">
       <div class="token-bar-fill" style="width:${pct.toFixed(1)}%"></div>
@@ -293,20 +287,165 @@ function buildTokensTimelineChart(summaries: SessionTokenSummary[]): string {
 // Session card
 // ---------------------------------------------------------------------------
 
+/**
+ * Convert a constrained subset of Markdown to safe HTML for chronicle tips.
+ * All text is HTML-escaped first; only the tags this function emits are
+ * introduced, so the output cannot inject markup. Supports headings, ordered
+ * and unordered lists, bold, italic, inline code, links (rendered as plain
+ * text), and paragraphs.
+ */
+function renderMarkdownToHtml(md: string): string {
+  const inline = (text: string): string => {
+    let s = esc(text);
+    // Protect inline code spans so bold/italic/link passes can't alter their
+    // contents, then restore them afterwards.
+    const codes: string[] = [];
+    s = s.replace(/`([^`]+)`/g, (_m, c) => {
+      codes.push(c);
+      return `\u0000CODE${codes.length - 1}\u0000`;
+    });
+    // Links [text](url) -> "text (url)" as plain text (no anchors, keeps the
+    // report's "only repo links" guarantee and avoids unsafe schemes).
+    s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, t, u) => `${t} (${u})`);
+    s = s.replace(/\*\*([^*]+)\*\*/g, (_m, b) => `<strong>${b}</strong>`);
+    s = s.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, (_m, pre, i) => `${pre}<em>${i}</em>`);
+    s = s.replace(/\u0000CODE(\d+)\u0000/g, (_m, idx) => `<code>${codes[Number(idx)]}</code>`);
+    return s;
+  };
+
+  const lines = md.replace(/\r\n/g, "\n").split("\n");
+  const out: string[] = [];
+  let listType: "ul" | "ol" | null = null;
+  let para: string[] = [];
+
+  const closeList = () => {
+    if (listType) {
+      out.push(`</${listType}>`);
+      listType = null;
+    }
+  };
+  const flushPara = () => {
+    if (para.length) {
+      out.push(`<p>${inline(para.join(" "))}</p>`);
+      para = [];
+    }
+  };
+
+  for (const raw of lines) {
+    const trimmed = raw.trim();
+
+    if (!trimmed) {
+      flushPara();
+      closeList();
+      continue;
+    }
+
+    const heading = trimmed.match(/^(#{1,6})\s+(.*)$/);
+    if (heading) {
+      flushPara();
+      closeList();
+      const level = Math.min(6, heading[1].length + 2); // # -> h3, ## -> h4 ...
+      out.push(`<h${level} class="ct-h">${inline(heading[2])}</h${level}>`);
+      continue;
+    }
+
+    const ulItem = trimmed.match(/^[-*]\s+(.*)$/);
+    if (ulItem) {
+      flushPara();
+      if (listType !== "ul") {
+        closeList();
+        out.push("<ul>");
+        listType = "ul";
+      }
+      out.push(`<li>${inline(ulItem[1])}</li>`);
+      continue;
+    }
+
+    const olItem = trimmed.match(/^\d+\.\s+(.*)$/);
+    if (olItem) {
+      flushPara();
+      if (listType !== "ol") {
+        closeList();
+        out.push("<ol>");
+        listType = "ol";
+      }
+      out.push(`<li>${inline(olItem[1])}</li>`);
+      continue;
+    }
+
+    closeList();
+    para.push(trimmed);
+  }
+
+  flushPara();
+  closeList();
+  return out.join("\n");
+}
+
+/** Pick the single most recent chronicle tip across all sessions (or null). */
+function pickMostRecentChronicleTip(
+  sessions: ParsedSession[],
+  inProgressSessions: InProgressSession[]
+): { tip: ChronicleTip; sessionId: string } | null {
+  let best: { tip: ChronicleTip; sessionId: string } | null = null;
+  const consider = (sessionId: string, tips: ChronicleTip[]) => {
+    for (const tip of tips) {
+      if (best === null || tip.timestamp > best.tip.timestamp) {
+        best = { tip, sessionId };
+      }
+    }
+  };
+  for (const s of sessions) consider(s.sessionId, s.chronicleTips);
+  for (const s of inProgressSessions) consider(s.sessionId, s.chronicleTips);
+  return best;
+}
+
+/**
+ * Build the standalone Chronicle Insights box for the single most recent tip.
+ * Rendered as its own section (mirrors the "Tokens Over Time" box) rather than
+ * inside a session card.
+ */
+function buildChronicleBox(
+  entry: { tip: ChronicleTip; sessionId: string } | null
+): string {
+  if (!entry) return "";
+  const { tip, sessionId } = entry;
+  const when = tip.timestamp ? toLocalDateTime(tip.timestamp) : "";
+  const meta =
+    `/chronicle ${esc(tip.variant)}` +
+    (when ? ` &middot; ${esc(when)}` : "") +
+    ` &middot; session <code>${esc(sessionId.slice(0, 8))}</code>`;
+  return `
+<div class="container">
+  <section class="timeline-section chronicle-box">
+    <details class="chronicle-details">
+      <summary class="chronicle-summary">
+        <span class="chronicle-caret">&#x25B8;</span>
+        <span class="chronicle-summary-main">&#x1F4A1; Chronicle Insights</span>
+        <span class="chronicle-summary-note">A <code>/chronicle ${esc(tip.variant)}</code> run was detected within the session scope of this report &mdash; expand for the details.</span>
+      </summary>
+      <p class="chronicle-source">${meta}</p>
+      <div class="chronicle-body">${renderMarkdownToHtml(tip.markdown)}</div>
+    </details>
+  </section>
+</div>`;
+}
+
 function buildSessionCard(session: ParsedSession): string {
   const dateStr = toLocalDateTime(session.startTime);
   const modelEntries: ModelEntry[] = Object.entries(session.models).map(
     ([modelName, tokens]) => ({ modelName, tokens })
   );
 
-  let totalInput = 0, totalOutput = 0, totalCacheRead = 0, totalCacheWrite = 0;
+  let totalFreshInput = 0, totalOutput = 0, totalCacheRead = 0, totalCacheWrite = 0;
   for (const m of modelEntries) {
-    totalInput += m.tokens.inputTokens;
-    totalOutput += m.tokens.outputTokens;
-    totalCacheRead += m.tokens.cacheReadTokens;
-    totalCacheWrite += m.tokens.cacheWriteTokens;
+    const p = tokenPartition(m.tokens);
+    totalFreshInput += p.freshInput;
+    totalOutput += p.output;
+    totalCacheRead += p.cacheRead;
+    totalCacheWrite += p.cacheWrite;
   }
-  const totalTokens = totalInput + totalOutput + totalCacheRead + totalCacheWrite;
+  const totalTokensForCard = totalFreshInput + totalCacheRead + totalCacheWrite + totalOutput;
 
   return `
 <article class="session-card" data-session-id="${esc(session.sessionId)}">
@@ -316,7 +455,7 @@ function buildSessionCard(session: ParsedSession): string {
       <span class="session-datetime">${dateStr}</span>
     </div>
     <div class="session-summary-chips">
-      <span class="chip chip-tokens">${fmtNum(totalTokens)} tokens</span>
+      <span class="chip chip-tokens">${fmtNum(totalTokensForCard)} tokens</span>
     </div>
   </div>
   <div class="session-path">${esc(session.eventsPath)}</div>
@@ -342,7 +481,7 @@ function buildSessionCard(session: ParsedSession): string {
 
   ${modelEntries.length > 0 ? `
   <div class="token-totals-row">
-    <span class="token-total-item"><span class="token-dot" style="background:${TOKEN_COLORS.input}"></span>Input: ${fmtNum(totalInput)}</span>
+    <span class="token-total-item"><span class="token-dot" style="background:${TOKEN_COLORS.input}"></span>Fresh Input: ${fmtNum(totalFreshInput)}</span>
     <span class="token-total-item"><span class="token-dot" style="background:${TOKEN_COLORS.cacheRead}"></span>Cache Read: ${fmtNum(totalCacheRead)}</span>
     <span class="token-total-item"><span class="token-dot" style="background:${TOKEN_COLORS.cacheWrite}"></span>Cache Write: ${fmtNum(totalCacheWrite)}</span>
     <span class="token-total-item"><span class="token-dot" style="background:${TOKEN_COLORS.output}"></span>Output: ${fmtNum(totalOutput)}</span>
@@ -840,8 +979,92 @@ button.filter-badge:hover { background: var(--border); color: var(--text-primary
   margin-top: 12px;
 }
 
-/* Insights seam reserved for #15 */
-/* .insights-section { } */
+/* Chronicle Insights (/chronicle tips & cost-tips) — roadmap #15 */
+.chronicle-details { width: 100%; }
+
+.chronicle-summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  user-select: none;
+}
+.chronicle-summary::-webkit-details-marker { display: none; }
+
+.chronicle-summary-main {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.chronicle-summary-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.chronicle-summary-note code {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: "SF Mono", "Consolas", monospace;
+  font-size: 11px;
+}
+
+.chronicle-caret {
+  color: var(--accent-blue);
+  transition: transform .15s ease;
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 700;
+  align-self: center;
+}
+.chronicle-details[open] .chronicle-caret { transform: rotate(90deg); }
+
+.chronicle-source {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 12px 0 14px;
+}
+.chronicle-source code {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: "SF Mono", "Consolas", monospace;
+  font-size: 11px;
+}
+
+.chronicle-body {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+.chronicle-body h3, .chronicle-body h4, .chronicle-body h5, .chronicle-body h6 {
+  color: var(--text-secondary);
+  margin: 12px 0 6px;
+}
+.chronicle-body h3 { font-size: 14px; }
+.chronicle-body h4 { font-size: 13px; }
+.chronicle-body h5, .chronicle-body h6 { font-size: 12px; }
+.chronicle-body p { margin: 6px 0; }
+.chronicle-body ul, .chronicle-body ol { margin: 6px 0 6px 20px; }
+.chronicle-body li { margin: 3px 0; }
+.chronicle-body code {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: "SF Mono", "Consolas", monospace;
+  font-size: 12px;
+}
+.chronicle-body strong { color: var(--text-primary); font-weight: 600; }
 
 .empty-state {
   text-align: center;
@@ -948,7 +1171,7 @@ const JS = `
   if (!tip) return;
   function fmt(n) { return Number(n || 0).toLocaleString('en-US'); }
   var SEGMENTS = [
-    { key: 'input', color: '#58a6ff', label: 'Input' },
+    { key: 'input', color: '#58a6ff', label: 'Fresh Input' },
     { key: 'cacheread', color: '#3fb950', label: 'Cache Read' },
     { key: 'cachewrite', color: '#e3b341', label: 'Cache Write' },
     { key: 'output', color: '#a371f7', label: 'Output' }
@@ -1242,8 +1465,7 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
   let grandTotalTokens = 0;
   for (const session of sessions) {
     for (const tokens of Object.values(session.models)) {
-      grandTotalTokens += tokens.inputTokens + tokens.outputTokens +
-        tokens.cacheReadTokens + tokens.cacheWriteTokens;
+      grandTotalTokens += totalTokens(tokens);
     }
   }
 
@@ -1270,12 +1492,12 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
     ...sessions.map((session) => {
       let total = 0, input = 0, cacheRead = 0, cacheWrite = 0, output = 0;
       for (const tokens of Object.values(session.models)) {
-        input += tokens.inputTokens;
-        cacheRead += tokens.cacheReadTokens;
-        cacheWrite += tokens.cacheWriteTokens;
-        output += tokens.outputTokens;
-        total += tokens.inputTokens + tokens.outputTokens +
-          tokens.cacheReadTokens + tokens.cacheWriteTokens;
+        const p = tokenPartition(tokens);
+        input += p.freshInput;
+        cacheRead += p.cacheRead;
+        cacheWrite += p.cacheWrite;
+        output += p.output;
+        total += p.total;
       }
       return {
         id: session.sessionId,
@@ -1312,6 +1534,10 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
   </section>
 </div>`
       : "";
+
+  const chronicleBox = buildChronicleBox(
+    pickMostRecentChronicleTip(sessions, inProgressSessions)
+  );
 
   let sessionCardsHtml = "";
   if (totalSessions === 0) {
@@ -1390,6 +1616,7 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
 
 ${statCards}
 ${timelineSection}
+${chronicleBox}
 ${sessionCardsHtml}
 
 <footer class="site-footer">

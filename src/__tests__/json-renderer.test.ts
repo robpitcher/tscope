@@ -1,6 +1,6 @@
 /**
  * Tests for JsonRenderer — verifies JSON shape, field types, and edge cases.
- * Schema: tscope/report/v2 (credit fields removed)
+ * Schema: tscope/report/v3 (totalTokens = input+output; cache is part of input)
  */
 
 import { JsonRenderer } from "../render/JsonRenderer";
@@ -52,6 +52,7 @@ const SAMPLE_SESSION: ParsedSession = {
     },
   },
   totalPremiumRequests: 5,
+  chronicleTips: [],
   inProgress: false,
 };
 
@@ -59,6 +60,7 @@ const SAMPLE_IN_PROGRESS: InProgressSession = {
   sessionId: "xyz-99999999-8888-7777-6666-555555555555",
   eventsPath: "/home/user/.copilot/session-state/xyz/events.jsonl",
   startTime: "2026-06-02T21:00:00.000Z",
+  chronicleTips: [],
   inProgress: true,
 };
 
@@ -78,9 +80,9 @@ describe("JsonRenderer", () => {
   });
 
   describe("top-level schema fields", () => {
-    test("includes schema field with v2 value", () => {
+    test("includes schema field with v3 value", () => {
       const out = captureJson(EMPTY_REPORT);
-      expect(out.schema).toBe("tscope/report/v2");
+      expect(out.schema).toBe("tscope/report/v3");
     });
 
     test("includes generatedAt as ISO 8601 UTC string", () => {
@@ -142,14 +144,14 @@ describe("JsonRenderer", () => {
       expect(out.summary.inProgressCount).toBe(1);
     });
 
-    test("totalTokens sums input+output+cacheRead+cacheWrite across sessions", () => {
+    test("totalTokens sums input+output across sessions (cache is part of input)", () => {
       const report: Report = {
         ...EMPTY_REPORT,
         sessions: [SAMPLE_SESSION],
       };
       const out = captureJson(report);
-      // 1000+500+200+100 + 300+100+0+0 = 2200
-      expect(out.summary.totalTokens).toBe(2200);
+      // (1000+500) + (300+100) = 1900 — cacheRead/cacheWrite are subsets of input
+      expect(out.summary.totalTokens).toBe(1900);
     });
   });
 
@@ -225,6 +227,7 @@ describe("JsonRenderer", () => {
       expect(totals.cacheRead).toBe(200);
       expect(totals.cacheWrite).toBe(100);
       expect(totals.reasoning).toBe(50);
+      expect(totals.total).toBe(1900); // input + output (cache is part of input)
       // No credit fields in totals
       expect(totals.estimatedCredits).toBeUndefined();
       expect(totals.hasUnknownRates).toBeUndefined();
@@ -272,6 +275,7 @@ describe("JsonRenderer", () => {
         sessionId: "no-start",
         eventsPath: "/some/path",
         startTime: undefined,
+        chronicleTips: [],
         inProgress: true,
       };
       const report: Report = {
@@ -325,6 +329,7 @@ describe("JsonRenderer", () => {
         startTime: "2026-06-02T20:00:00.000Z",
         models: {},
         totalPremiumRequests: 0,
+        chronicleTips: [],
         inProgress: false,
       };
       const report: Report = {

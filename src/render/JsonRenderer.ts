@@ -1,8 +1,14 @@
 import { Report, ParsedSession, InProgressSession } from "../types";
 import { Renderer } from "./Renderer";
 
-/** Schema version — bumped to v2 (breaking: credit fields removed) */
-const SCHEMA_VERSION = "tscope/report/v2";
+/**
+ * Schema version — bumped to v3.
+ * Breaking change vs v2: `summary.totalTokens` (and the new per-session
+ * `totals.total`) is now `input + output` only. Previously it summed
+ * input+output+cacheRead+cacheWrite, which double-counted cache because
+ * `inputTokens` already includes cache read/write.
+ */
+const SCHEMA_VERSION = "tscope/report/v3";
 
 /** Convert UTC ISO string to local "YYYY-MM-DD HH:MM" or null if invalid */
 function toLocalDateTime(utcIso: string): string | null {
@@ -55,6 +61,8 @@ function serializeCompletedSession(session: ParsedSession) {
       cacheRead: totalCacheRead,
       cacheWrite: totalCacheWrite,
       reasoning: totalReasoning,
+      // Non-overlapping grand total: input already includes cache read/write.
+      total: totalInput + totalOutput,
     },
   };
 }
@@ -74,6 +82,7 @@ function serializeInProgressSession(session: InProgressSession) {
       cacheRead: 0,
       cacheWrite: 0,
       reasoning: 0,
+      total: 0,
     },
   };
 }
@@ -83,28 +92,30 @@ function serializeInProgressSession(session: InProgressSession) {
  *
  * Stdout receives only valid JSON (pipeable to jq, etc.).
  *
- * ## Schema: tscope/report/v2
+ * ## Schema: tscope/report/v3
  * Top-level fields:
  *   schema         — stable identifier, bump on breaking changes
  *   generatedAt    — ISO 8601 UTC timestamp of report generation
  *   filter         — description and reportDate of the active filter
  *   summary        — sessionCount, completedCount, inProgressCount, totalTokens
+ *                    (totalTokens = sum of input+output; cache is part of input)
  *   sessions[]     — one entry per session (completed + in-progress)
  *     sessionId, path, startTime (ISO UTC | null), localDateTime (YYYY-MM-DD HH:MM | null),
  *     inProgress, premiumRequests (number | null), models[], totals
  *   models[]       — modelName, usage{input,output,cacheRead,cacheWrite,reasoning}
- *   totals         — summed token counts
+ *   totals         — summed token counts; `total` = input+output (cacheRead and
+ *                    cacheWrite are subsets of input, not added on top)
  */
 export class JsonRenderer implements Renderer {
   render(report: Report): void {
     const completedCount = report.sessions.length;
     const inProgressCount = report.inProgressSessions.length;
 
-    let totalTokens = 0;
+    let totalTokensSum = 0;
     const sessions = [
       ...report.sessions.map((session) => {
         const s = serializeCompletedSession(session);
-        totalTokens += s.totals.input + s.totals.output + s.totals.cacheRead + s.totals.cacheWrite;
+        totalTokensSum += s.totals.total;
         return s;
       }),
       ...report.inProgressSessions.map(serializeInProgressSession),
@@ -121,7 +132,7 @@ export class JsonRenderer implements Renderer {
         sessionCount: completedCount + inProgressCount,
         completedCount,
         inProgressCount,
-        totalTokens,
+        totalTokens: totalTokensSum,
       },
       sessions,
     };
