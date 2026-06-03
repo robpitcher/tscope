@@ -31,10 +31,9 @@ OPTIONS
   --help              Show this help text and exit
   --version           Print version and exit
   --json              Output JSON to stdout instead of formatted text
-  --html [FILE]       Write a self-contained HTML dashboard to FILE
+  --html [FILE]       Write a self-contained HTML dashboard to FILE and open
+                      it in the default browser
                       (default: ./tscope-report-YYYY-MM-DD.html)
-  --open              Open the generated HTML file in the default browser
-                      (only valid with --html; default OFF)
   --all               Show all sessions (no date filter)
   --date YYYY-MM-DD   Show sessions for a specific local date
   --range START END   Show sessions in a local-date range (inclusive)
@@ -56,7 +55,6 @@ NOTES
   • Sessions are bucketed by their start date, so a session continued from a
     previous day appears under the day it started (not today).
   • In-progress sessions (no shutdown event) are shown as [IN PROGRESS].
-  • Premium requests (raw count from session data) are shown when available.
 `.trim();
 
 type FilterMode = "today" | "date" | "range" | "all";
@@ -67,7 +65,6 @@ interface ParsedArgs {
   json: boolean;
   html: boolean;
   htmlOutputPath: string | undefined;
-  openAfterWrite: boolean;
   filterMode: FilterMode;
   filterDate?: string;
   filterStart?: string;
@@ -81,7 +78,6 @@ function parseArgs(argv: string[]): ParsedArgs {
   const version = args.includes("--version") || args.includes("-v");
   const json = args.includes("--json");
   const all = args.includes("--all");
-  const openAfterWrite = args.includes("--open");
 
   const htmlIdx = args.indexOf("--html");
   let html = htmlIdx !== -1;
@@ -113,7 +109,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     filterEnd = args[rangeIdx + 2];
   }
 
-  return { help, version, json, html, htmlOutputPath, openAfterWrite, filterMode, filterDate, filterStart, filterEnd };
+  return { help, version, json, html, htmlOutputPath, filterMode, filterDate, filterStart, filterEnd };
 }
 
 function validateArgs(args: ParsedArgs): void {
@@ -262,7 +258,7 @@ async function main(): Promise<void> {
   const renderer: Renderer = createRenderer(format, htmlPath);
   renderer.render(report);
 
-  if (args.html && args.openAfterWrite && htmlPath) {
+  if (args.html && htmlPath) {
     try {
       const platform = process.platform;
       const opener =

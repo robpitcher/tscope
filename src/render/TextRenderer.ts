@@ -48,9 +48,6 @@ function renderSessionBlock(session: ParsedSession): string {
   lines.push(`SESSION: ${session.sessionId}`);
   lines.push(`Date:    ${toLocalDateTimeStr(session.startTime)}`);
   lines.push(`Path:    ${session.eventsPath}`);
-  if (session.totalPremiumRequests > 0) {
-    lines.push(`Premium: ${session.totalPremiumRequests} requests`);
-  }
   lines.push(LIGHT);
 
   const modelEntries = Object.entries(session.models);

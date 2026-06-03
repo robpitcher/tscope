@@ -87,7 +87,7 @@ describe("HtmlRenderer", () => {
       expect(html).toContain("<style>");
     });
 
-    test("contains no http(s):// external resource links (CDN-free)", () => {
+    test("contains no external resource links (CDN-free)", () => {
       const html = renderToString(
         {
           ...EMPTY_REPORT,
@@ -95,14 +95,30 @@ describe("HtmlRenderer", () => {
         },
         "html-test-cdn.html"
       );
-      const externalPatterns = [
+      // No externally-loaded resources (scripts, stylesheets, fonts, images).
+      // Navigation anchors (e.g. the GitHub repo link) are allowed.
+      const externalResourcePatterns = [
         /src=["']https?:\/\//i,
-        /href=["']https?:\/\//i,
-        /url\(https?:\/\//i,
-        /\bimport\b.*https?:\/\//i,
+        /<link[^>]+href=["']https?:\/\//i,
+        /url\(\s*["']?https?:\/\//i,
+        /\bimport\b[^;]*["']https?:\/\//i,
       ];
-      for (const re of externalPatterns) {
+      for (const re of externalResourcePatterns) {
         expect(html).not.toMatch(re);
+      }
+    });
+
+    test("only external links point to the project repository", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-ext-links.html"
+      );
+      const hrefs = (html.match(/href=["']https?:\/\/[^"']+["']/gi) || []).map((h) =>
+        h.replace(/^href=["']|["']$/g, "")
+      );
+      expect(hrefs.length).toBeGreaterThan(0);
+      for (const href of hrefs) {
+        expect(href).toContain("github.com/devjoy-pub/tscope");
       }
     });
 
@@ -150,14 +166,6 @@ describe("HtmlRenderer", () => {
         "html-test-filter.html"
       );
       expect(html).toContain("all time");
-    });
-
-    test("shows premium requests chip when > 0", () => {
-      const html = renderToString(
-        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
-        "html-test-premium.html"
-      );
-      expect(html).toContain("premium req");
     });
 
     test("shows tokens chip", () => {
@@ -294,17 +302,173 @@ describe("HtmlRenderer", () => {
     });
   });
 
-  describe("session with no premium requests", () => {
-    test("does not show premium chip when totalPremiumRequests is 0", () => {
-      const noPremiumSession: ParsedSession = {
+  describe("premium requests are not rendered", () => {
+    test("does not show premium chip even when totalPremiumRequests is set", () => {
+      const premiumSession: ParsedSession = {
         ...SAMPLE_SESSION,
-        totalPremiumRequests: 0,
+        totalPremiumRequests: 5,
       };
       const html = renderToString(
-        { ...EMPTY_REPORT, sessions: [noPremiumSession] },
+        { ...EMPTY_REPORT, sessions: [premiumSession] },
         "html-test-no-premium.html"
       );
       expect(html).not.toContain("premium req");
+    });
+  });
+
+  describe("theme handling", () => {
+    test("follows system preference via prefers-color-scheme", () => {
+      const html = renderToString(EMPTY_REPORT, "html-test-theme-system.html");
+      expect(html).toContain("prefers-color-scheme: light");
+      expect(html).toContain(":root:not([data-theme])");
+    });
+
+    test("retains an explicit light/dark override toggle", () => {
+      const html = renderToString(EMPTY_REPORT, "html-test-theme-toggle.html");
+      expect(html).toContain('id="theme-toggle"');
+      expect(html).toContain('[data-theme="light"]');
+      expect(html).toContain('[data-theme="dark"]');
+    });
+  });
+
+  describe("GitHub repo links", () => {
+    test("header contains a GitHub logo link to the repo", () => {
+      const html = renderToString(EMPTY_REPORT, "html-test-gh-header.html");
+      expect(html).toContain('href="https://github.com/devjoy-pub/tscope"');
+      expect(html).toContain("View tscope on GitHub");
+      expect(html).toContain("gh-link");
+    });
+
+    test("footer invites contributions and links the repo", () => {
+      const html = renderToString(EMPTY_REPORT, "html-test-footer-contribute.html");
+      expect(html.toLowerCase()).toContain("contribute or report issues");
+      expect(html).toContain("https://github.com/devjoy-pub/tscope");
+    });
+  });
+
+  describe("chart hover details", () => {
+    test("timeline replaces the old footer text with axis labels", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-timeline-axes.html"
+      );
+      expect(html).not.toContain("Each bar = one session");
+      expect(html).toContain("Session Id (truncated)");
+      expect(html).toContain("Token count");
+    });
+
+    test("timeline bars carry per-token-type hover data (no session id)", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-timeline-tip.html"
+      );
+      expect(html).toContain("chart-tooltip");
+      expect(html).toContain('class="tl-bar has-tip"');
+      expect(html).toContain('data-cacheread=');
+      expect(html).toContain('data-cachewrite=');
+      // The bar tooltips must not embed the session id as a title attribute
+      expect(html).not.toMatch(/<rect[^>]*data-input[^>]*data-title/);
+    });
+
+    test("horizontal model bars carry per-token-type hover data", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-hbar-tip.html"
+      );
+      expect(html).toContain('token-bar-row has-tip');
+      expect(html).toContain('data-title="claude-sonnet-4-5"');
+      expect(html).toContain('data-output=');
+    });
+  });
+
+  describe("dynamic date-range filtering", () => {
+    function extractPayload(html: string): any {
+      const m = html.match(
+        /<script id="tscope-data" type="application\/json">([\s\S]*?)<\/script>/
+      );
+      if (!m) throw new Error("data payload script not found");
+      return JSON.parse(m[1]);
+    }
+
+    test("embeds a JSON payload with per-session token data", () => {
+      const html = renderToString(
+        {
+          ...EMPTY_REPORT,
+          sessions: [SAMPLE_SESSION],
+          inProgressSessions: [SAMPLE_IN_PROGRESS],
+        },
+        "html-test-payload.html"
+      );
+      const data = extractPayload(html);
+      expect(data.reportDate).toBe("2026-06-02");
+      expect(typeof data.generatedAtIso).toBe("string");
+      expect(Array.isArray(data.sessions)).toBe(true);
+      expect(data.sessions).toHaveLength(2);
+
+      const done = data.sessions.find((s: any) => !s.inProgress);
+      expect(done.id).toBe(SAMPLE_SESSION.sessionId);
+      expect(done.start).toBe(SAMPLE_SESSION.startTime);
+      // 1000+500+700+100 + 300+100 = 2700
+      expect(done.totalTokens).toBe(2700);
+      expect(done.input).toBe(1300);
+      expect(done.cacheRead).toBe(700);
+
+      const live = data.sessions.find((s: any) => s.inProgress);
+      expect(live.id).toBe(SAMPLE_IN_PROGRESS.sessionId);
+      expect(live.totalTokens).toBe(0);
+    });
+
+    test("renders an interactive date-range picker in the header", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-picker.html"
+      );
+      expect(html).toContain('id="filter-pill"');
+      expect(html).toContain('id="filter-popover"');
+      expect(html).toContain('data-preset="all"');
+      expect(html).toContain('data-preset="today"');
+      expect(html).toContain('data-preset="7d"');
+      expect(html).toContain('data-preset="30d"');
+      expect(html).toContain('id="range-from"');
+      expect(html).toContain('id="range-to"');
+      expect(html).toContain('id="range-apply"');
+    });
+
+    test("tags each session card with its session id for filtering", () => {
+      const html = renderToString(
+        {
+          ...EMPTY_REPORT,
+          sessions: [SAMPLE_SESSION],
+          inProgressSessions: [SAMPLE_IN_PROGRESS],
+        },
+        "html-test-card-ids.html"
+      );
+      expect(html).toContain(`data-session-id="${SAMPLE_SESSION.sessionId}"`);
+      expect(html).toContain(`data-session-id="${SAMPLE_IN_PROGRESS.sessionId}"`);
+    });
+
+    test("wraps the timeline in a host element for re-rendering", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-timeline-host.html"
+      );
+      expect(html).toContain('id="timeline-host"');
+    });
+
+    test("payload escapes < so it cannot break out of the script tag", () => {
+      const evil: ParsedSession = {
+        ...SAMPLE_SESSION,
+        sessionId: "a</script><b",
+      };
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [evil] },
+        "html-test-payload-escape.html"
+      );
+      // No raw closing tag injected by the payload.
+      expect(html).toContain("\\u003c/script>");
+      // Parsing still recovers the original id.
+      const data = extractPayload(html);
+      expect(data.sessions[0].id).toBe("a</script><b");
     });
   });
 });

@@ -9,8 +9,7 @@
 - 📊 **Local-only analysis** — no network calls, no credentials needed
 - 🔍 **Per-session breakdown** — view token usage by session and model
 - 📅 **Today's default** — shows current day's sessions by default
-- 📈 **HTML dashboard** — sleek, dark-mode dashboard with token charts
-- 🔢 **Premium requests** — shows raw premium request count from session data
+- 📈 **HTML dashboard** — sleek dashboard with token charts, an interactive date-range filter, and system light/dark theme
 - 📤 **JSON output** — machine-readable schema (`tscope/report/v2`) for scripting
 
 ## Installation
@@ -82,9 +81,8 @@ tscope --all                     # All sessions (no date filter)
 
 ```bash
 tscope --json               # Machine-readable JSON to stdout
-tscope --html               # Generate HTML dashboard (default filename)
-tscope --html report.html   # Generate HTML dashboard at specified path
-tscope --html --open        # Generate and open in browser
+tscope --html               # Generate HTML dashboard (default filename) and open it
+tscope --html report.html   # Generate HTML dashboard at specified path and open it
 ```
 
 ### Sample Output
@@ -94,7 +92,6 @@ tscope --html --open        # Generate and open in browser
 SESSION: 7d15eea1-4d69-49e9-bb21-8370594afd6a
 Date:    2026-06-02 22:58 (local)
 Path:    C:\Users\rober\.copilot\session-state\7d15eea1-...\events.jsonl
-Premium: 3 requests
 ───────────────────────────────────────────────────────────────────────────────
   claude-opus-4.7
     Input:        243,772    Cache Read:    155,776
@@ -133,7 +130,7 @@ In-progress sessions (still active) have no `session.shutdown` event and are mar
 
 ### Premium Requests
 
-The `totalPremiumRequests` field comes directly from the `session.shutdown` event and is provided by Copilot — it is **not** computed or estimated by tscope. It is shown in text output when > 0, and always included in JSON output as `premiumRequests`.
+The `totalPremiumRequests` field comes directly from the `session.shutdown` event and is provided by Copilot — it is **not** computed or estimated by tscope. It is **not** shown in the text or HTML reports, but is still included in JSON output as `premiumRequests` for completeness.
 
 ## JSON Output
 
@@ -191,16 +188,36 @@ tscope --all --json | jq '.sessions[].totals'
 
 ## HTML Dashboard
 
-Use `--html` to generate a self-contained, dark-mode HTML report with:
+Use `--html` to generate a self-contained HTML report (which opens automatically
+in your browser and follows your system's light/dark theme) with:
 - **Total Tokens** summary stat card
-- **Tokens Over Time** chart (one bar per session, chronological)
+- **Tokens Over Time** chart (one bar per session, chronological; hover a bar for the token-type breakdown)
 - Per-session cards with:
   - **Token Usage by Model** — stacked bar chart (input/cacheRead/cacheWrite/output)
-  - **Tokens by Model** — horizontal bars (total tokens per model)
+  - **Tokens by Model** — horizontal bars (total tokens per model; hover for the token-type breakdown)
   - **Cache Efficiency** — % cache hit rate per model
-  - Premium requests chip (when available)
 
 The HTML file is fully self-contained (no external dependencies, works offline).
+The only outbound links point to the project repository.
+
+### Interactive date-range filter
+
+The date pill in the report header (e.g. `🗓 today`) is interactive. Click it to open a
+picker with presets (**Today**, **7 days**, **30 days**, **All**) and a custom **from/to**
+date range. Selecting a range instantly re-filters the report in the browser — the stat
+cards, the *Tokens Over Time* chart, and the session list all update, with no regeneration
+required.
+
+Notes:
+- The report is a **snapshot**: the picker can only filter over the sessions that were
+  embedded when the file was generated — i.e. whatever the CLI `--scope` selected. Running
+  `tscope --all --html` embeds every session and makes the picker most useful; running
+  `tscope --html` (today only) embeds just today's sessions, so the presets all resolve to
+  that same set.
+- Presets are anchored to the report's **generation time**, not your current wall-clock time,
+  so they stay stable however long after generation you open the file.
+- Sessions are bucketed by their **local start date** (see [Date Filtering](#date-filtering)).
+  In-progress sessions with no recorded start time appear only under **All**.
 
 ## Project Structure
 
