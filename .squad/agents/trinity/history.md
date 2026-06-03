@@ -1,0 +1,57 @@
+# Trinity — History
+
+## Seed
+
+- **Project:** tscope — a tool for developers to track and analyze their token usage, motivated by GitHub's new usage-based billing for Copilot (organizations & enterprises).
+- **User:** robpitcher
+- **Role:** Lead / Architect
+- **Created:** 2026-06-03
+
+## Learnings
+
+### 2026-06-02 — Usage-Based Billing Research
+
+- **Billing unit:** GitHub AI Credits (1 credit = $0.01 USD), computed from token × per-token model rate. Code completions are NOT billed.
+- **Plans:** Pro=1,500 credits/mo, Pro+=7,000, Max=20,000; Business=1,900/user (pooled), Enterprise=3,900/user (pooled). Promo elevated amounts through Sep 1, 2026.
+- **Costs via API:** NOT available programmatically per-user. The only source of per-user/per-model billing amounts (`net_amount`) is the manual AI usage CSV download from the GitHub billing UI (max 31 days).
+- **Usage metrics via API:** Available programmatically via `GET /enterprises/{e}/copilot/metrics/reports/users-1-day` → signed URL → NDJSON. Contains engagement data (tokens for CLI, LOC, interaction counts, model breakdown) but no dollar amounts. History from Oct 10, 2025, up to 1 year.
+- **Budget API:** `GET /organizations/{org}/settings/billing/budgets` (public preview) — can read budget amounts, scopes, and alert settings.
+- **Legacy metrics API** (`/orgs/{org}/copilot/metrics`) closed April 2, 2026 — must use new report endpoints.
+- **tscope ingest strategy:** Two channels — (A) REST API for engagement/token metrics, (B) CSV import for actual billing costs.
+- **Main brief:** `.squad/files/usage-based-billing-research.md`
+
+### 2026-06-02 — Local Session Data Investigation
+
+**Session data location:**
+- Path: `%USERPROFILE%\.copilot\session-state\{session-id}\events.jsonl`
+- Each session is a UUID folder (e.g., `7d15eea1-4d69-49e9-bb21-8370594afd6a`) or `conv-{uuid}` folder
+- Key files: `events.jsonl` (JSONL events), `workspace.yaml` (metadata)
+
+**Exact token field names (from `session.shutdown` event):**
+- `data.modelMetrics.{model}.usage.inputTokens`
+- `data.modelMetrics.{model}.usage.outputTokens`
+- `data.modelMetrics.{model}.usage.cacheReadTokens`
+- `data.modelMetrics.{model}.usage.cacheWriteTokens`
+- `data.modelMetrics.{model}.usage.reasoningTokens`
+- `data.totalPremiumRequests` — sum of `requests.cost` across models (legacy metric)
+- `data.totalNanoAiu` — newer field (May 2026+), not present in older sessions
+
+**Session timestamp:**
+- `session.start.data.startTime` — ISO 8601 UTC string (e.g., `2026-06-03T02:58:50.891Z`)
+- Also available in `workspace.yaml → created_at`
+
+**Multi-model sessions:** Confirmed. `modelMetrics` is a dictionary keyed by model name. Example session used 4 models simultaneously.
+
+**Tech stack recommendation:** Go (single binary, cross-platform, CLI-native). Status: OPEN — awaiting user confirmation.
+
+**Deliverables created:**
+- `.squad/files/tscope-plan.md` — full plan with output format spec
+- `.squad/files/tscope-issue-breakdown.md` — 11 phase-1 issues + 5 future issues
+- `.squad/decisions/inbox/trinity-tscope-plan.md` — architecture decisions + open questions
+
+### 2026-06-02 — GitHub Issue Breakdown Created
+
+- Created phase-1 tracking epic #17 plus 11 phase-1 implementation issues and 5 phase-2 follow-up issues in `devjoy-pub/tscope`.
+- Confirmed final tech stack for phase 1: **Node.js + TypeScript**, installed via `npm i -g tscope`, binary name `tscope`.
+- Ready-now work is #1 (scaffolding) and #2 (model rate table); all other phase-1 issues are dependency-blocked.
+- Issue map written to `.squad/files/tscope-issue-map.md`; issue creation decision note written to `.squad/decisions/inbox/trinity-issues-created.md`.

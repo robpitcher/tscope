@@ -1,3 +1,32 @@
 {
-  "agents": {}
+  "agents": {
+    "lead": {
+      "persistent_name": "Trinity",
+      "universe": "The Matrix",
+      "created_at": "2026-06-03",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "backend": {
+      "persistent_name": "Tank",
+      "universe": "The Matrix",
+      "created_at": "2026-06-03",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "frontend": {
+      "persistent_name": "Switch",
+      "universe": "The Matrix",
+      "created_at": "2026-06-03",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "tester": {
+      "persistent_name": "Apoc",
+      "universe": "The Matrix",
+      "created_at": "2026-06-03",
+      "legacy_named": false,
+      "status": "active"
+    }
+  }
 }

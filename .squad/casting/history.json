@@ -1,4 +1,21 @@
 {
-  "universe_usage_history": [],
-  "assignment_cast_snapshots": {}
+  "universe_usage_history": [
+    {
+      "universe": "The Matrix",
+      "assignment_id": "tscope-initial-2026-06-03",
+      "used_at": "2026-06-03"
+    }
+  ],
+  "assignment_cast_snapshots": {
+    "tscope-initial-2026-06-03": {
+      "universe": "The Matrix",
+      "agents": {
+        "lead": "Trinity",
+        "backend": "Tank",
+        "frontend": "Switch",
+        "tester": "Apoc"
+      },
+      "created_at": "2026-06-03"
+    }
+  }
 }

@@ -6,12 +6,12 @@ How to decide who handles what.
 
 | Work Type | Route To | Examples |
 |-----------|----------|----------|
-| {domain 1} | {Name} | {example tasks} |
-| {domain 2} | {Name} | {example tasks} |
-| {domain 3} | {Name} | {example tasks} |
-| Code review | {Name} | Review PRs, check quality, suggest improvements |
-| Testing | {Name} | Write tests, find edge cases, verify fixes |
-| Scope & priorities | {Name} | What to build next, trade-offs, decisions |
+| Data ingestion / parsing / storage / APIs | Tank | Parse billing exports, model usage records, aggregations, backend services |
+| Dashboards / UI / charts | Switch | Usage visualizations, filters, drill-downs, presentation |
+| Architecture / scope / triage | Trinity | Technical direction, what to build next, issue triage |
+| Code review | Trinity | Review PRs, check quality, suggest improvements |
+| Testing | Apoc | Write tests, find edge cases, verify data accuracy |
+| Scope & priorities | Trinity | What to build next, trade-offs, decisions |
 | Session logging | Scribe | Automatic — never needs routing |
 
 ## Issue Routing
