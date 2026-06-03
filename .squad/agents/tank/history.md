@@ -69,3 +69,40 @@ npm i -g .         # global install → tscope command
 - `SessionPredicate` type in `discovery.ts` — pass filter predicates for date-range (#12)
 - `Renderer` interface in `src/render/Renderer.ts` — swap in HtmlRenderer/JsonRenderer (#13, #14)
 - `makeDateFilter(localDate)` factory — phase 1 passes `todayLocalDateString()`; phase 2 passes `--date` arg
+
+### Phase 2 — Issues #12 and #13 — 2026-06-03
+
+**JSON Output Renderer (#13):**
+- `src/render/JsonRenderer.ts` — implements `Renderer` interface; outputs `JSON.stringify(output, null, 2) + "\n"` to stdout
+- Schema identifier: `"tscope/report/v1"` — bump string when shape changes breaking
+- Warnings (unknown model rates) written by `calcSessionCredits()` to stderr; stdout is never polluted
+- Registered in `src/render/index.ts` under key `'json'`
+- CLI flag: `--json` passed to `createRenderer('json')` in `src/index.ts`
+- JSON top-level shape:
+  ```
+  { schema, generatedAt(ISO UTC), filter{description,reportDate},
+    summary{sessionCount,completedCount,inProgressCount,totalEstimatedCredits,hasUnknownRates},
+    sessions[{sessionId,path,startTime(ISO|null),localDateTime(YYYY-MM-DD HH:MM|null),
+              inProgress,models[{modelName,usage{input,output,cacheRead,cacheWrite,reasoning},
+              estimatedCredits(number|null),unknownRate}],
+              totals{input,output,cacheRead,cacheWrite,reasoning,estimatedCredits,hasUnknownRates}}] }
+  ```
+- `estimatedCredits` is `null` (not `undefined`) in JSON for unknown-rate models
+
+**Date Range Filtering (#12):**
+- `isValidDateString(s)` in `src/filter.ts` — regex format check + `new Date(y,m-1,d)` round-trip validation
+- `makeRangeDateFilter(start, end)` in `src/filter.ts` — async predicate, string comparison of `YYYY-MM-DD` (lexicographic sort = date sort for zero-padded ISO dates)
+- Extracted `resolveSessionLocalDate(ref)` private helper to DRY up `makeDateFilter` and `makeRangeDateFilter`
+- CLI flags: `--date YYYY-MM-DD`, `--range START END`, `--all` in `src/index.ts`
+- Validation: malformed dates and start > end exit 1 with clear message to stderr
+- `filterDescription` added to `Report` type; TextRenderer uses it for "No sessions found for {X}."
+- Flags compose: `--all --json`, `--range START END --json`
+
+**New files:**
+- `src/render/JsonRenderer.ts`
+- `src/__tests__/filter-range.test.ts` (17 tests: isValidDateString + makeRangeDateFilter + boundary conditions)
+- `src/__tests__/json-renderer.test.ts` (30 tests: schema fields, model shape, unknown rates, in-progress, ordering)
+
+**Test count:** 87 → 134 (all passing). Build: `npm run build` clean, strict mode.
+
+**PR #22:** `squad/phase2-json-daterange` → main

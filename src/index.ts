@@ -1,18 +1,24 @@
 #!/usr/bin/env node
 /**
  * tscope — GitHub Copilot session token usage viewer
- * Discovers today's local Copilot CLI sessions, parses token metrics, computes
- * estimated AI credits, and renders a formatted text report.
+ * Discovers Copilot CLI sessions, parses token metrics, computes estimated AI
+ * credits, and renders a formatted report (text or JSON).
  */
 
+import * as fs from "fs";
 import { discoverSessions, getSessionStateDir } from "./discovery";
 import { parseEventsFile } from "./parser";
-import { makeDateFilter, todayLocalDateString } from "./filter";
+import {
+  makeDateFilter,
+  makeRangeDateFilter,
+  isValidDateString,
+  todayLocalDateString,
+} from "./filter";
 import { calcSessionCredits } from "./credits";
 import { Renderer, createRenderer } from "./render";
-import { ParsedSession, InProgressSession, Report } from "./types";
+import { ParsedSession, InProgressSession, Report, SessionRef } from "./types";
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 
 const HELP_TEXT = `
 tscope — GitHub Copilot session token usage viewer
@@ -21,14 +27,22 @@ USAGE
   tscope [options]
 
 OPTIONS
-  --help        Show this help text and exit
-  --version     Print version and exit
+  --help              Show this help text and exit
+  --version           Print version and exit
+  --json              Output JSON to stdout instead of formatted text
+  --all               Show all sessions (no date filter)
+  --date YYYY-MM-DD   Show sessions for a specific local date
+  --range START END   Show sessions in a local-date range (inclusive)
 
 DESCRIPTION
   With no arguments, tscope discovers all Copilot CLI sessions from today
   (current local date), parses token usage from each session's events.jsonl,
   and prints a formatted report with per-model token counts and estimated
   AI credits.
+
+  Use --json to get machine-readable output suitable for piping to jq or
+  other tools. Warnings (e.g., unknown model rates) go to stderr so stdout
+  remains valid JSON.
 
 DATA SOURCE
   ~/.copilot/session-state/<session-id>/events.jsonl
@@ -41,56 +55,153 @@ NOTES
   • Rate table version: see --version output.
 `.trim();
 
-function parseArgs(argv: string[]): { help: boolean; version: boolean } {
+type FilterMode = "today" | "date" | "range" | "all";
+
+interface ParsedArgs {
+  help: boolean;
+  version: boolean;
+  json: boolean;
+  filterMode: FilterMode;
+  filterDate?: string;
+  filterStart?: string;
+  filterEnd?: string;
+}
+
+function parseArgs(argv: string[]): ParsedArgs {
   const args = argv.slice(2);
-  return {
-    help: args.includes("--help") || args.includes("-h"),
-    version: args.includes("--version") || args.includes("-v"),
-  };
+
+  const help = args.includes("--help") || args.includes("-h");
+  const version = args.includes("--version") || args.includes("-v");
+  const json = args.includes("--json");
+  const all = args.includes("--all");
+
+  const dateIdx = args.indexOf("--date");
+  const rangeIdx = args.indexOf("--range");
+
+  let filterMode: FilterMode = "today";
+  let filterDate: string | undefined;
+  let filterStart: string | undefined;
+  let filterEnd: string | undefined;
+
+  if (all) {
+    filterMode = "all";
+  } else if (dateIdx !== -1) {
+    filterMode = "date";
+    filterDate = args[dateIdx + 1];
+  } else if (rangeIdx !== -1) {
+    filterMode = "range";
+    filterStart = args[rangeIdx + 1];
+    filterEnd = args[rangeIdx + 2];
+  }
+
+  return { help, version, json, filterMode, filterDate, filterStart, filterEnd };
+}
+
+function validateArgs(args: ParsedArgs): void {
+  if (args.filterMode === "date") {
+    if (!args.filterDate) {
+      process.stderr.write("Error: --date requires a YYYY-MM-DD argument\n");
+      process.exit(1);
+    }
+    if (!isValidDateString(args.filterDate)) {
+      process.stderr.write(
+        `Error: invalid date "${args.filterDate}" — expected YYYY-MM-DD (e.g. 2026-06-02)\n`
+      );
+      process.exit(1);
+    }
+  }
+
+  if (args.filterMode === "range") {
+    if (!args.filterStart || !args.filterEnd) {
+      process.stderr.write(
+        "Error: --range requires two YYYY-MM-DD arguments: --range START END\n"
+      );
+      process.exit(1);
+    }
+    if (!isValidDateString(args.filterStart)) {
+      process.stderr.write(
+        `Error: invalid start date "${args.filterStart}" — expected YYYY-MM-DD\n`
+      );
+      process.exit(1);
+    }
+    if (!isValidDateString(args.filterEnd)) {
+      process.stderr.write(
+        `Error: invalid end date "${args.filterEnd}" — expected YYYY-MM-DD\n`
+      );
+      process.exit(1);
+    }
+    if (args.filterStart > args.filterEnd) {
+      process.stderr.write(
+        `Error: start date "${args.filterStart}" must not be after end date "${args.filterEnd}"\n`
+      );
+      process.exit(1);
+    }
+  }
+}
+
+/** Apply the active filter and return matching SessionRefs */
+async function applyFilter(
+  allRefs: SessionRef[],
+  args: ParsedArgs
+): Promise<SessionRef[]> {
+  if (args.filterMode === "all") {
+    return allRefs;
+  }
+
+  const today = todayLocalDateString();
+  const predicate =
+    args.filterMode === "today"
+      ? makeDateFilter(today)
+      : args.filterMode === "date"
+      ? makeDateFilter(args.filterDate!)
+      : makeRangeDateFilter(args.filterStart!, args.filterEnd!);
+
+  const results = await Promise.all(
+    allRefs.map(async (ref) => ({ ref, keep: await predicate(ref) }))
+  );
+  return results.filter(({ keep }) => keep).map(({ ref }) => ref);
+}
+
+/** Build the human-readable filter description for reports */
+function buildFilterDescription(args: ParsedArgs): string {
+  if (args.filterMode === "all") return "all time";
+  if (args.filterMode === "date") return args.filterDate!;
+  if (args.filterMode === "range")
+    return `${args.filterStart} to ${args.filterEnd}`;
+  return "today";
 }
 
 async function main(): Promise<void> {
-  const { help, version } = parseArgs(process.argv);
+  const args = parseArgs(process.argv);
 
-  if (help) {
+  if (args.help) {
     process.stdout.write(HELP_TEXT + "\n");
     process.exit(0);
   }
 
-  if (version) {
+  if (args.version) {
     process.stdout.write(`tscope ${VERSION}\n`);
     process.exit(0);
   }
 
+  validateArgs(args);
+
   const today = todayLocalDateString();
   const sessionStateDir = getSessionStateDir();
 
-  // Discover all session folders
-  const allRefs = discoverSessions(sessionStateDir);
-
-  if (allRefs.length === 0 && !require("fs").existsSync(sessionStateDir)) {
+  if (!fs.existsSync(sessionStateDir)) {
     process.stderr.write(
       `Warning: Copilot session-state directory not found: ${sessionStateDir}\n`
     );
-    process.stdout.write("No sessions found for today.\n");
-    process.exit(0);
   }
 
-  // Apply today date filter
-  const dateFilter = makeDateFilter(today);
-  const filteredRefs = (
-    await Promise.all(allRefs.map(async (ref) => ({ ref, keep: await dateFilter(ref) })))
-  )
-    .filter(({ keep }) => keep)
-    .map(({ ref }) => ref);
+  const allRefs = discoverSessions(sessionStateDir);
+  const filteredRefs = await applyFilter(allRefs, args);
 
-  if (filteredRefs.length === 0) {
-    process.stdout.write("No sessions found for today.\n");
-    process.exit(0);
-  }
-
-  // Parse each session
-  const completedSessions: Array<{ session: ParsedSession; credits: ReturnType<typeof calcSessionCredits> }> = [];
+  const completedSessions: Array<{
+    session: ParsedSession;
+    credits: ReturnType<typeof calcSessionCredits>;
+  }> = [];
   const inProgressSessions: InProgressSession[] = [];
   let totalCredits = 0;
   let hasUnknownRates = false;
@@ -117,15 +228,19 @@ async function main(): Promise<void> {
     }
   }
 
+  const filterDescription = buildFilterDescription(args);
+
   const report: Report = {
     sessions: completedSessions,
     inProgressSessions,
     totalCredits,
     hasUnknownRates,
     reportDate: today,
+    filterDescription,
   };
 
-  const renderer: Renderer = createRenderer("text");
+  const format = args.json ? "json" : "text";
+  const renderer: Renderer = createRenderer(format);
   renderer.render(report);
 
   process.exit(0);
@@ -135,3 +250,4 @@ main().catch((err) => {
   process.stderr.write(`Fatal error: ${String(err)}\n`);
   process.exit(1);
 });
+

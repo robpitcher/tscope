@@ -139,7 +139,7 @@ export class TextRenderer implements Renderer {
     }
 
     if (allSessions.length === 0) {
-      process.stdout.write(`No sessions found for today.\n`);
+      process.stdout.write(`No sessions found for ${report.filterDescription}.\n`);
       return;
     }
 

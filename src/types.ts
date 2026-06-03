@@ -65,6 +65,8 @@ export interface Report {
   totalCredits: number;
   hasUnknownRates: boolean;
   reportDate: string; // local date string YYYY-MM-DD
+  /** Human-readable description of the active filter, e.g. "today", "2026-06-02", "2026-06-01 to 2026-06-02", "all time" */
+  filterDescription: string;
 }
 
 /** Raw session folder info from discovery */

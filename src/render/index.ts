@@ -11,9 +11,10 @@
  */
 
 import { TextRenderer } from "./TextRenderer";
+import { JsonRenderer } from "./JsonRenderer";
 
 export { Renderer } from "./Renderer";
-export { TextRenderer } from "./TextRenderer";
+export { JsonRenderer } from "./JsonRenderer";
 
 type RendererFactory = () => import("./Renderer").Renderer;
 
@@ -23,6 +24,7 @@ type RendererFactory = () => import("./Renderer").Renderer;
  */
 const RENDERER_REGISTRY: Map<string, RendererFactory> = new Map([
   ["text", () => new TextRenderer()],
+  ["json", () => new JsonRenderer()],
 ]);
 
 /**
