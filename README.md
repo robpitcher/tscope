@@ -2,7 +2,7 @@
 
 **GitHub Copilot session token usage analyzer.**
 
-`tscope` is a command-line tool that helps you understand your Copilot CLI token consumption. It reads session data from your local Copilot session files, measures tokens used per model (input, output, cache read, cache write, reasoning), and displays a clear report. Perfect for understanding your AI usage patterns.
+`tscope` is a command-line tool that reads your local Copilot CLI session files, measures tokens used per model (input, output, cache read, cache write, reasoning), and displays a clear report — in the terminal, as JSON, or as an interactive HTML dashboard.
 
 ## Features
 
@@ -12,329 +12,32 @@
 - 📈 **HTML dashboard** — sleek dashboard with token charts, an interactive date-range filter, and system light/dark theme
 - 📤 **JSON output** — machine-readable schema (`tscope/report/v3`) for scripting
 
-## Installation
-
-### Global Install (Recommended)
+## Quick Start
 
 ```bash
 npm install -g tscope
+tscope                  # today's sessions
+tscope --html           # generate and open an HTML dashboard
+tscope --json           # machine-readable JSON
 ```
 
-Then run:
+Requires **Node.js 18+**.
 
-```bash
-tscope
-```
+## Documentation
 
-### From Source
+Full documentation lives in the [`docs/`](docs/) folder:
 
-```bash
-git clone https://github.com/devjoy-pub/tscope.git
-cd tscope
-npm install
-npm run build
-npm install -g .
-# or npm link for local development
-```
-
-**Node Version Requirement:** Node 18.0.0 or later (see `package.json` engines).
-
-## Usage
-
-### Basic Usage
-
-Show today's sessions:
-
-```bash
-tscope
-```
-
-### Help & Version
-
-```bash
-tscope --help       # Show usage and options
-tscope --version    # Show version
-```
-
-### Date Filtering
-
-```bash
-tscope --date 2026-06-02         # Sessions for a specific date
-tscope --range 2026-06-01 2026-06-02  # Sessions in a date range (YYYY-MM-DD, inclusive)
-tscope --lastdays 7              # Sessions from the last 7 days (today + previous 6)
-tscope --all                     # All sessions (no date filter)
-```
-
-> **How a session's date is determined.** Sessions are bucketed by their **start
-> date** — the timestamp of the `session.start` event (or, for sessions without
-> one, the timestamp of the first recorded event), converted to your local
-> timezone. A session is only counted on the day it *started*.
->
-> This means if you **continue a session from a previous day**, it stays under
-> the day it started and will **not** appear in today's report — even though you
-> worked on it today. Use `--all`, or `--date`/`--range` for the original start
-> day, to see it. Bucketing by start date keeps each session's token totals
-> attributed to a single day (token metrics are cumulative for the whole
-> session, so counting a multi-day session on every active day would
-> double-count usage).
-
-### Output Formats
-
-```bash
-tscope --json               # Machine-readable JSON to stdout
-tscope --html               # Generate HTML dashboard (default filename) and open it
-tscope --html report.html   # Generate HTML dashboard at specified path and open it
-```
-
-### Sample Output
-
-```
-═══════════════════════════════════════════════════════════════════════════════
-SESSION: 7d15eea1-4d69-49e9-bb21-8370594afd6a
-Date:    2026-06-02 22:58 (local)
-Path:    C:\Users\rober\.copilot\session-state\7d15eea1-...\events.jsonl
-───────────────────────────────────────────────────────────────────────────────
-  claude-opus-4.7
-    Fresh Input:            8    Output:          2,272
-    Cache Read:       155,776    Cache Write:    87,988
-    Total (I/O):      246,044
-───────────────────────────────────────────────────────────────────────────────
-  TOTALS
-    Fresh Input:            8    Output:          2,272
-    Cache Read:       155,776    Cache Write:    87,988
-    Total (I/O):      246,044
-═══════════════════════════════════════════════════════════════════════════════
-
-SUMMARY: 1 session
-```
-
-> **How tokens add up.** Copilot reports `inputTokens` as the **grand total of
-> all input**, and it already **includes** cache read and cache write tokens.
-> So the only non-overlapping total is **`input + output`** — adding the cache
-> buckets on top would double-count them. tscope therefore shows a disjoint
-> breakdown — **Fresh Input** (`input − cacheRead − cacheWrite`), **Cache Read**,
-> **Cache Write**, **Output** — whose parts sum to the **Total (I/O)**.
->
-> Also note: a **resumed** session writes one `session.shutdown` per run, and
-> each run's metrics are reset (per-run, not cumulative). tscope sums the
-> metrics across **all** shutdown events to report true session totals.
-
-## How It Works
-
-1. **Discovers sessions** — tscope scans `~/.copilot/session-state/` for session folders
-2. **Reads events** — parses `events.jsonl` from each session (newline-delimited JSON)
-3. **Extracts tokens** — looks for `session.shutdown` event(s) containing per-model token metrics (resumed sessions have more than one; their metrics are summed)
-4. **Renders report** — displays sessions, per-model token breakdowns, and totals
-
-### Session Data Format
-
-Session files are stored at:
-```
-~/.copilot/session-state/<session-id>/events.jsonl
-```
-
-Each session's `events.jsonl` contains event records, including a `session.shutdown` event with per-model token counts:
-- **Input tokens** — the grand total of tokens sent to the model; **includes** the cache read and cache write tokens below
-- **Output tokens** — tokens generated by the model
-- **Cache read tokens** — cached prompt tokens, avoid re-processing (a *subset* of input)
-- **Cache write tokens** — tokens written to cache (a *subset* of input)
-- **Reasoning tokens** — internal reasoning tokens (not billed, shown for reference; excluded from totals)
-
-Because cache read/write are already part of input, the non-double-counted session total is **`input + output`** (reported as **Total (I/O)**).
-
-A **resumed** session contains one `session.shutdown` per run and each run's metrics reset to zero, so tscope **sums** the per-model usage (and `totalPremiumRequests`) across every shutdown event to produce true cumulative totals.
-
-In-progress sessions (still active) have no `session.shutdown` event and are marked `[IN PROGRESS]`.
-
-### Premium Requests
-
-The `totalPremiumRequests` field comes directly from the `session.shutdown` event and is provided by Copilot — it is **not** computed or estimated by tscope. It is **not** shown in the text or HTML reports, but is still included in JSON output as `premiumRequests` for completeness.
-
-## JSON Output
-
-Use `--json` for machine-readable output:
-
-```bash
-tscope --json | jq '.summary'
-tscope --all --json | jq '.sessions[].totals'
-```
-
-### JSON Schema: `tscope/report/v3`
-
-```json
-{
-  "schema": "tscope/report/v3",
-  "generatedAt": "2026-06-02T23:53:14.000Z",
-  "filter": { "description": "today", "reportDate": "2026-06-02" },
-  "summary": {
-    "sessionCount": 1,
-    "completedCount": 1,
-    "inProgressCount": 0,
-    "totalTokens": 246044
-  },
-  "sessions": [
-    {
-      "sessionId": "7d15eea1-...",
-      "path": "~/.copilot/session-state/.../events.jsonl",
-      "startTime": "2026-06-02T22:58:00.000Z",
-      "localDateTime": "2026-06-02 22:58",
-      "inProgress": false,
-      "premiumRequests": 3,
-      "models": [
-        {
-          "modelName": "claude-opus-4.7",
-          "usage": {
-            "input": 243772,
-            "output": 2272,
-            "cacheRead": 155776,
-            "cacheWrite": 87988,
-            "reasoning": 0
-          }
-        }
-      ],
-      "totals": {
-        "input": 243772,
-        "output": 2272,
-        "cacheRead": 155776,
-        "cacheWrite": 87988,
-        "reasoning": 0,
-        "total": 246044
-      }
-    }
-  ]
-}
-```
-
-> `summary.totalTokens` and each session's `totals.total` are computed as
-> **`input + output`** (cache buckets are already part of `input`, so they are
-> not added again). The per-bucket fields (`input`, `output`, `cacheRead`,
-> `cacheWrite`, `reasoning`) are still reported individually for reference.
-
-## HTML Dashboard
-
-Use `--html` to generate a self-contained HTML report (which opens automatically
-in your browser and follows your system's light/dark theme) with:
-- **Total Tokens** summary stat card
-- **Tokens Over Time** chart (one bar per session, chronological; hover a bar for the token-type breakdown)
-- **Chronicle Insights** box — if any session ran `/chronicle tips` or
-  `/chronicle cost-tips`, the most recent set of recommendations is parsed and
-  shown in its own box, below the *Tokens Over Time* chart and above the session
-  list (see below)
-- Per-session cards with:
-  - **Token Usage by Model** — stacked bar chart (fresh input/cacheRead/cacheWrite/output)
-  - **Tokens by Model** — horizontal bars (total tokens per model; hover for the token-type breakdown)
-  - **Cache Efficiency** — % cache hit rate per model
-
-The HTML file is fully self-contained (no external dependencies, works offline).
-The only outbound links point to the project repository.
-
-### Chronicle Insights
-
-If any session within the report's scope contains a `/chronicle tips` or
-`/chronicle cost-tips` invocation, tscope extracts the assistant's resulting
-recommendations and renders them in a dedicated **Chronicle Insights** box,
-positioned between the *Tokens Over Time* chart and the session list.
-
-- Tips are detected by matching the `/chronicle tips` / `/chronicle cost-tips`
-  command in each session's `events.jsonl`, then pairing it with the final
-  assistant response via the shared `interactionId` (robust against the
-  intermediate tool and system events in between).
-- If multiple sessions (or multiple invocations) contain tips, only the **most
-  recent** one is shown. The box notes its variant, local timestamp, and source
-  session id.
-- The box is **collapsible and closed by default**: a caret to the left of the
-  heading and a summary note indicate that a `/chronicle` run was detected within
-  the report's session scope; clicking it expands the full recommendations.
-- The Markdown is converted to safe HTML (headings, lists, bold, inline code);
-  all content is HTML-escaped, and links are rendered as plain text so the
-  report keeps its "only links point to the project repository" guarantee.
-- Chronicle Insights appear only in the **HTML** report (not text or JSON).
-
-### Interactive date-range filter
-
-The date pill in the report header (e.g. `🗓 today`) is interactive. Click it to open a
-picker with presets (**Today**, **7 days**, **30 days**, **All**) and a custom **from/to**
-date range. Selecting a range instantly re-filters the report in the browser — the stat
-cards, the *Tokens Over Time* chart, and the session list all update, with no regeneration
-required.
-
-Notes:
-- The report is a **snapshot**: the picker can only filter over the sessions that were
-  embedded when the file was generated by the active CLI date filter (`--all`, `--date`,
-  `--range`, `--lastdays`, or today's default). Running `tscope --all --html` embeds every
-  session and makes the picker most useful; running `tscope --html` (today only) embeds just
-  today's sessions, so the presets all resolve to that same set.
-- Presets are anchored to the report's **generation time**, not your current wall-clock time,
-  so they stay stable however long after generation you open the file.
-- Sessions are bucketed by their **local start date** (see [Date Filtering](#date-filtering)).
-  In-progress sessions with no recorded start time appear only under **All**.
-
-## Project Structure
-
-```
-tscope/
-├── src/
-│   ├── index.ts              # CLI entry point, argument parsing
-│   ├── discovery.ts          # Session discovery logic
-│   ├── parser.ts             # events.jsonl parsing
-│   ├── filter.ts             # Date filtering (default: today)
-│   ├── types.ts              # TypeScript types
-│   └── render/
-│       ├── Renderer.ts       # Renderer interface
-│       ├── TextRenderer.ts   # Text output implementation
-│       ├── JsonRenderer.ts   # JSON output (schema v3)
-│       └── HtmlRenderer.ts   # HTML dashboard
-├── src/__tests__/            # Unit and integration tests
-├── package.json              # Dependencies, scripts, metadata
-├── tsconfig.json             # TypeScript config
-└── README.md                 # This file
-```
-
-## Development
-
-### Build
-
-```bash
-npm run build
-```
-
-Compiles TypeScript to `dist/` directory.
-
-### Test
-
-```bash
-npm test
-```
-
-Runs tests via Jest.
-
-### Lint
-
-```bash
-npm run lint
-```
-
-Runs ESLint on TypeScript source.
-
-### Development Mode
-
-```bash
-npm run dev
-```
-
-Run directly via ts-node (no build step).
-
-## Roadmap / Future Features
-
-- **Session comparison** — diff token usage across sessions
-
-## Contributing
-
-Found a bug or have a feature request? Open an issue on GitHub.
+- [Installation](docs/installation.md)
+- [Usage](docs/usage.md) — CLI flags, date filtering, output formats, sample output
+- [How It Works](docs/how-it-works.md) — session discovery, token accounting, resumed sessions
+- [JSON Output](docs/json-output.md) — `tscope/report/v3` schema reference
+- [HTML Dashboard](docs/html-dashboard.md) — dashboard features, Chronicle Insights, interactive date filter
+- [Development](docs/development.md) — build, test, lint, project structure
+- [Contributing](docs/contributing.md) — roadmap, license
 
 ## License
 
-MIT. See the repository for details.
+MIT.
 
 ---
 
