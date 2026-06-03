@@ -455,6 +455,27 @@ describe("HtmlRenderer", () => {
       expect(html).toContain('id="timeline-host"');
     });
 
+    test("timeline bars link to their session via data-session-id and are activatable", () => {
+      const html = renderToString(
+        {
+          ...EMPTY_REPORT,
+          sessions: [SAMPLE_SESSION],
+          inProgressSessions: [SAMPLE_IN_PROGRESS],
+        },
+        "html-test-timeline-link.html"
+      );
+      // Each bar carries the session id (matching the card) plus button semantics.
+      const barRe = new RegExp(
+        `<rect[^>]*class="tl-bar[^"]*"[^>]*data-session-id="${SAMPLE_SESSION.sessionId}"`
+      );
+      expect(html).toMatch(barRe);
+      expect(html).toContain('role="button"');
+      expect(html).toContain('tabindex="0"');
+      // The flash highlight animation must be defined for the target card.
+      expect(html).toContain("session-card--flash");
+      expect(html).toContain("@keyframes card-flash");
+    });
+
     test("payload escapes < so it cannot break out of the script tag", () => {
       const evil: ParsedSession = {
         ...SAMPLE_SESSION,

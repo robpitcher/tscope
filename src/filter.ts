@@ -40,6 +40,19 @@ export function todayLocalDateString(): string {
 }
 
 /**
+ * Returns the local date string (YYYY-MM-DD) for `n` days before today.
+ * `n = 0` yields today; `n = 6` yields the date six days ago.
+ */
+export function localDateNDaysAgo(n: number): string {
+  const now = new Date();
+  now.setDate(now.getDate() - n);
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * Resolves the local date string for a SessionRef, using the session start time
  * (or, absent a session.start event, the first event's timestamp) from the
  * events file, falling back to file mtime only when no event carries a

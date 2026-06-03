@@ -15,6 +15,7 @@ import {
   makeRangeDateFilter,
   isValidDateString,
   todayLocalDateString,
+  localDateNDaysAgo,
 } from "./filter";
 import { Renderer, createRenderer } from "./render";
 import { ParsedSession, InProgressSession, Report, SessionRef } from "./types";
@@ -37,6 +38,8 @@ OPTIONS
   --all               Show all sessions (no date filter)
   --date YYYY-MM-DD   Show sessions for a specific local date
   --range START END   Show sessions in a local-date range (inclusive)
+  --lastdays N        Show sessions from the last N days (today and the
+                      preceding N-1 days)
 
 DESCRIPTION
   With no arguments, tscope discovers all Copilot CLI sessions from today
@@ -46,7 +49,16 @@ DESCRIPTION
   Use --json to get machine-readable output suitable for piping to jq or
   other tools.
 
-  Use --html to generate a polished, dark-mode HTML dashboard with charts.
+  Use --html to generate a polished HTML dashboard with charts that follows
+  your system's light/dark theme.
+
+EXAMPLES
+  tscope                                  Report today's sessions
+  tscope --lastdays 7                     Report sessions from the last 7 days
+  tscope --range 2026-05-01 2026-05-31    Report sessions in a date range
+                                          (dates are YYYY-MM-DD, inclusive)
+  tscope --date 2026-06-02                Report a specific local date
+  tscope --all --html                     Open full history as an HTML dashboard
 
 DATA SOURCE
   ~/.copilot/session-state/<session-id>/events.jsonl
@@ -57,7 +69,7 @@ NOTES
   • In-progress sessions (no shutdown event) are shown as [IN PROGRESS].
 `.trim();
 
-type FilterMode = "today" | "date" | "range" | "all";
+type FilterMode = "today" | "date" | "range" | "lastdays" | "all";
 
 interface ParsedArgs {
   help: boolean;
@@ -69,6 +81,7 @@ interface ParsedArgs {
   filterDate?: string;
   filterStart?: string;
   filterEnd?: string;
+  filterLastDays?: string;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -92,11 +105,13 @@ function parseArgs(argv: string[]): ParsedArgs {
 
   const dateIdx = args.indexOf("--date");
   const rangeIdx = args.indexOf("--range");
+  const lastDaysIdx = args.indexOf("--lastdays");
 
   let filterMode: FilterMode = "today";
   let filterDate: string | undefined;
   let filterStart: string | undefined;
   let filterEnd: string | undefined;
+  let filterLastDays: string | undefined;
 
   if (all) {
     filterMode = "all";
@@ -107,9 +122,12 @@ function parseArgs(argv: string[]): ParsedArgs {
     filterMode = "range";
     filterStart = args[rangeIdx + 1];
     filterEnd = args[rangeIdx + 2];
+  } else if (lastDaysIdx !== -1) {
+    filterMode = "lastdays";
+    filterLastDays = args[lastDaysIdx + 1];
   }
 
-  return { help, version, json, html, htmlOutputPath, filterMode, filterDate, filterStart, filterEnd };
+  return { help, version, json, html, htmlOutputPath, filterMode, filterDate, filterStart, filterEnd, filterLastDays };
 }
 
 function validateArgs(args: ParsedArgs): void {
@@ -152,6 +170,21 @@ function validateArgs(args: ParsedArgs): void {
       process.exit(1);
     }
   }
+
+  if (args.filterMode === "lastdays") {
+    if (!args.filterLastDays) {
+      process.stderr.write(
+        "Error: --lastdays requires a positive integer argument (e.g. --lastdays 7)\n"
+      );
+      process.exit(1);
+    }
+    if (!/^\d+$/.test(args.filterLastDays) || Number(args.filterLastDays) < 1) {
+      process.stderr.write(
+        `Error: invalid value "${args.filterLastDays}" for --lastdays — expected a positive integer (e.g. 7)\n`
+      );
+      process.exit(1);
+    }
+  }
 }
 
 /** Apply the active filter and return matching SessionRefs */
@@ -169,6 +202,8 @@ async function applyFilter(
       ? makeDateFilter(today)
       : args.filterMode === "date"
       ? makeDateFilter(args.filterDate!)
+      : args.filterMode === "lastdays"
+      ? makeRangeDateFilter(localDateNDaysAgo(Number(args.filterLastDays!) - 1), today)
       : makeRangeDateFilter(args.filterStart!, args.filterEnd!);
 
   const results = await Promise.all(
@@ -183,6 +218,10 @@ function buildFilterDescription(args: ParsedArgs): string {
   if (args.filterMode === "date") return args.filterDate!;
   if (args.filterMode === "range")
     return `${args.filterStart} to ${args.filterEnd}`;
+  if (args.filterMode === "lastdays") {
+    const n = Number(args.filterLastDays);
+    return n === 1 ? "today" : `last ${n} days`;
+  }
   return "today";
 }
 

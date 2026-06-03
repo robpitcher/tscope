@@ -258,7 +258,7 @@ function buildTokensTimelineChart(summaries: SessionTokenSummary[]): string {
     const y = baselineY - barH;
     const labelText = s.label.length > 8 ? s.label.slice(0, 8) : s.label;
     const cls = `tl-bar has-tip${s.inProgress ? " in-progress" : ""}`;
-    bars += `<rect x="${x}" y="${y.toFixed(1)}" width="${BAR_W}" height="${barH.toFixed(1)}" rx="3" class="${cls}" data-input="${s.input}" data-cacheread="${s.cacheRead}" data-cachewrite="${s.cacheWrite}" data-output="${s.output}" data-total="${s.totalTokens}"></rect>`;
+    bars += `<rect x="${x}" y="${y.toFixed(1)}" width="${BAR_W}" height="${barH.toFixed(1)}" rx="3" class="${cls}" tabindex="0" role="button" aria-label="Jump to session ${esc(s.label)}" data-session-id="${esc(s.id)}" data-input="${s.input}" data-cacheread="${s.cacheRead}" data-cachewrite="${s.cacheWrite}" data-output="${s.output}" data-total="${s.totalTokens}"></rect>`;
     bars += `<text x="${x + BAR_W / 2}" y="${baselineY + 13}" text-anchor="middle" class="tl-label">${esc(labelText)}</text>`;
     if (!s.inProgress && s.totalTokens > 0) {
       bars += `<text x="${x + BAR_W / 2}" y="${Math.max(12, y - 3).toFixed(1)}" text-anchor="middle" class="tl-value">${fmtTokensCompact(s.totalTokens)}</text>`;
@@ -276,7 +276,9 @@ function buildTokensTimelineChart(summaries: SessionTokenSummary[]): string {
   return `
 <svg xmlns="http://www.w3.org/2000/svg" width="${SVG_W}" height="${SVG_H}" viewBox="0 0 ${SVG_W} ${SVG_H}" class="chart-svg timeline-svg">
   <style>
-    .tl-bar { fill: ${TOKEN_COLORS.input}; cursor: pointer; }
+    .tl-bar { fill: ${TOKEN_COLORS.input}; cursor: pointer; transition: fill-opacity .12s ease; }
+    .tl-bar:hover { fill-opacity: .8; }
+    .tl-bar:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 1px; }
     .tl-bar.in-progress { fill: var(--text-muted); }
     .tl-label { font: 9px/1 'SF Mono','Consolas',monospace; fill: var(--text-secondary); }
     .tl-value { font: 10px/1 system-ui,sans-serif; fill: var(--text-muted); }
@@ -650,6 +652,18 @@ button.filter-badge:hover { background: var(--border); color: var(--text-primary
   opacity: 0.75;
 }
 
+.session-card--flash {
+  animation: card-flash 1.6s ease-out;
+}
+@keyframes card-flash {
+  0%   { box-shadow: 0 0 0 1px var(--accent-blue), 0 0 0 0 rgba(88,166,255,.5); }
+  25%  { box-shadow: 0 0 0 1px var(--accent-blue), 0 0 0 8px rgba(88,166,255,.22); }
+  100% { box-shadow: 0 0 0 0 rgba(88,166,255,0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .session-card--flash { animation-duration: .01ms; }
+}
+
 .session-header {
   display: flex;
   align-items: flex-start;
@@ -996,6 +1010,34 @@ const JS = `
 })();
 
 (function() {
+  // Click (or keyboard-activate) a timeline bar to jump to that session's card and flash it.
+  function jump(bar) {
+    var sid = bar.getAttribute('data-session-id');
+    if (!sid) return;
+    var card = document.querySelector('.session-card[data-session-id="' + sid + '"]');
+    if (!card || card.style.display === 'none') return;
+    if (card.scrollIntoView) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.classList.remove('session-card--flash');
+    void card.offsetWidth; // restart the animation if re-triggered
+    card.classList.add('session-card--flash');
+  }
+  function barFrom(e) {
+    var t = e.target;
+    if (!t || t.nodeType !== 1 || !t.closest) return null;
+    return t.closest('.tl-bar');
+  }
+  document.addEventListener('click', function(e) {
+    var bar = barFrom(e);
+    if (bar) jump(bar);
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+    var bar = barFrom(e);
+    if (bar) { e.preventDefault(); jump(bar); }
+  });
+})();
+
+(function() {
   // Client-side date-range filtering over the embedded (CLI-selected) sessions.
   var dataEl = document.getElementById('tscope-data');
   if (!dataEl) return;
@@ -1061,7 +1103,7 @@ const JS = `
       var y = baselineY - barH;
       var lbl = (s.label && s.label.length > 8) ? s.label.slice(0, 8) : (s.label || '');
       var cls = 'tl-bar has-tip' + (s.inProgress ? ' in-progress' : '');
-      bars += '<rect x="' + x + '" y="' + y.toFixed(1) + '" width="' + BAR_W + '" height="' + barH.toFixed(1) + '" rx="3" class="' + cls + '" data-input="' + s.input + '" data-cacheread="' + s.cacheRead + '" data-cachewrite="' + s.cacheWrite + '" data-output="' + s.output + '" data-total="' + s.totalTokens + '"></rect>';
+      bars += '<rect x="' + x + '" y="' + y.toFixed(1) + '" width="' + BAR_W + '" height="' + barH.toFixed(1) + '" rx="3" class="' + cls + '" tabindex="0" role="button" aria-label="Jump to session ' + escH(s.label || '') + '" data-session-id="' + escH(s.id || '') + '" data-input="' + s.input + '" data-cacheread="' + s.cacheRead + '" data-cachewrite="' + s.cacheWrite + '" data-output="' + s.output + '" data-total="' + s.totalTokens + '"></rect>';
       bars += '<text x="' + (x + BAR_W / 2) + '" y="' + (baselineY + 13) + '" text-anchor="middle" class="tl-label">' + escH(lbl) + '</text>';
       if (!s.inProgress && s.totalTokens > 0) {
         bars += '<text x="' + (x + BAR_W / 2) + '" y="' + Math.max(12, y - 3).toFixed(1) + '" text-anchor="middle" class="tl-value">' + compact(s.totalTokens) + '</text>';
@@ -1073,7 +1115,7 @@ const JS = `
     var yTitleY = TOP_PAD + CHART_H / 2;
     var axes = '<text x="' + xTitleX + '" y="' + xTitleY + '" text-anchor="middle" class="axis-title">Session Id (truncated)</text>'
       + '<text x="' + yTitleX + '" y="' + yTitleY + '" text-anchor="middle" class="axis-title" transform="rotate(-90 ' + yTitleX + ' ' + yTitleY + ')">Token count</text>';
-    var style = '<style>.tl-bar { fill: #58a6ff; cursor: pointer; }.tl-bar.in-progress { fill: var(--text-muted); }.tl-label { font: 9px/1 "SF Mono","Consolas",monospace; fill: var(--text-secondary); }.tl-value { font: 10px/1 system-ui,sans-serif; fill: var(--text-muted); }.axis-title { font: 10px/1 system-ui,sans-serif; fill: var(--text-secondary); font-weight: 600; letter-spacing: .03em; }</style>';
+    var style = '<style>.tl-bar { fill: #58a6ff; cursor: pointer; transition: fill-opacity .12s ease; }.tl-bar:hover { fill-opacity: .8; }.tl-bar:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 1px; }.tl-bar.in-progress { fill: var(--text-muted); }.tl-label { font: 9px/1 "SF Mono","Consolas",monospace; fill: var(--text-secondary); }.tl-value { font: 10px/1 system-ui,sans-serif; fill: var(--text-muted); }.axis-title { font: 10px/1 system-ui,sans-serif; fill: var(--text-secondary); font-weight: 600; letter-spacing: .03em; }</style>';
     return '<svg xmlns="http://www.w3.org/2000/svg" width="' + SVG_W + '" height="' + SVG_H + '" viewBox="0 0 ' + SVG_W + ' ' + SVG_H + '" class="chart-svg timeline-svg">' + style + axes + bars + '</svg>';
   }
 

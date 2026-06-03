@@ -60,7 +60,8 @@ tscope --version    # Show version
 
 ```bash
 tscope --date 2026-06-02         # Sessions for a specific date
-tscope --range 2026-06-01 2026-06-02  # Sessions in a date range
+tscope --range 2026-06-01 2026-06-02  # Sessions in a date range (YYYY-MM-DD, inclusive)
+tscope --lastdays 7              # Sessions from the last 7 days (today + previous 6)
 tscope --all                     # All sessions (no date filter)
 ```
 

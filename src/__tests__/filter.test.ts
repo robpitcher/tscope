@@ -5,6 +5,7 @@ import {
   utcToLocalDateString,
   todayLocalDateString,
   makeDateFilter,
+  localDateNDaysAgo,
 } from "../filter";
 import { SessionRef } from "../types";
 
@@ -73,6 +74,37 @@ describe("filter", () => {
       // Either way, it should not equal today's date
       const oldDate = utcToLocalDateString("2020-01-01T12:00:00.000Z");
       expect(oldDate).not.toBe(todayLocalDateString());
+    });
+  });
+
+  // ── localDateNDaysAgo ─────────────────────────────────────────────────────
+
+  describe("localDateNDaysAgo", () => {
+    test("n = 0 returns today", () => {
+      expect(localDateNDaysAgo(0)).toBe(todayLocalDateString());
+    });
+
+    test("returns YYYY-MM-DD format", () => {
+      expect(localDateNDaysAgo(7)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+
+    test("n days ago is earlier than today", () => {
+      expect(localDateNDaysAgo(7) < todayLocalDateString()).toBe(true);
+    });
+
+    test("computes the correct calendar date n days back", () => {
+      const expected = new Date();
+      expected.setDate(expected.getDate() - 10);
+      const y = expected.getFullYear();
+      const m = String(expected.getMonth() + 1).padStart(2, "0");
+      const d = String(expected.getDate()).padStart(2, "0");
+      expect(localDateNDaysAgo(10)).toBe(`${y}-${m}-${d}`);
+    });
+
+    test("crosses month boundaries correctly", () => {
+      const result = localDateNDaysAgo(31);
+      const todayMonth = todayLocalDateString().slice(0, 7);
+      expect(result.slice(0, 7)).not.toBe(todayMonth);
     });
   });
 
