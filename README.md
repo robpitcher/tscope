@@ -2,6 +2,9 @@
 
 **GitHub Copilot session token usage analyzer.**
 
+> [!WARNING]
+> **Alpha software** — tscope is early-stage and may have bugs. Behavior, output format, and JSON schema are subject to change. Use at your own discretion, and please [report any issues](https://github.com/robpitcher/tscope/issues) you find! 🙏
+
 `tscope` is a command-line tool that reads your local Copilot CLI session files, measures tokens used per model (input, output, cache read, cache write), and displays a clear report — in the terminal, as JSON, or as an interactive HTML dashboard.
 
 ## Features
@@ -16,12 +19,26 @@
 
 ```bash
 npm install -g tscope
-tscope                  # today's sessions
-tscope --html           # generate and open an HTML dashboard
-tscope --json           # machine-readable JSON
+tscope --html # generate and open an HTML dashboard
 ```
 
 Requires **Node.js 18+**.
+
+## Command-Line Parameters
+
+| Parameter | Values | Description | Required |
+| --- | --- | --- | --- |
+| `--all` | _(none)_ | Include all sessions (disables the default date filter). | No |
+| `--date` | `YYYY-MM-DD` | Show sessions that started on the given local date. | No |
+| `--help`, `-h` | _(none)_ | Show usage and options, then exit. | No |
+| `--html` | `[FILE]` (optional path) | Write a self-contained HTML dashboard to `FILE` (or a default filename) and open it. | No |
+| `--json` | _(none)_ | Emit the report as JSON (`tscope/report/v4`) to stdout instead of formatted text. | No |
+| `--lastdays` | `N` (positive integer) | Show sessions from the last `N` days (today plus the previous `N − 1`). | No |
+| `--max` | `N` (positive integer) | After date filtering, keep only the `N` most recent sessions (ordered by start time, newest first). | No |
+| `--range` | `START END` (two `YYYY-MM-DD` values) | Show sessions in the given local-date range, inclusive. | No |
+| `--version`, `-v` | _(none)_ | Print the installed version and exit. | No |
+
+With no flags, `tscope` reports today's sessions in formatted text. Date filters (`--date`, `--range`, `--lastdays`, `--all`) are mutually exclusive. See [Usage](docs/usage.md) for full details.
 
 ## Documentation
 

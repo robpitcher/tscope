@@ -15,7 +15,7 @@ tscope
 ## From Source
 
 ```bash
-git clone https://github.com/devjoy-pub/tscope.git
+git clone https://github.com/robpitcher/tscope.git
 cd tscope
 npm install
 npm run build

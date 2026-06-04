@@ -149,3 +149,12 @@ npm i -g .         # global install → tscope command
 - `npm ci --no-fund --no-audit` for clean, deterministic install logs in CI
 - 10-minute job timeout is generous for the current suite; tighten if suite grows significantly
 - Matrix strategy on Node versions catches version-specific regressions at low cost (parallel runners)
+
+### 2026-06-03 — Repository URL Migration (Trinity Lead)
+
+Trinity completed migration of canonical repository URL from `devjoy-pub/tscope` to `robpitcher/tscope`. All in-repo references updated including critical `src/render/HtmlRenderer.ts` REPO_URL constant that drives HTML report links. Build clean, 236 tests passing. See `.squad/decisions/decisions.md` for full scope.
+
+### 2026-06-04 — Distribution Model Analysis Complete (Trinity Lead)
+
+Trinity validated D2 (npm as primary distribution channel) against comprehensive analysis of Copilot CLI plugin model and gh CLI extensions. **Outcome: D2 confirmed, no amendment.** Copilot plugins are wrong architectural fit for standalone binary. gh-tscope extension viable as secondary channel post-v1.0 if reach expansion justifies cross-platform binary pipeline. Decision merged to decisions.md. Future horizon noted: add gh-tscope extension + precompiled binaries (win/mac/linux, amd64/arm64) post-v1.0, conditional on market demand.
+

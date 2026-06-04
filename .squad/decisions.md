@@ -144,8 +144,76 @@
 
 **Dependency convention:** Issues use `Depends on #N` labels; `ready` label for startable tasks, `blocked` for waiting tasks
 
+## Decision: Alpha Disclaimer in README
+
+**Author:** Trinity  
+**Date:** 2026-06-03  
+**Status:** Active
+
+**Decision:** Added a `> [!WARNING]` GitHub-flavored markdown alert block after the one-line tagline and before the description paragraph.
+
+**Context:** README needs to communicate that tscope is alpha-stage software with expected bugs and potential schema changes.
+
+**Wording:** Bold "Alpha software" lead with single sentence covering early-stage status, bug expectations, schema-may-change caveat, and link to issues page. Tone kept friendly with 🙏 emoji.
+
+**Placement:** Immediately after tagline, before prose description — first substantive thing reader sees without overshadowing project name.
+
+## Decision: NPM Publishing Strategy
+
+**Author:** Trinity  
+**Date:** 2026-06-03  
+**Status:** Active
+
+**Decision:** Stick with npmjs.org as the sole registry for alpha and beyond.
+
+**Rationale:** GitHub Packages requires scoped package names and consumer `.npmrc`+auth, adding friction to `npm i -g tscope` with zero user benefit. npmjs.org is zero-friction default registry. Package name already claimed on npmjs.org (v0.3.0, same project). D2 distribution model ("one npm command") requires npmjs.org.
+
+**When this could change:** Org-internal pivot, GitHub-only enterprise demand, or scoped `@robpitcher/tscope` variant desired. Future trigger-based decision only.
+
+**Action items:** Publishing workflow should target npmjs.org with `NPM_TOKEN`. Do NOT add `publishConfig.registry` pointing to GitHub Packages.
+
 ## Governance
 
 - All meaningful changes require team consensus
 - Document architectural decisions here
 - Keep history focused on work, decisions focused on direction
+
+## Decision: Distribution Model Analysis — npm vs Copilot Plugin vs gh Extension
+
+**Author:** Trinity (Lead/Architect)  
+**Date:** 2026-06-03  
+**Status:** Decision — D2 CONFIRMED (no amendment)  
+**Requested by:** robpitcher  
+
+### Summary
+
+Comprehensive analysis of three potential distribution channels: npm (primary), Copilot CLI plugins (rejected), and gh CLI extensions (secondary, post-v1.0).
+
+### Recommendation: Primary path is npm (`npm i -g tscope`). D2 stands unchanged.
+
+**Key findings:**
+
+- **npm:** Lowest friction (target users have Node), perfect distribution fit, D5 renderers leverage npm/Node ecosystem, already live at v0.3.0 with 236 tests passing. **Primary channel — no change to D2.**
+
+- **Copilot CLI plugin:** Fundamentally wrong architectural fit. Plugins extend the Copilot CLI's agentic experience (agents, skills, hooks, MCP servers). tscope is a standalone reporting CLI that reads local files and exits. No architectural overlap. **Do not pursue.**
+
+- **gh CLI extension:** Valid architecture (`gh tscope ...` via precompiled binary), but adds zero value for tscope's local-only workflow. Requires `gh` CLI dependency (not universally present like Node for Copilot users). **Valid as secondary channel only — post-v1.0, conditional on market reach justification.**
+
+### D2 Amendment Language
+
+**No amendment.** D2 stands as written: *"tscope will be built in Node.js / TypeScript, distributed via npm i -g tscope."*
+
+### Future Option: gh-tscope Extension (Post-v1.0)
+
+If market conditions justify broadening reach to GitHub-native tooling users:
+1. Create `gh-tscope` repo (separate or monorepo)
+2. Build cross-platform binary pipeline (GitHub Actions matrix: win/mac/linux × amd64/arm64) via `pkg` or `ncc`
+3. Publish releases with precompiled binaries
+4. Users invoke: `gh extension install robpitcher/gh-tscope` → `gh tscope [options]`
+
+Preconditions:
+- v1.0 stable (schema and CLI flags locked)
+- Binary size acceptable (pkg bundles Node runtime; ~80–100MB)
+- Market demand validated
+
+This is an additive channel, not a replacement. Both paths can coexist.

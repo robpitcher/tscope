@@ -1,6 +1,6 @@
 # Contributing
 
-Found a bug or have a feature request? [Open an issue on GitHub](https://github.com/devjoy-pub/tscope/issues).
+Found a bug or have a feature request? [Open an issue on GitHub](https://github.com/robpitcher/tscope/issues).
 
 Pull requests are welcome. For local development setup, see [Development](development.md).
 

@@ -53,26 +53,40 @@ export function localDateNDaysAgo(n: number): string {
 }
 
 /**
- * Resolves the local date string for a SessionRef, using the session start time
- * (or, absent a session.start event, the first event's timestamp) from the
- * events file, falling back to file mtime only when no event carries a
- * timestamp, and emitting a stderr warning on failure.
+ * Resolves the best-available ISO timestamp for a SessionRef, preferring the
+ * session.start (or first event) timestamp from events.jsonl, then falling
+ * back to file mtime. Returns null only when neither source is available.
+ * Emits a stderr warning on the terminal failure case.
+ *
+ * Shared by date-filter predicates and recency-based selection so that the
+ * two stay in sync about how a session's time is determined.
  */
-async function resolveSessionLocalDate(ref: SessionRef): Promise<string | null> {
+async function resolveSessionIsoTime(ref: SessionRef): Promise<string | null> {
   const startTime = await readSessionStartOrFirstEventTime(ref.eventsPath);
   if (startTime !== null) {
-    return utcToLocalDateString(startTime);
+    return startTime;
   }
   try {
     const { statSync } = await import("fs");
     const stat = statSync(ref.eventsPath);
-    return utcToLocalDateString(stat.mtime.toISOString());
+    return stat.mtime.toISOString();
   } catch {
     process.stderr.write(
       `Warning: could not determine date for session ${ref.sessionId} — skipping\n`
     );
     return null;
   }
+}
+
+/**
+ * Resolves the local date string for a SessionRef, built on top of
+ * resolveSessionIsoTime so date filtering and recency selection agree on
+ * which timestamp represents a session.
+ */
+async function resolveSessionLocalDate(ref: SessionRef): Promise<string | null> {
+  const iso = await resolveSessionIsoTime(ref);
+  if (iso === null) return null;
+  return utcToLocalDateString(iso);
 }
 
 /**
@@ -103,4 +117,36 @@ export function makeRangeDateFilter(startDate: string, endDate: string) {
     if (sessionDate === null) return false;
     return sessionDate >= startDate && sessionDate <= endDate;
   };
+}
+
+/**
+ * Returns the `max` most recent ParsedSessions ordered by startTime
+ * descending (most recent first). Ties (and sessions with unparseable
+ * startTimes) are broken deterministically by sessionId ascending so output
+ * is stable across runs.
+ *
+ * Pure and synchronous — caller is expected to pre-filter to the set of
+ * sessions that should count toward the limit (e.g. those with token data).
+ */
+export function selectMostRecentSessions<T extends { startTime: string; sessionId: string }>(
+  sessions: T[],
+  max: number
+): T[] {
+  if (max <= 0 || sessions.length === 0) return [];
+  const indices = sessions.map((_, i) => i);
+  indices.sort((a, b) => {
+    const ta = Date.parse(sessions[a].startTime);
+    const tb = Date.parse(sessions[b].startTime);
+    const aValid = Number.isFinite(ta);
+    const bValid = Number.isFinite(tb);
+    // Sessions with unparseable startTimes sort to the end.
+    if (!aValid && !bValid) {
+      return sessions[a].sessionId.localeCompare(sessions[b].sessionId);
+    }
+    if (!aValid) return 1;
+    if (!bValid) return -1;
+    if (tb !== ta) return tb - ta; // descending by time
+    return sessions[a].sessionId.localeCompare(sessions[b].sessionId);
+  });
+  return indices.slice(0, max).map((i) => sessions[i]);
 }

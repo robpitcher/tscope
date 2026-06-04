@@ -24,6 +24,21 @@ tscope --lastdays 7                   # Sessions from the last 7 days (today + p
 tscope --all                          # All sessions (no date filter)
 ```
 
+## Limiting Result Size
+
+`--max N` caps the report to the `N` most recent sessions within the matched
+set. Sessions are ordered by start time (newest first) before the cap is
+applied, so you always get the latest activity:
+
+```bash
+tscope --lastdays 30 --max 10         # 10 most recent sessions in the last 30 days
+tscope --all --max 25                 # 25 most recent sessions overall
+```
+
+`N` must be a positive integer. When fewer than `N` sessions match the filter,
+the report includes them all. `--max` composes with every date filter
+(`--date`, `--range`, `--lastdays`, `--all`, or the default "today").
+
 ### How a session's date is determined
 
 Sessions are bucketed by their **start date** — the timestamp of the `session.start` event (or, for sessions without one, the timestamp of the first recorded event), converted to your local timezone. A session is only counted on the day it *started*.
