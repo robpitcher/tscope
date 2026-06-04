@@ -19,9 +19,7 @@
 
 ```bash
 npm install -g tscope
-tscope                  # today's sessions
 tscope --html           # generate and open an HTML dashboard
-tscope --json           # machine-readable JSON
 ```
 
 Requires **Node.js 18+**.
