@@ -10,7 +10,7 @@
 - 🔍 **Per-session breakdown** — view token usage by session and model
 - 📅 **Today's default** — shows current day's sessions by default
 - 📈 **HTML dashboard** — sleek dashboard with token charts, an interactive date-range filter, and system light/dark theme
-- 📤 **JSON output** — machine-readable schema (`tscope/report/v3`) for scripting
+- 📤 **JSON output** — machine-readable schema (`tscope/report/v4`) for scripting
 
 ## Quick Start
 
@@ -30,7 +30,7 @@ Full documentation lives in the [`docs/`](docs/) folder:
 - [Installation](docs/installation.md)
 - [Usage](docs/usage.md) — CLI flags, date filtering, output formats, sample output
 - [How It Works](docs/how-it-works.md) — session discovery, token accounting, resumed sessions
-- [JSON Output](docs/json-output.md) — `tscope/report/v3` schema reference
+- [JSON Output](docs/json-output.md) — `tscope/report/v4` schema reference
 - [HTML Dashboard](docs/html-dashboard.md) — dashboard features, Chronicle Insights, interactive date filter
 - [Development](docs/development.md) — build, test, lint, project structure
 - [Contributing](docs/contributing.md) — roadmap, license

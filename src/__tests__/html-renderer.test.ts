@@ -44,7 +44,6 @@ const SAMPLE_SESSION: ParsedSession = {
       reasoningTokens: 0,
     },
   },
-  totalPremiumRequests: 5,
   chronicleTips: [],
   inProgress: false,
 };
@@ -154,12 +153,12 @@ describe("HtmlRenderer", () => {
       expect(html).toContain("claude-haiku-4-5");
     });
 
-    test("includes in-progress session id", () => {
+    test("excludes in-progress session id (silently dropped)", () => {
       const html = renderToString(
         { ...EMPTY_REPORT, inProgressSessions: [SAMPLE_IN_PROGRESS] },
         "html-test-in-progress.html"
       );
-      expect(html).toContain(SAMPLE_IN_PROGRESS.sessionId);
+      expect(html).not.toContain(SAMPLE_IN_PROGRESS.sessionId);
     });
 
     test("includes filter description", () => {
@@ -301,20 +300,6 @@ describe("HtmlRenderer", () => {
       );
       expect(html).toContain(SAMPLE_SESSION.sessionId);
       expect(html).toContain(session2.sessionId);
-    });
-  });
-
-  describe("premium requests are not rendered", () => {
-    test("does not show premium chip even when totalPremiumRequests is set", () => {
-      const premiumSession: ParsedSession = {
-        ...SAMPLE_SESSION,
-        totalPremiumRequests: 5,
-      };
-      const html = renderToString(
-        { ...EMPTY_REPORT, sessions: [premiumSession] },
-        "html-test-no-premium.html"
-      );
-      expect(html).not.toContain("premium req");
     });
   });
 
@@ -534,7 +519,7 @@ describe("HtmlRenderer", () => {
       return JSON.parse(m[1]) as HtmlPayload;
     }
 
-    test("embeds a JSON payload with per-session token data", () => {
+    test("embeds a JSON payload with per-session token data (in-progress excluded)", () => {
       const html = renderToString(
         {
           ...EMPTY_REPORT,
@@ -547,7 +532,8 @@ describe("HtmlRenderer", () => {
       expect(data.reportDate).toBe("2026-06-02");
       expect(typeof data.generatedAtIso).toBe("string");
       expect(Array.isArray(data.sessions)).toBe(true);
-      expect(data.sessions).toHaveLength(2);
+      // In-progress sessions are silently excluded — only the completed one remains.
+      expect(data.sessions).toHaveLength(1);
 
       const done = data.sessions.find((s) => !s.inProgress);
       if (!done) throw new Error("completed session not found");
@@ -559,10 +545,9 @@ describe("HtmlRenderer", () => {
       expect(done.input).toBe(500);
       expect(done.cacheRead).toBe(700);
 
-      const live = data.sessions.find((s) => s.inProgress);
-      if (!live) throw new Error("in-progress session not found");
-      expect(live.id).toBe(SAMPLE_IN_PROGRESS.sessionId);
-      expect(live.totalTokens).toBe(0);
+      // The in-progress session must not appear anywhere in the payload.
+      expect(data.sessions.find((s) => s.inProgress)).toBeUndefined();
+      expect(data.sessions.find((s) => s.id === SAMPLE_IN_PROGRESS.sessionId)).toBeUndefined();
     });
 
     test("renders an interactive date-range picker in the header", () => {
@@ -581,7 +566,7 @@ describe("HtmlRenderer", () => {
       expect(html).toContain('id="range-apply"');
     });
 
-    test("tags each session card with its session id for filtering", () => {
+    test("tags each session card with its session id (in-progress excluded)", () => {
       const html = renderToString(
         {
           ...EMPTY_REPORT,
@@ -591,7 +576,8 @@ describe("HtmlRenderer", () => {
         "html-test-card-ids.html"
       );
       expect(html).toContain(`data-session-id="${SAMPLE_SESSION.sessionId}"`);
-      expect(html).toContain(`data-session-id="${SAMPLE_IN_PROGRESS.sessionId}"`);
+      // In-progress sessions are silently excluded from the HTML.
+      expect(html).not.toContain(`data-session-id="${SAMPLE_IN_PROGRESS.sessionId}"`);
     });
 
     test("wraps the timeline in a host element for re-rendering", () => {
@@ -637,6 +623,91 @@ describe("HtmlRenderer", () => {
       // Parsing still recovers the original id.
       const data = extractPayload(html);
       expect(data.sessions[0].id).toBe("a</script><b");
+    });
+  });
+
+  describe("zero-token completed sessions are silently excluded", () => {
+    const EMPTY_MODELS_SESSION: ParsedSession = {
+      sessionId: "zero-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      eventsPath: "/home/user/.copilot/session-state/zero/events.jsonl",
+      startTime: "2026-06-02T19:00:00.000Z",
+      models: {},
+      chronicleTips: [],
+      inProgress: false,
+    };
+
+    const ALL_ZERO_SESSION: ParsedSession = {
+      sessionId: "zzz-11111111-2222-3333-4444-555555555555",
+      eventsPath: "/home/user/.copilot/session-state/zzz/events.jsonl",
+      startTime: "2026-06-02T19:30:00.000Z",
+      models: {
+        "claude-opus": {
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          reasoningTokens: 0,
+        },
+      },
+      chronicleTips: [],
+      inProgress: false,
+    };
+
+    function extractPayload(html: string): { sessions: Array<{ id: string }> } {
+      const m = html.match(
+        /<script id="tscope-data" type="application\/json">([\s\S]*?)<\/script>/
+      );
+      if (!m) throw new Error("data payload script not found");
+      return JSON.parse(m[1]);
+    }
+
+    test("session with empty models map has no card or bar in the HTML", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [EMPTY_MODELS_SESSION] },
+        "html-test-zero-empty-models.html"
+      );
+      expect(html).not.toContain(EMPTY_MODELS_SESSION.sessionId);
+    });
+
+    test("session with all-zero token counts has no card or bar in the HTML", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [ALL_ZERO_SESSION] },
+        "html-test-zero-all-zero.html"
+      );
+      expect(html).not.toContain(ALL_ZERO_SESSION.sessionId);
+    });
+
+    test("mixed report keeps the real session and drops the zero-token one", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION, EMPTY_MODELS_SESSION] },
+        "html-test-zero-mixed.html"
+      );
+      expect(html).toContain(SAMPLE_SESSION.sessionId);
+      expect(html).not.toContain(EMPTY_MODELS_SESSION.sessionId);
+      const data = extractPayload(html);
+      expect(data.sessions).toHaveLength(1);
+      expect(data.sessions[0].id).toBe(SAMPLE_SESSION.sessionId);
+    });
+  });
+
+  describe("timeline bar click highlights the target card persistently", () => {
+    test("emits a persistent .session-card--selected CSS rule", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-selected-css.html"
+      );
+      expect(html).toContain(".session-card--selected");
+    });
+
+    test("the bar-click script adds session-card--selected to the target card", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-selected-js.html"
+      );
+      // The script applies the class on click.
+      expect(html).toContain("classList.add('session-card--selected')");
+      // And clears it when the user clicks outside the selected card.
+      expect(html).toContain("clearSelection");
     });
   });
 });

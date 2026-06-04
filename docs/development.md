@@ -14,7 +14,7 @@ tscope/
 │   ├── render/
 │   │   ├── Renderer.ts       # Renderer interface
 │   │   ├── TextRenderer.ts   # Text output implementation
-│   │   ├── JsonRenderer.ts   # JSON output (schema v3)
+│   │   ├── JsonRenderer.ts   # JSON output (schema v4)
 │   │   └── HtmlRenderer.ts   # HTML dashboard
 │   └── __tests__/            # Unit and integration tests
 ├── docs/                     # Documentation (you are here)

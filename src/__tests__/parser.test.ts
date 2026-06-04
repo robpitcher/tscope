@@ -64,7 +64,6 @@ describe("parser", () => {
     expect(session.models["claude-opus-4.7"].outputTokens).toBe(2272);
     expect(session.models["claude-opus-4.7"].cacheReadTokens).toBe(155776);
     expect(session.models["claude-opus-4.7"].cacheWriteTokens).toBe(87988);
-    expect(session.totalPremiumRequests).toBe(7.5);
   });
 
   test("parses multi-model session", async () => {
@@ -158,14 +157,6 @@ describe("parser", () => {
       expect(t.cacheReadTokens).toBe(422147); // 371888 + 50259
       expect(t.cacheWriteTokens).toBe(102074); // 51689 + 50385
       expect(t.reasoningTokens).toBe(1547); // 1547 + 0
-    });
-
-    test("sums totalPremiumRequests across all shutdowns", async () => {
-      const eventsPath = writeTempEvents(tmpDir, [sessionStart, run1, resume, run2]);
-      const session = await parseEventsFile("resumed", eventsPath);
-      expect(session.inProgress).toBe(false);
-      if (session.inProgress) return;
-      expect(session.totalPremiumRequests).toBe(45); // 15 + 30
     });
 
     test("merges models that appear in only one run", async () => {
@@ -281,7 +272,7 @@ describe("parser", () => {
   test("shutdown with empty modelMetrics produces empty models dict", async () => {
     const emptyMetricsShutdown = {
       type: "session.shutdown",
-      data: { totalPremiumRequests: 0, modelMetrics: {} },
+      data: { modelMetrics: {} },
       timestamp: "2026-06-02T23:06:00.000Z",
     };
     const eventsPath = writeTempEvents(tmpDir, [sessionStart, emptyMetricsShutdown]);
@@ -289,7 +280,6 @@ describe("parser", () => {
     expect(session.inProgress).toBe(false);
     if (session.inProgress) return;
     expect(Object.keys(session.models)).toHaveLength(0);
-    expect(session.totalPremiumRequests).toBe(0);
   });
 
   test("shutdown with null usage for a model defaults all token counts to 0", async () => {
@@ -326,19 +316,6 @@ describe("parser", () => {
     expect(session.inProgress).toBe(false);
     if (session.inProgress) return;
     expect(session.models["claude-opus-4.7"].inputTokens).toBe(243772);
-  });
-
-  test("totalPremiumRequests defaults to 0 when missing from shutdown", async () => {
-    const shutdownNoPremium = {
-      type: "session.shutdown",
-      data: { modelMetrics: {} },
-      timestamp: "2026-06-02T23:06:00.000Z",
-    };
-    const eventsPath = writeTempEvents(tmpDir, [sessionStart, shutdownNoPremium]);
-    const session = await parseEventsFile("no-premium", eventsPath);
-    expect(session.inProgress).toBe(false);
-    if (session.inProgress) return;
-    expect(session.totalPremiumRequests).toBe(0);
   });
 
   test("only uses first session.start found (ignores subsequent ones)", async () => {

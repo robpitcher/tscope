@@ -5,6 +5,7 @@ import {
   tokenPartition,
   emptyTokenCounts,
   addTokenCounts,
+  hasTokenData,
 } from "../tokens";
 
 /** Build a TokenCounts with sensible zero defaults */
@@ -88,6 +89,42 @@ describe("tokens", () => {
       addTokenCounts(a, b);
       expect(a.inputTokens).toBe(1);
       expect(b.inputTokens).toBe(2);
+    });
+  });
+
+  describe("hasTokenData", () => {
+    test("returns false for an empty models map", () => {
+      expect(hasTokenData({})).toBe(false);
+    });
+
+    test("returns false when every model has all-zero token counts", () => {
+      expect(
+        hasTokenData({
+          "claude-opus": emptyTokenCounts(),
+          "claude-haiku": emptyTokenCounts(),
+        })
+      ).toBe(false);
+    });
+
+    test("returns true when any model has non-zero input", () => {
+      expect(hasTokenData({ "claude-opus": tc({ inputTokens: 1 }) })).toBe(true);
+    });
+
+    test("returns true when any model has non-zero output", () => {
+      expect(hasTokenData({ "claude-opus": tc({ outputTokens: 1 }) })).toBe(true);
+    });
+
+    test("ignores reasoning-only models (not billable)", () => {
+      expect(hasTokenData({ "claude-opus": tc({ reasoningTokens: 999 }) })).toBe(false);
+    });
+
+    test("returns true if at least one model among many has data", () => {
+      expect(
+        hasTokenData({
+          empty: emptyTokenCounts(),
+          real: tc({ inputTokens: 5, outputTokens: 3 }),
+        })
+      ).toBe(true);
     });
   });
 });

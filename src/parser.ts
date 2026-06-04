@@ -45,7 +45,6 @@ interface RawModelMetrics {
 interface RawSessionShutdown {
   type: "session.shutdown";
   data: {
-    totalPremiumRequests?: number;
     sessionStartTime?: number;
     modelMetrics?: Record<string, RawModelMetrics>;
   };
@@ -245,14 +244,12 @@ export async function parseEventsFile(
     return inProgress;
   }
 
-  // Sum per-model usage and premium requests across ALL shutdowns. A resumed
-  // session has one shutdown per run, each reporting only that run's metrics,
-  // so the cumulative session totals are the sum across runs.
+  // Sum per-model usage across ALL shutdowns. A resumed session has one
+  // shutdown per run, each reporting only that run's metrics, so the
+  // cumulative session totals are the sum across runs.
   const models: Record<string, TokenCounts> = {};
-  let totalPremiumRequests = 0;
 
   for (const shutdown of shutdownEvents) {
-    totalPremiumRequests += shutdown.data?.totalPremiumRequests ?? 0;
     const rawMetrics = shutdown.data?.modelMetrics ?? {};
     for (const [modelName, metrics] of Object.entries(rawMetrics)) {
       if (typeof modelName === "string" && metrics && typeof metrics === "object") {
@@ -269,7 +266,6 @@ export async function parseEventsFile(
     eventsPath,
     startTime: startTime ?? shutdownEvents[0].timestamp ?? new Date(0).toISOString(),
     models,
-    totalPremiumRequests,
     chronicleTips,
     inProgress: false,
   };

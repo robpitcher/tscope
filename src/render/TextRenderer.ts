@@ -1,5 +1,5 @@
-import { Report, ParsedSession, InProgressSession, TokenCounts } from "../types";
-import { tokenPartition, totalTokens } from "../tokens";
+import { Report, ParsedSession, TokenCounts } from "../types";
+import { tokenPartition, totalTokens, hasTokenData } from "../tokens";
 import { Renderer } from "./Renderer";
 
 const HEAVY = "═".repeat(79);
@@ -90,34 +90,19 @@ function renderSessionBlock(session: ParsedSession): string {
   return lines.join("\n");
 }
 
-function renderInProgressBlock(session: InProgressSession): string {
-  const lines: string[] = [];
-  lines.push(HEAVY);
-  lines.push(`SESSION: ${session.sessionId}`);
-  if (session.startTime) {
-    lines.push(`Date:    ${toLocalDateTimeStr(session.startTime)}`);
-  }
-  lines.push(`Path:    ${session.eventsPath}`);
-  lines.push(LIGHT);
-  lines.push("  [IN PROGRESS — no token data]");
-  lines.push(HEAVY);
-  return lines.join("\n");
-}
-
 /**
  * TextRenderer — renders the report to stdout in plain text format.
+ *
+ * Silently excludes sessions with no billable token activity, matching the
+ * behavior of the JSON and HTML renderers:
+ *   1. In-progress sessions (no shutdown event)
+ *   2. Completed sessions whose shutdown event recorded no input/output tokens
+ *      (empty `modelMetrics` or all-zero counts across every model)
  */
 export class TextRenderer implements Renderer {
   render(report: Report): void {
-    const allSessions: string[] = [];
-
-    for (const session of report.sessions) {
-      allSessions.push(renderSessionBlock(session));
-    }
-
-    for (const inProgress of report.inProgressSessions) {
-      allSessions.push(renderInProgressBlock(inProgress));
-    }
+    const sessionsWithData = report.sessions.filter((s) => hasTokenData(s.models));
+    const allSessions: string[] = sessionsWithData.map(renderSessionBlock);
 
     if (allSessions.length === 0) {
       process.stdout.write(`No sessions found for ${report.filterDescription}.\n`);
@@ -128,7 +113,7 @@ export class TextRenderer implements Renderer {
       process.stdout.write(block + "\n\n");
     }
 
-    const totalSessions = report.sessions.length + report.inProgressSessions.length;
+    const totalSessions = sessionsWithData.length;
     process.stdout.write(`SUMMARY: ${totalSessions} session${totalSessions !== 1 ? "s" : ""}\n`);
   }
 }

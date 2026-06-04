@@ -1,6 +1,6 @@
 /**
  * Tests for JsonRenderer — verifies JSON shape, field types, and edge cases.
- * Schema: tscope/report/v3 (totalTokens = input+output; cache is part of input)
+ * Schema: tscope/report/v4 (totalTokens = input+output; cache is part of input)
  */
 
 import { JsonRenderer } from "../render/JsonRenderer";
@@ -51,7 +51,6 @@ const SAMPLE_SESSION: ParsedSession = {
       reasoningTokens: 0,
     },
   },
-  totalPremiumRequests: 5,
   chronicleTips: [],
   inProgress: false,
 };
@@ -80,9 +79,9 @@ describe("JsonRenderer", () => {
   });
 
   describe("top-level schema fields", () => {
-    test("includes schema field with v3 value", () => {
+    test("includes schema field with v4 value", () => {
       const out = captureJson(EMPTY_REPORT);
-      expect(out.schema).toBe("tscope/report/v3");
+      expect(out.schema).toBe("tscope/report/v4");
     });
 
     test("includes generatedAt as ISO 8601 UTC string", () => {
@@ -132,16 +131,17 @@ describe("JsonRenderer", () => {
       expect(out.summary.hasUnknownRates).toBeUndefined();
     });
 
-    test("counts completed and in-progress correctly", () => {
+    test("in-progress sessions are silently excluded from counts", () => {
       const report: Report = {
         ...EMPTY_REPORT,
         sessions: [SAMPLE_SESSION],
         inProgressSessions: [SAMPLE_IN_PROGRESS],
       };
       const out = captureJson(report);
-      expect(out.summary.sessionCount).toBe(2);
+      // In-progress sessions are dropped entirely; only completed are counted.
+      expect(out.summary.sessionCount).toBe(1);
       expect(out.summary.completedCount).toBe(1);
-      expect(out.summary.inProgressCount).toBe(1);
+      expect(out.summary.inProgressCount).toBe(0);
     });
 
     test("totalTokens sums input+output across sessions (cache is part of input)", () => {
@@ -190,8 +190,8 @@ describe("JsonRenderer", () => {
       expect(sessionOut.inProgress).toBe(false);
     });
 
-    test("session has premiumRequests field", () => {
-      expect(sessionOut.premiumRequests).toBe(5);
+    test("session does not include a premiumRequests field", () => {
+      expect(sessionOut.premiumRequests).toBeUndefined();
     });
 
     test("session has correct number of models", () => {
@@ -234,43 +234,35 @@ describe("JsonRenderer", () => {
     });
   });
 
-  describe("in-progress session shape", () => {
-    let sessionOut: ReturnType<typeof JSON.parse>;
-
-    beforeEach(() => {
+  describe("in-progress sessions are silently excluded", () => {
+    test("in-progress-only report produces empty sessions array", () => {
       const report: Report = {
         ...EMPTY_REPORT,
         inProgressSessions: [SAMPLE_IN_PROGRESS],
       };
       const out = captureJson(report);
-      sessionOut = out.sessions[0];
+      expect(out.sessions).toEqual([]);
+      expect(out.summary.sessionCount).toBe(0);
+      expect(out.summary.completedCount).toBe(0);
+      expect(out.summary.inProgressCount).toBe(0);
     });
 
-    test("sessionId is correct", () => {
-      expect(sessionOut.sessionId).toBe(SAMPLE_IN_PROGRESS.sessionId);
+    test("mixed report omits in-progress entries from sessions[]", () => {
+      const report: Report = {
+        ...EMPTY_REPORT,
+        sessions: [SAMPLE_SESSION],
+        inProgressSessions: [SAMPLE_IN_PROGRESS],
+      };
+      const out = captureJson(report);
+      expect(out.sessions).toHaveLength(1);
+      expect(out.sessions[0].sessionId).toBe(SAMPLE_SESSION.sessionId);
+      expect(out.sessions[0].inProgress).toBe(false);
+      // No entry should match the in-progress session id.
+      const ids = (out.sessions as Array<{ sessionId: string }>).map((s) => s.sessionId);
+      expect(ids).not.toContain(SAMPLE_IN_PROGRESS.sessionId);
     });
 
-    test("inProgress is true", () => {
-      expect(sessionOut.inProgress).toBe(true);
-    });
-
-    test("models array is empty", () => {
-      expect(sessionOut.models).toEqual([]);
-    });
-
-    test("totals are zeroed", () => {
-      expect(sessionOut.totals.input).toBe(0);
-    });
-
-    test("premiumRequests is null for in-progress session", () => {
-      expect(sessionOut.premiumRequests).toBeNull();
-    });
-
-    test("startTime is ISO string when available", () => {
-      expect(sessionOut.startTime).toBe(SAMPLE_IN_PROGRESS.startTime);
-    });
-
-    test("in-progress session with no startTime has null startTime and localDateTime", () => {
+    test("in-progress session with no startTime is also excluded", () => {
       const noStart: InProgressSession = {
         sessionId: "no-start",
         eventsPath: "/some/path",
@@ -283,21 +275,20 @@ describe("JsonRenderer", () => {
         inProgressSessions: [noStart],
       };
       const out = captureJson(report);
-      expect(out.sessions[0].startTime).toBeNull();
-      expect(out.sessions[0].localDateTime).toBeNull();
+      expect(out.sessions).toEqual([]);
     });
   });
 
   describe("sessions array ordering", () => {
-    test("completed sessions appear before in-progress sessions", () => {
+    test("only completed sessions appear; in-progress are excluded", () => {
       const report: Report = {
         ...EMPTY_REPORT,
         sessions: [SAMPLE_SESSION],
         inProgressSessions: [SAMPLE_IN_PROGRESS],
       };
       const out = captureJson(report);
+      expect(out.sessions).toHaveLength(1);
       expect(out.sessions[0].inProgress).toBe(false);
-      expect(out.sessions[1].inProgress).toBe(true);
     });
   });
 
@@ -321,14 +312,13 @@ describe("JsonRenderer", () => {
     });
   });
 
-  describe("zero-token session", () => {
-    test("session with no models has zero totalTokens contribution", () => {
+  describe("sessions with no token data are silently excluded", () => {
+    test("completed session with empty models map is excluded", () => {
       const emptyModelsSession: ParsedSession = {
         sessionId: "empty-models",
         eventsPath: "/some/path",
         startTime: "2026-06-02T20:00:00.000Z",
         models: {},
-        totalPremiumRequests: 0,
         chronicleTips: [],
         inProgress: false,
       };
@@ -337,8 +327,55 @@ describe("JsonRenderer", () => {
         sessions: [emptyModelsSession],
       };
       const out = captureJson(report);
+      expect(out.sessions).toEqual([]);
+      expect(out.summary.sessionCount).toBe(0);
+      expect(out.summary.completedCount).toBe(0);
       expect(out.summary.totalTokens).toBe(0);
-      expect(out.sessions[0].premiumRequests).toBe(0);
+    });
+
+    test("completed session with all-zero token counts is excluded", () => {
+      const zeroSession: ParsedSession = {
+        sessionId: "all-zero",
+        eventsPath: "/some/path",
+        startTime: "2026-06-02T20:00:00.000Z",
+        models: {
+          "claude-opus": {
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            reasoningTokens: 0,
+          },
+        },
+        chronicleTips: [],
+        inProgress: false,
+      };
+      const report: Report = {
+        ...EMPTY_REPORT,
+        sessions: [zeroSession],
+      };
+      const out = captureJson(report);
+      expect(out.sessions).toEqual([]);
+      expect(out.summary.completedCount).toBe(0);
+    });
+
+    test("mixed report drops empty session but keeps session with real data", () => {
+      const emptyModelsSession: ParsedSession = {
+        sessionId: "empty-models",
+        eventsPath: "/some/path",
+        startTime: "2026-06-02T20:00:00.000Z",
+        models: {},
+        chronicleTips: [],
+        inProgress: false,
+      };
+      const report: Report = {
+        ...EMPTY_REPORT,
+        sessions: [SAMPLE_SESSION, emptyModelsSession],
+      };
+      const out = captureJson(report);
+      expect(out.sessions).toHaveLength(1);
+      expect(out.sessions[0].sessionId).toBe(SAMPLE_SESSION.sessionId);
+      expect(out.summary.completedCount).toBe(1);
     });
   });
 });

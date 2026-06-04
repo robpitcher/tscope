@@ -19,7 +19,7 @@
 
 import * as fs from "fs";
 import { Report, ParsedSession, InProgressSession, TokenCounts, ChronicleTip } from "../types";
-import { tokenPartition, totalTokens } from "../tokens";
+import { tokenPartition, totalTokens, hasTokenData } from "../tokens";
 import { Renderer } from "./Renderer";
 
 /** Public repository URL, surfaced in the header logo link and footer. */
@@ -805,6 +805,13 @@ button.filter-badge:hover { background: var(--border); color: var(--text-primary
   .session-card--flash { animation-duration: .01ms; }
 }
 
+/* Persistent selection ring applied when the user activates a timeline bar.
+   Stays until the user clicks outside the card (or selects a different one). */
+.session-card--selected {
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 1px var(--accent-blue);
+}
+
 .session-header {
   display: flex;
   align-items: flex-start;
@@ -1235,13 +1242,22 @@ const JS = `
 })();
 
 (function() {
-  // Click (or keyboard-activate) a timeline bar to jump to that session's card and flash it.
+  // Click (or keyboard-activate) a timeline bar to jump to that session's card,
+  // briefly flash it, AND apply a persistent selection ring that stays until
+  // the user clicks somewhere outside the selected card (or activates another
+  // bar, which moves the selection).
+  function clearSelection() {
+    var prev = document.querySelectorAll('.session-card--selected');
+    for (var i = 0; i < prev.length; i++) prev[i].classList.remove('session-card--selected');
+  }
   function jump(bar) {
     var sid = bar.getAttribute('data-session-id');
     if (!sid) return;
     var card = document.querySelector('.session-card[data-session-id="' + sid + '"]');
     if (!card || card.style.display === 'none') return;
     if (card.scrollIntoView) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    clearSelection();
+    card.classList.add('session-card--selected');
     card.classList.remove('session-card--flash');
     void card.offsetWidth; // restart the animation if re-triggered
     card.classList.add('session-card--flash');
@@ -1253,9 +1269,18 @@ const JS = `
   }
   document.addEventListener('click', function(e) {
     var bar = barFrom(e);
-    if (bar) jump(bar);
+    if (bar) { jump(bar); return; }
+    // Click was outside any timeline bar — clear selection if the click was
+    // also outside the currently selected card. Clicks inside the selected
+    // card preserve the highlight so users can interact with the card content.
+    var selected = document.querySelector('.session-card--selected');
+    if (!selected) return;
+    var target = e.target;
+    if (target && target.nodeType === 1 && typeof selected.contains === 'function' && selected.contains(target)) return;
+    clearSelection();
   });
   document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') { clearSelection(); return; }
     if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
     var bar = barFrom(e);
     if (bar) { e.preventDefault(); jump(bar); }
@@ -1647,6 +1672,14 @@ export class HtmlRenderer implements Renderer {
   constructor(private readonly outputPath: string) {}
 
   render(report: Report): void {
+    // Silently exclude sessions with no token data:
+    //   1. In-progress sessions (no shutdown event)
+    //   2. Completed sessions with empty models or all-zero input/output
+    const filteredReport: Report = {
+      ...report,
+      sessions: report.sessions.filter((s) => hasTokenData(s.models)),
+      inProgressSessions: [],
+    };
     const now = new Date();
     const generatedAt = now.toLocaleString("en-US", {
       year: "numeric",
@@ -1655,7 +1688,7 @@ export class HtmlRenderer implements Renderer {
       hour: "2-digit",
       minute: "2-digit",
     });
-    const html = buildHtml(report, generatedAt, now.toISOString());
+    const html = buildHtml(filteredReport, generatedAt, now.toISOString());
     fs.writeFileSync(this.outputPath, html, "utf8");
     process.stderr.write(`Report written to ${this.outputPath}\n`);
   }

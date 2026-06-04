@@ -69,7 +69,8 @@ DATA SOURCE
 NOTES
   • Sessions are bucketed by their start date, so a session continued from a
     previous day appears under the day it started (not today).
-  • In-progress sessions (no shutdown event) are shown as [IN PROGRESS].
+  • Sessions with no token data (in-progress sessions and sessions with empty
+    or all-zero token metrics) are silently excluded from all output formats.
 `.trim();
 
 type FilterMode = "today" | "date" | "range" | "lastdays" | "all";

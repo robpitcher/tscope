@@ -26,12 +26,15 @@ Because cache read/write are already part of input, the non-double-counted sessi
 
 ## Resumed Sessions
 
-A **resumed** session contains one `session.shutdown` per run and each run's metrics reset to zero, so `tscope` **sums** the per-model usage (and `totalPremiumRequests`) across every shutdown event to produce true cumulative totals.
+A **resumed** session contains one `session.shutdown` per run and each run's metrics reset to zero, so `tscope` **sums** the per-model usage across every shutdown event to produce true cumulative totals.
 
-## In-Progress Sessions
+## Sessions With No Token Data
 
-In-progress sessions (still active) have no `session.shutdown` event and are marked `[IN PROGRESS]`.
+`tscope` silently excludes any session that has no billable token activity. This includes:
 
-## Premium Requests
+- **In-progress sessions** — those without a `session.shutdown` event (no token data has been recorded yet).
+- **Completed sessions with empty or all-zero token metrics** — those whose `session.shutdown` event recorded an empty `modelMetrics` map, or models whose input and output counts are all zero.
 
-The `totalPremiumRequests` field comes directly from the `session.shutdown` event and is provided by Copilot — it is **not** computed or estimated by `tscope`. It is **not** shown in the text or HTML reports, but is still included in JSON output as `premiumRequests` for completeness.
+The exclusion applies uniformly to all three output formats: text, JSON, and HTML.
+
+For JSON output, `summary.inProgressCount` is always `0` (retained for schema shape) and `summary.sessionCount` equals `summary.completedCount`.

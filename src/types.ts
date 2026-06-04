@@ -33,8 +33,6 @@ export interface ParsedSession {
   startTime: string;
   /** Map from model name to token counts */
   models: Record<string, TokenCounts>;
-  /** Total premium requests from shutdown event (raw value from Copilot, not computed) */
-  totalPremiumRequests: number;
   /** /chronicle tips insights captured in this session (chronological) */
   chronicleTips: ChronicleTip[];
   inProgress: false;

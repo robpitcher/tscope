@@ -81,3 +81,20 @@ export function addTokenCounts(a: TokenCounts, b: TokenCounts): TokenCounts {
     reasoningTokens: a.reasoningTokens + b.reasoningTokens,
   };
 }
+
+/**
+ * Returns true if the given per-model usage map contains any non-zero billable
+ * token activity (input or output). Sessions that have a shutdown event but
+ * recorded no input/output (empty models or all-zero counts) are treated as
+ * "no token data" and silently excluded from text, JSON, and HTML output
+ * (all three renderers apply this filter uniformly).
+ *
+ * Note: cacheRead/cacheWrite are subsets of input, so a non-zero cache value
+ * implies input > 0. Reasoning tokens are not billable and not considered here.
+ */
+export function hasTokenData(models: Record<string, TokenCounts>): boolean {
+  for (const t of Object.values(models)) {
+    if (t.inputTokens > 0 || t.outputTokens > 0) return true;
+  }
+  return false;
+}

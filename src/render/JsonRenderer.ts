@@ -1,14 +1,19 @@
-import { Report, ParsedSession, InProgressSession } from "../types";
+import { Report, ParsedSession } from "../types";
 import { Renderer } from "./Renderer";
+import { hasTokenData } from "../tokens";
 
 /**
- * Schema version — bumped to v3.
- * Breaking change vs v2: `summary.totalTokens` (and the new per-session
- * `totals.total`) is now `input + output` only. Previously it summed
- * input+output+cacheRead+cacheWrite, which double-counted cache because
- * `inputTokens` already includes cache read/write.
+ * Schema version — bumped to v4.
+ * Breaking change vs v3: removed the per-session `premiumRequests` field.
+ * tscope no longer surfaces Copilot's `totalPremiumRequests` value because
+ * it's a legacy request-count metric with no actionable use in this tool.
+ *
+ * (v3 history, retained for reference: bumped from v2 because
+ * `summary.totalTokens` and per-session `totals.total` switched to
+ * `input + output` only — adding cache read/write on top would double-count
+ * since `inputTokens` already includes them.)
  */
-const SCHEMA_VERSION = "tscope/report/v3";
+const SCHEMA_VERSION = "tscope/report/v4";
 
 /** Convert UTC ISO string to local "YYYY-MM-DD HH:MM" or null if invalid */
 function toLocalDateTime(utcIso: string): string | null {
@@ -53,7 +58,6 @@ function serializeCompletedSession(session: ParsedSession) {
     startTime: session.startTime,
     localDateTime: toLocalDateTime(session.startTime),
     inProgress: false as const,
-    premiumRequests: session.totalPremiumRequests,
     models,
     totals: {
       input: totalInput,
@@ -67,59 +71,45 @@ function serializeCompletedSession(session: ParsedSession) {
   };
 }
 
-function serializeInProgressSession(session: InProgressSession) {
-  return {
-    sessionId: session.sessionId,
-    path: session.eventsPath,
-    startTime: session.startTime ?? null,
-    localDateTime: session.startTime ? toLocalDateTime(session.startTime) : null,
-    inProgress: true as const,
-    premiumRequests: null,
-    models: [] as never[],
-    totals: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-      reasoning: 0,
-      total: 0,
-    },
-  };
-}
-
 /**
  * JsonRenderer — serializes the report to stdout as clean, stable JSON.
  *
  * Stdout receives only valid JSON (pipeable to jq, etc.).
  *
- * ## Schema: tscope/report/v3
+ * ## Schema: tscope/report/v4
  * Top-level fields:
  *   schema         — stable identifier, bump on breaking changes
  *   generatedAt    — ISO 8601 UTC timestamp of report generation
  *   filter         — description and reportDate of the active filter
  *   summary        — sessionCount, completedCount, inProgressCount, totalTokens
+ *                    (in-progress sessions are silently excluded, so
+ *                    inProgressCount is always 0 and sessionCount equals
+ *                    completedCount; field is retained for schema shape)
  *                    (totalTokens = sum of input+output; cache is part of input)
- *   sessions[]     — one entry per session (completed + in-progress)
- *     sessionId, path, startTime (ISO UTC | null), localDateTime (YYYY-MM-DD HH:MM | null),
- *     inProgress, premiumRequests (number | null), models[], totals
+ *   sessions[]     — one entry per completed session with non-zero token
+ *                    activity (in-progress and zero-token sessions are
+ *                    silently excluded — see JsonRenderer.render)
+ *     sessionId, path, startTime (ISO UTC string), localDateTime (YYYY-MM-DD HH:MM string),
+ *     inProgress (always false), models[], totals
  *   models[]       — modelName, usage{input,output,cacheRead,cacheWrite,reasoning}
  *   totals         — summed token counts; `total` = input+output (cacheRead and
  *                    cacheWrite are subsets of input, not added on top)
  */
 export class JsonRenderer implements Renderer {
   render(report: Report): void {
-    const completedCount = report.sessions.length;
-    const inProgressCount = report.inProgressSessions.length;
+    // Silently exclude sessions with no billable token activity:
+    //   1. In-progress sessions (no shutdown event)
+    //   2. Completed sessions with empty models or all-zero input/output
+    // `summary.inProgressCount` is always 0 (retained for schema shape).
+    const sessionsWithData = report.sessions.filter((s) => hasTokenData(s.models));
+    const completedCount = sessionsWithData.length;
 
     let totalTokensSum = 0;
-    const sessions = [
-      ...report.sessions.map((session) => {
-        const s = serializeCompletedSession(session);
-        totalTokensSum += s.totals.total;
-        return s;
-      }),
-      ...report.inProgressSessions.map(serializeInProgressSession),
-    ];
+    const sessions = sessionsWithData.map((session) => {
+      const s = serializeCompletedSession(session);
+      totalTokensSum += s.totals.total;
+      return s;
+    });
 
     const output = {
       schema: SCHEMA_VERSION,
@@ -129,9 +119,9 @@ export class JsonRenderer implements Renderer {
         reportDate: report.reportDate,
       },
       summary: {
-        sessionCount: completedCount + inProgressCount,
+        sessionCount: completedCount,
         completedCount,
-        inProgressCount,
+        inProgressCount: 0,
         totalTokens: totalTokensSum,
       },
       sessions,

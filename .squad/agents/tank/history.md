@@ -48,6 +48,10 @@ tscope/
 3. Use a `scanResult` container object (not bare `let` variables) to avoid TypeScript control flow narrowing `never` inside async closures
 4. In-progress sessions (no shutdown): return `InProgressSession { inProgress: true }` — never crash
 
+### Phase 2 CI Validation — 2026-06-03
+
+Tank delivered GitHub Actions CI workflow (`.github/workflows/ci.yml`) with lint+build+test gates on every PR and manual dispatch. Node matrix 18/20/22. All team members' work now flows through this pipeline for validation.
+
 **Rate table location:** `src/rates.ts` — hardcoded TypeScript object, versioned with `RATE_TABLE_VERSION`. Add new models here when GitHub releases them.
 
 **Credit formula:** `credits = (input*iRate + cacheRead*crRate + cacheWrite*cwRate + output*oRate) / 1e6 * 100`
@@ -126,3 +130,22 @@ npm i -g .         # global install → tscope command
 - JSON schema v2 is a clean break from v1; the `schema` field guards downstream consumers.
 
 **PR:** `squad/24-remove-pricing` → main (Closes #24)
+
+### CI Workflow — 2026-06-03
+
+**Workflow file:** `.github/workflows/ci.yml`
+
+**Triggers:** `pull_request` (any branch) + `workflow_dispatch` (manual from Actions tab)
+
+**Job shape:** Single job `test` on `ubuntu-latest`, timeout 10 min, matrix across Node [18.x, 20.x, 22.x].
+
+**Steps per matrix node:** checkout → setup-node (w/ npm cache) → `npm ci --no-fund --no-audit` → lint → build → test.
+
+**Concurrency:** `group: ci-${{ github.workflow }}-${{ github.ref }}` with `cancel-in-progress: true` — newer pushes to the same PR branch cancel stale runs.
+
+**Conventions to carry forward:**
+- Pin actions to major-version tags (`@v4`), not `@main` or full SHAs — matches squad-* workflow convention in this repo
+- `actions/setup-node@v4` with `cache: 'npm'` handles npm caching automatically via `package-lock.json`; no manual cache step needed
+- `npm ci --no-fund --no-audit` for clean, deterministic install logs in CI
+- 10-minute job timeout is generous for the current suite; tighten if suite grows significantly
+- Matrix strategy on Node versions catches version-specific regressions at low cost (parallel runners)

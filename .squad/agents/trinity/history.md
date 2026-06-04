@@ -20,6 +20,10 @@
 - **tscope ingest strategy:** Two channels — (A) REST API for engagement/token metrics, (B) CSV import for actual billing costs.
 - **Main brief:** `.squad/files/usage-based-billing-research.md`
 
+### 2026-06-03 — CI Workflow Established
+
+Tank delivered GitHub Actions CI workflow. All PRs now gated by lint + build + test across Node 18/20/22. Affects how all team members' work gets validated before merge.
+
 ### 2026-06-02 — Local Session Data Investigation
 
 **Session data location:**
