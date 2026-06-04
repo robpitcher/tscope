@@ -106,3 +106,23 @@ Tank delivered GitHub Actions CI workflow. All PRs now gated by lint + build + t
 **Key gotcha — HTML report URLs:** The URLs in the HTML report are not a template file or inline strings in `index.ts`. They are emitted entirely from `src/render/HtmlRenderer.ts` via the `REPO_URL` constant at line 26. Changing that one constant updates all occurrences in the rendered output (header gh-link, footer contribute link). No other source files embed the repo URL.
 
 **Outcome:** All 236 tests pass post-migration. Build clean. Zero `devjoy-pub` matches outside `.squad/` and the stale generated artifact.
+
+### 2026-06-03 — Repo Housekeeping (CONTRIBUTING, PR template, issue templates)
+
+**Work completed:**
+
+- `CONTRIBUTING.md` (repo root) — friendly, alpha-aware contributor guide covering dev setup (`npm install`, `npm run build`, `npm test`, `npm run lint`, `npm run dev`), how to run, filing issues, submitting PRs, squad label workflow, commit message guidance, Node ≥18 requirement, and a short code-of-conduct paragraph. No DCO/CLA. ~1 page.
+- `.github/pull_request_template.md` — 4-section PR template: Summary, Linked issues, What changed, How to test. 5-item checklist (build, tests, lint, docs).
+- `.github/ISSUE_TEMPLATE/bug_report.md` — Bug template with: what happened, expected behavior, repro steps, environment (OS/Node/tscope version), optional session file sample with privacy reminder. Auto-labels: `squad`, `bug`.
+- `.github/ISSUE_TEMPLATE/feature_request.md` — Feature template with: problem, proposed solution, alternatives, GitHub Copilot billing context field. Auto-labels: `squad`, `enhancement`.
+- `.github/ISSUE_TEMPLATE/config.yml` — Disables blank issues; adds Discussions contact link.
+- `.squad/decisions/inbox/trinity-github-packages-decision.md` — GitHub Packages vs npmjs.org analysis (see below).
+
+**GitHub Packages decision summary:**
+- `tscope` (unscoped) is already published on npmjs.org at v0.3.0 — same project, name is claimed.
+- GitHub Packages requires scoped names + consumer auth → breaks the `npm i -g tscope` install model (D2).
+- **Recommendation:** npmjs.org only. GitHub Packages adds friction with no benefit for a public CLI. Revisit only if org-internal distribution is ever needed.
+
+**Contributors should know:**
+- Both issue templates auto-apply the `squad` label → Lead triage picks them up automatically.
+- The existing docs `contributing.md` in `docs/` is minimal (3 lines); the new root `CONTRIBUTING.md` is the canonical contributor doc. Consider linking or replacing the docs version in a future pass.
