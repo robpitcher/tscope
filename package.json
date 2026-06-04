@@ -29,6 +29,14 @@
   ],
   "author": "robpitcher",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/robpitcher/tscope.git"
+  },
+  "bugs": {
+    "url": "https://github.com/robpitcher/tscope/issues"
+  },
+  "homepage": "https://github.com/robpitcher/tscope#readme",
   "devDependencies": {
     "@changesets/cli": "^2.31.0",
     "@types/jest": "^29.5.12",
