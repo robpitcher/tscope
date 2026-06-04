@@ -17,7 +17,7 @@
     "test": "npx jest",
     "lint": "eslint src --ext .ts",
     "changeset": "changeset",
-    "version": "changeset version",
+    "changeset:version": "changeset version",
     "release": "npm run build && changeset publish"
   },
   "keywords": [

@@ -55,9 +55,12 @@ jobs:
       - name: Create release PR or publish
         uses: changesets/action@v1
         with:
-          # Runs `npm run version` when opening/updating the PR (consumes
-          # changesets, bumps package.json, updates CHANGELOG.md).
-          version: npm run version
+          # Runs `npm run changeset:version` when opening/updating the PR
+          # (consumes changesets, bumps package.json, updates CHANGELOG.md).
+          # Note: avoid naming this script `version` -- npm treats `version` as
+          # a lifecycle hook for `npm version`, which would silently invoke
+          # changesets on local `npm version <type>` calls.
+          version: npm run changeset:version
           # Runs `npm run release` after the version PR is merged
           # (build + `changeset publish` -> npm publish + git tag).
           publish: npm run release
