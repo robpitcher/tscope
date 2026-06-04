@@ -1,7 +1,7 @@
 ---
 name: Feature request
 about: Suggest something new or an improvement
-labels: squad, enhancement
+labels: [squad, enhancement]
 ---
 
 ## Problem
