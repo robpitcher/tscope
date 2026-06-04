@@ -19,7 +19,7 @@
 
 ```bash
 npm install -g tscope
-tscope --html           # generate and open an HTML dashboard
+tscope --html # generate and open an HTML dashboard
 ```
 
 Requires **Node.js 18+**.
