@@ -566,6 +566,105 @@ describe("HtmlRenderer", () => {
       expect(html).toContain('id="range-apply"');
     });
 
+    test("renders an Export CSV button in the header with client-side wiring", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-export-csv.html"
+      );
+      // Button is present, properly typed, and labelled.
+      expect(html).toContain('id="export-csv"');
+      expect(html).toMatch(/<button[^>]*id="export-csv"[^>]*type="button"/);
+      expect(html).toContain("Export CSV");
+      // The .export-btn stylesheet rule is included.
+      expect(html).toContain(".export-btn");
+      // The inline JS defines the CSV builder, downloader, and the
+      // expected column headers (matches the SessionTokenSummary shape).
+      expect(html).toContain("function buildCsv");
+      expect(html).toContain("function downloadCsv");
+      expect(html).toContain("'sessionId'");
+      expect(html).toContain("'startTime'");
+      expect(html).toContain("'totalTokens'");
+      expect(html).toContain("'freshInputTokens'");
+      expect(html).toContain("'cacheReadTokens'");
+      expect(html).toContain("'cacheWriteTokens'");
+      expect(html).toContain("'outputTokens'");
+      expect(html).toContain("'apiDurationMs'");
+      // Filename incorporates the report date so multi-day exports are distinct.
+      expect(html).toContain("'tscope-sessions-'");
+    });
+
+    test("cached-input pill is neutrally labelled (no green/amber/red grading)", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-cache-label.html"
+      );
+      // Relabelled away from "cache hit" since we're measuring tokens, not requests.
+      expect(html).toContain("cached input");
+      expect(html).toContain("Cached Input %");
+      expect(html).not.toContain("cache hit");
+      expect(html).not.toContain("Cache Efficiency");
+      // Colour-coded pass/fail pills removed; a single neutral pill is used instead.
+      expect(html).toContain("pill-neutral");
+      expect(html).not.toContain("pill-green");
+      expect(html).not.toContain("pill-amber");
+      expect(html).not.toContain("pill-red");
+    });
+
+    test("renders the API time chip on the session card when duration is known", () => {
+      const sessionWithDuration: ParsedSession = {
+        ...SAMPLE_SESSION,
+        apiDurationMs: 4669,
+      };
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [sessionWithDuration] },
+        "html-test-api-chip.html"
+      );
+      // Chip is present with formatted duration and an explanatory tooltip.
+      expect(html).toMatch(/<span class="chip chip-duration"[^>]*>4\.7s API<\/span>/);
+      expect(html).toContain("Cumulative model API time");
+      // CSS rule for the chip exists.
+      expect(html).toContain(".chip-duration");
+    });
+
+    test("omits the API time chip when duration is unknown", () => {
+      // SAMPLE_SESSION has no apiDurationMs set.
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-no-api-chip.html"
+      );
+      expect(html).not.toContain("chip chip-duration");
+      expect(html).not.toContain(" API</span>");
+    });
+
+    test.each([
+      [9960, ">10s API<"],     // 9.96s rounds up — must not produce "9.96s" / "10.0s"
+      [59500, ">1m 0s API<"],  // 59.5s → 60s → carries into 1m 0s (not "60s")
+      [119900, ">2m 0s API<"], // 119.9s → 120s → "2m 0s" (not "1m 60s")
+      [3599500, ">1h 0m API<"],// 59m 59.5s → 3600s → "1h 0m" (not "59m 60s")
+    ])("API chip handles rounding-boundary durations cleanly (%i ms)", (ms, expected) => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [{ ...SAMPLE_SESSION, apiDurationMs: ms }] },
+        `html-test-chip-${ms}.html`
+      );
+      expect(html).toContain(expected);
+      // Must never produce non-canonical 60s/60m output.
+      expect(html).not.toMatch(/>\s*\d+m 60s\b/);
+      expect(html).not.toMatch(/>\s*\d+h 60m\b/);
+    });
+
+    test("CSV export neutralises spreadsheet formula-injection (=,+,-,@,TAB,CR)", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-csv-injection.html"
+      );
+      // The embedded csvCell() helper must guard against formula-leading
+      // characters by prepending a quote before the surrounding quote logic
+      // runs. We verify both the regex and the prefix string exist in the
+      // emitted JS (the live behaviour is exercised in-browser).
+      expect(html).toMatch(/\/\^\[=\+\\-@\\t\\r\]\//);
+      expect(html).toContain('"\'" + s');
+    });
+
     test("tags each session card with its session id (in-progress excluded)", () => {
       const html = renderToString(
         {

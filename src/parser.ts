@@ -47,6 +47,7 @@ interface RawSessionShutdown {
   data: {
     sessionStartTime?: number;
     modelMetrics?: Record<string, RawModelMetrics>;
+    totalApiDurationMs?: number;
   };
   timestamp?: string;
 }
@@ -248,6 +249,11 @@ export async function parseEventsFile(
   // shutdown per run, each reporting only that run's metrics, so the
   // cumulative session totals are the sum across runs.
   const models: Record<string, TokenCounts> = {};
+  // Cumulative API call time across runs. `totalApiDurationMs` is per-run
+  // (each shutdown reports only that run's compute time), so summing gives
+  // total compute time across resumed runs. Undefined if no shutdown
+  // reported the field (e.g., older CLI versions).
+  let apiDurationMs: number | undefined = undefined;
 
   for (const shutdown of shutdownEvents) {
     const rawMetrics = shutdown.data?.modelMetrics ?? {};
@@ -259,6 +265,10 @@ export async function parseEventsFile(
           : counts;
       }
     }
+    const runDuration = shutdown.data?.totalApiDurationMs;
+    if (typeof runDuration === "number" && isFinite(runDuration) && runDuration >= 0) {
+      apiDurationMs = (apiDurationMs ?? 0) + runDuration;
+    }
   }
 
   const session: ParsedSession = {
@@ -268,6 +278,7 @@ export async function parseEventsFile(
     models,
     chronicleTips,
     inProgress: false,
+    ...(apiDurationMs !== undefined ? { apiDurationMs } : {}),
   };
 
   return session;

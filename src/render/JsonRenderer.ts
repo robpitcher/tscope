@@ -58,6 +58,7 @@ function serializeCompletedSession(session: ParsedSession) {
     startTime: session.startTime,
     localDateTime: toLocalDateTime(session.startTime),
     inProgress: false as const,
+    apiDurationMs: session.apiDurationMs ?? null,
     models,
     totals: {
       input: totalInput,
@@ -90,7 +91,8 @@ function serializeCompletedSession(session: ParsedSession) {
  *                    activity (in-progress and zero-token sessions are
  *                    silently excluded — see JsonRenderer.render)
  *     sessionId, path, startTime (ISO UTC string), localDateTime (YYYY-MM-DD HH:MM string),
- *     inProgress (always false), models[], totals
+ *     inProgress (always false), apiDurationMs (cumulative model API ms across
+ *     runs, or null when no shutdown reported it), models[], totals
  *   models[]       — modelName, usage{input,output,cacheRead,cacheWrite,reasoning}
  *   totals         — summed token counts; `total` = input+output (cacheRead and
  *                    cacheWrite are subsets of input, not added on top)

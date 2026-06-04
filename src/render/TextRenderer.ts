@@ -1,6 +1,7 @@
 import { Report, ParsedSession, TokenCounts } from "../types";
 import { tokenPartition, totalTokens, hasTokenData } from "../tokens";
 import { Renderer } from "./Renderer";
+import { ansiEnabled, bold, dim } from "./style";
 
 const HEAVY = "═".repeat(79);
 const LIGHT = "─".repeat(79);
@@ -42,28 +43,65 @@ function singleRow(label: string, val: number): string {
   return `    ${l}${v}`;
 }
 
-function renderModelBlock(modelName: string, tokens: TokenCounts): string {
+function renderModelBlock(modelName: string, tokens: TokenCounts, styled: boolean): string {
   const p = tokenPartition(tokens);
   const lines: string[] = [];
-  lines.push(`  ${modelName}`);
+  lines.push(`  ${bold(modelName, styled)}`);
   lines.push(tokenRow("Fresh Input", p.freshInput, "Output", p.output));
   lines.push(tokenRow("Cache Read", p.cacheRead, "Cache Write", p.cacheWrite));
   lines.push(singleRow("Total (I/O)", p.total));
   return lines.join("\n");
 }
 
-function renderSessionBlock(session: ParsedSession): string {
+/**
+ * Format a duration in milliseconds as a short string used in the text
+ * report. Mirrors the HTML renderer's formatter so output is consistent:
+ *   < 1 s   → "850ms"
+ *   < 10 s  → "4.7s"   (one decimal of precision)
+ *   < 60 s  → "12s"
+ *   < 1 h   → "2m 14s"
+ *   ≥ 1 h   → "1h 23m"
+ *
+ * The hour/minute/second budget is decomposed from a *rounded* whole-second
+ * count, which guarantees canonical output: rounding 59.95s up never yields
+ * "1m 60s", and rounding 3599.5s up never yields "59m 60s" — the carry
+ * propagates correctly into minutes and hours.
+ */
+function fmtDurationMs(ms: number): string {
+  if (!isFinite(ms) || ms < 0) return "—";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  const totalSec = ms / 1000;
+  if (totalSec < 10) {
+    const txt = totalSec.toFixed(1).replace(/\.0$/, "");
+    // If toFixed(1) pushed us to "10" (e.g. 9.96 → "10.0" → "10"), fall
+    // through to the integer-second branch for a consistent display.
+    if (txt !== "10") return `${txt}s`;
+  }
+  const totalSecRounded = Math.round(totalSec);
+  if (totalSecRounded < 60) return `${totalSecRounded}s`;
+  const hr = Math.floor(totalSecRounded / 3600);
+  const remAfterHr = totalSecRounded - hr * 3600;
+  const min = Math.floor(remAfterHr / 60);
+  const sec = remAfterHr - min * 60;
+  if (hr === 0) return `${min}m ${sec}s`;
+  return `${hr}h ${min}m`;
+}
+
+function renderSessionBlock(session: ParsedSession, styled: boolean): string {
   const lines: string[] = [];
-  lines.push(HEAVY);
-  lines.push(`SESSION: ${session.sessionId}`);
+  lines.push(bold(HEAVY, styled));
+  lines.push(bold(`SESSION: ${session.sessionId}`, styled));
   lines.push(`Date:    ${toLocalDateTimeStr(session.startTime)}`);
-  lines.push(`Path:    ${session.eventsPath}`);
+  if (session.apiDurationMs !== undefined) {
+    lines.push(`API time: ${fmtDurationMs(session.apiDurationMs)} (cumulative model compute)`);
+  }
+  lines.push(dim(`Path:    ${session.eventsPath}`, styled));
   lines.push(LIGHT);
 
   const modelEntries = Object.entries(session.models);
   for (let i = 0; i < modelEntries.length; i++) {
     const [modelName, tokens] = modelEntries[i];
-    lines.push(renderModelBlock(modelName, tokens));
+    lines.push(renderModelBlock(modelName, tokens, styled));
     if (i < modelEntries.length - 1) {
       lines.push("");
     }
@@ -81,11 +119,11 @@ function renderSessionBlock(session: ParsedSession): string {
     grandTotal += totalTokens(tokens);
   }
 
-  lines.push("  TOTALS");
+  lines.push(`  ${bold("TOTALS", styled)}`);
   lines.push(tokenRow("Fresh Input", totalFreshInput, "Output", totalOutput));
   lines.push(tokenRow("Cache Read", totalCacheRead, "Cache Write", totalCacheWrite));
   lines.push(singleRow("Total (I/O)", grandTotal));
-  lines.push(HEAVY);
+  lines.push(bold(HEAVY, styled));
 
   return lines.join("\n");
 }
@@ -102,7 +140,8 @@ function renderSessionBlock(session: ParsedSession): string {
 export class TextRenderer implements Renderer {
   render(report: Report): void {
     const sessionsWithData = report.sessions.filter((s) => hasTokenData(s.models));
-    const allSessions: string[] = sessionsWithData.map(renderSessionBlock);
+    const styled = ansiEnabled();
+    const allSessions: string[] = sessionsWithData.map((s) => renderSessionBlock(s, styled));
 
     if (allSessions.length === 0) {
       process.stdout.write(`No sessions found for ${report.filterDescription}.\n`);
@@ -114,6 +153,8 @@ export class TextRenderer implements Renderer {
     }
 
     const totalSessions = sessionsWithData.length;
-    process.stdout.write(`SUMMARY: ${totalSessions} session${totalSessions !== 1 ? "s" : ""}\n`);
+    process.stdout.write(
+      `${bold(`SUMMARY: ${totalSessions} session${totalSessions !== 1 ? "s" : ""}`, styled)}\n`
+    );
   }
 }

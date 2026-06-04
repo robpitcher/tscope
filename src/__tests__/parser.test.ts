@@ -187,6 +187,59 @@ describe("parser", () => {
       if (session.inProgress) return;
       expect(session.startTime).toBe("2026-06-03T15:31:39.000Z");
     });
+
+    test("sums totalApiDurationMs across all shutdowns", async () => {
+      const run1WithDuration = { ...run1, data: { ...run1.data, totalApiDurationMs: 9273 } };
+      const run2WithDuration = { ...run2, data: { ...run2.data, totalApiDurationMs: 4500 } };
+      const eventsPath = writeTempEvents(
+        tmpDir,
+        [sessionStart, run1WithDuration, resume, run2WithDuration]
+      );
+      const session = await parseEventsFile("resumed-duration", eventsPath);
+      expect(session.inProgress).toBe(false);
+      if (session.inProgress) return;
+      expect(session.apiDurationMs).toBe(13773);
+    });
+  });
+
+  describe("apiDurationMs (cumulative model API time)", () => {
+    test("captures totalApiDurationMs from a single shutdown", async () => {
+      const withDuration = {
+        ...shutdownEvent,
+        data: { ...shutdownEvent.data, totalApiDurationMs: 4669 },
+      };
+      const eventsPath = writeTempEvents(tmpDir, [sessionStart, withDuration]);
+      const session = await parseEventsFile("dur-single", eventsPath);
+      expect(session.inProgress).toBe(false);
+      if (session.inProgress) return;
+      expect(session.apiDurationMs).toBe(4669);
+    });
+
+    test("apiDurationMs is undefined when no shutdown reports it", async () => {
+      const eventsPath = writeTempEvents(tmpDir, [sessionStart, shutdownEvent]);
+      const session = await parseEventsFile("dur-missing", eventsPath);
+      expect(session.inProgress).toBe(false);
+      if (session.inProgress) return;
+      expect(session.apiDurationMs).toBeUndefined();
+    });
+
+    test("ignores negative and non-finite duration values", async () => {
+      const badShutdown1 = {
+        ...shutdownEvent,
+        data: { ...shutdownEvent.data, totalApiDurationMs: -5 },
+        timestamp: "2026-06-02T23:06:01.000Z",
+      };
+      const goodShutdown = {
+        ...shutdownEvent,
+        data: { ...shutdownEvent.data, totalApiDurationMs: 1234 },
+        timestamp: "2026-06-02T23:06:02.000Z",
+      };
+      const eventsPath = writeTempEvents(tmpDir, [sessionStart, badShutdown1, goodShutdown]);
+      const session = await parseEventsFile("dur-bad", eventsPath);
+      expect(session.inProgress).toBe(false);
+      if (session.inProgress) return;
+      expect(session.apiDurationMs).toBe(1234);
+    });
   });
 
   test("handles malformed lines gracefully", async () => {

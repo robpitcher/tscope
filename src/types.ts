@@ -33,6 +33,16 @@ export interface ParsedSession {
   startTime: string;
   /** Map from model name to token counts */
   models: Record<string, TokenCounts>;
+  /**
+   * Cumulative model API call time across all runs of this session
+   * (sum of `session.shutdown.data.totalApiDurationMs` over every shutdown
+   * event). Undefined when no shutdown event reports the field.
+   *
+   * This is pure compute time reported by the Copilot CLI itself — it does
+   * NOT include user think time, idle gaps, or session resume gaps. It's
+   * the most defensible "how much AI work happened" measure available.
+   */
+  apiDurationMs?: number;
   /** /chronicle tips insights captured in this session (chronological) */
   chronicleTips: ChronicleTip[];
   inProgress: false;

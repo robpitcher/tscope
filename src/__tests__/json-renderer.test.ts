@@ -190,6 +190,20 @@ describe("JsonRenderer", () => {
       expect(sessionOut.inProgress).toBe(false);
     });
 
+    test("session apiDurationMs is null when source session has none", () => {
+      // SAMPLE_SESSION doesn't set apiDurationMs.
+      expect(sessionOut.apiDurationMs).toBeNull();
+    });
+
+    test("session apiDurationMs is preserved when set on the source session", () => {
+      const withDuration: Report = {
+        ...EMPTY_REPORT,
+        sessions: [{ ...SAMPLE_SESSION, apiDurationMs: 4669 }],
+      };
+      const result = captureJson(withDuration);
+      expect(result.sessions[0].apiDurationMs).toBe(4669);
+    });
+
     test("session does not include a premiumRequests field", () => {
       expect(sessionOut.premiumRequests).toBeUndefined();
     });

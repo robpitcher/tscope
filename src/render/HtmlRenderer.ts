@@ -51,6 +51,37 @@ function fmtTokensCompact(n: number): string {
   return String(n);
 }
 
+/**
+ * Format a duration in milliseconds as a short human-readable string:
+ *   < 1 s   → "850ms"
+ *   < 10 s  → "4.7s"  (one decimal of precision)
+ *   < 60 s  → "12s"
+ *   < 1 h   → "2m 14s"
+ *   ≥ 1 h   → "1h 23m"
+ * Returns "—" for negative/non-finite inputs.
+ *
+ * Hours/minutes/seconds are decomposed from a *rounded* whole-second budget
+ * so rounding can never produce non-canonical "1m 60s" / "59m 60s" output —
+ * the carry propagates correctly.
+ */
+function fmtDuration(ms: number): string {
+  if (!isFinite(ms) || ms < 0) return "—";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  const totalSec = ms / 1000;
+  if (totalSec < 10) {
+    const txt = totalSec.toFixed(1).replace(/\.0$/, "");
+    if (txt !== "10") return `${txt}s`;
+  }
+  const totalSecRounded = Math.round(totalSec);
+  if (totalSecRounded < 60) return `${totalSecRounded}s`;
+  const hr = Math.floor(totalSecRounded / 3600);
+  const remAfterHr = totalSecRounded - hr * 3600;
+  const min = Math.floor(remAfterHr / 60);
+  const sec = remAfterHr - min * 60;
+  if (hr === 0) return `${min}m ${sec}s`;
+  return `${hr}h ${min}m`;
+}
+
 /** Convert UTC ISO string to local "YYYY-MM-DD HH:MM" */
 function toLocalDateTime(utcIso: string): string {
   const d = new Date(utcIso);
@@ -180,14 +211,19 @@ function buildTokensByModelBars(models: ModelEntry[]): string {
 }
 
 // ---------------------------------------------------------------------------
-// Cache-efficiency pills
 // ---------------------------------------------------------------------------
-
-function cacheEfficiencyColor(pct: number): string {
-  if (pct >= 60) return "pill-green";
-  if (pct >= 30) return "pill-amber";
-  return "pill-red";
-}
+// Cached-input pill (per model)
+// ---------------------------------------------------------------------------
+//
+// Shows what fraction of each model's billed input tokens were served from
+// the prompt cache (cheaper than fresh input). This is NOT a traditional
+// "cache hit rate" (hits / lookups) — it's the share of input *tokens* that
+// came from cache reads. Cache writes count as fresh for this purpose.
+//
+// We deliberately use a neutral pill (no green/amber/red) because there is
+// no universally "good" target: a short one-shot prompt will be 0% and
+// that's normal; a long iterative session with a stable prefix can climb
+// past 80%. Treat it as informational, not a grade.
 
 function buildCachePills(models: ModelEntry[]): string {
   if (models.length === 0) return "";
@@ -197,12 +233,14 @@ function buildCachePills(models: ModelEntry[]): string {
     const cacheRead = m.tokens.cacheReadTokens;
     let pct = input > 0 ? (cacheRead / input) * 100 : 0;
     pct = Math.min(pct, 100);
-    const cls = cacheEfficiencyColor(pct);
     const label = input === 0 ? "n/a" : `${pct.toFixed(0)}%`;
+    const tip = input === 0
+      ? "No input tokens recorded for this model"
+      : `Share of input tokens served from prompt cache (cacheRead / inputTokens)`;
     html += `
   <div class="cache-pill-row">
     <span class="cache-model-name">${esc(m.modelName)}</span>
-    <span class="pill ${cls}">${label} cache hit</span>
+    <span class="pill pill-neutral" title="${esc(tip)}">${label} cached input</span>
   </div>`;
   }
   html += `</div>`;
@@ -223,6 +261,8 @@ interface SessionTokenSummary {
   cacheRead: number;
   cacheWrite: number;
   output: number;
+  /** Cumulative model API time (ms) summed across runs; null when unknown. */
+  apiDurationMs: number | null;
   inProgress: boolean;
 }
 
@@ -457,6 +497,7 @@ function buildSessionCard(session: ParsedSession): string {
       <span class="session-datetime">${dateStr}</span>
     </div>
     <div class="session-summary-chips">
+      ${session.apiDurationMs !== undefined ? `<span class="chip chip-duration" title="Cumulative model API time (compute only — excludes idle / user think time)">${esc(fmtDuration(session.apiDurationMs))} API</span>` : ""}
       <span class="chip chip-tokens">${fmtNum(totalTokensForCard)} tokens</span>
     </div>
   </div>
@@ -474,7 +515,7 @@ function buildSessionCard(session: ParsedSession): string {
         ${buildTokensByModelBars(modelEntries)}
       </div>
       <div class="chart-section">
-        <h3 class="chart-title">Cache Efficiency</h3>
+        <h3 class="chart-title">Cached Input %</h3>
         ${buildCachePills(modelEntries)}
       </div>
     </div>
@@ -707,7 +748,8 @@ button.filter-badge:hover { background: var(--border); color: var(--text-primary
 .gh-link:hover { color: var(--text-primary); }
 .gh-link svg { width: 22px; height: 22px; display: block; }
 
-.theme-toggle {
+.theme-toggle,
+.export-btn {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -717,7 +759,17 @@ button.filter-badge:hover { background: var(--border); color: var(--text-primary
   padding: 4px 10px;
   transition: background 0.15s, color 0.15s;
 }
-.theme-toggle:hover { background: var(--border); color: var(--text-primary); }
+.theme-toggle:hover,
+.export-btn:hover { background: var(--border); color: var(--text-primary); }
+.export-btn:disabled { cursor: not-allowed; opacity: 0.5; }
+.export-btn:disabled:hover { background: var(--bg-elevated); color: var(--text-secondary); }
+
+.report-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 24px;
+  margin-bottom: 12px;
+}
 
 .summary-strip {
   display: flex;
@@ -846,6 +898,7 @@ button.filter-badge:hover { background: var(--border); color: var(--text-primary
   white-space: nowrap;
 }
 .chip-tokens    { background: rgba(163,113,247,.12); color: var(--accent-purple); border: 1px solid rgba(163,113,247,.25); }
+.chip-duration  { background: rgba(88,166,255,.10); color: var(--accent-blue); border: 1px solid rgba(88,166,255,.25); font-variant-numeric: tabular-nums; }
 .chip-in-progress { background: rgba(72,79,88,.3); color: var(--text-secondary); border: 1px solid var(--border); }
 
 .session-path {
@@ -949,9 +1002,11 @@ button.filter-badge:hover { background: var(--border); color: var(--text-primary
   white-space: nowrap;
   flex-shrink: 0;
 }
-.pill-green { background: rgba(63,185,80,.15); color: var(--accent-green); border: 1px solid rgba(63,185,80,.3); }
-.pill-amber { background: rgba(227,179,65,.15); color: var(--accent-amber); border: 1px solid rgba(227,179,65,.3); }
-.pill-red   { background: rgba(248,81,73,.12);  color: var(--accent-red);   border: 1px solid rgba(248,81,73,.25); }
+.pill-neutral {
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
 
 .token-totals-row {
   display: flex;
@@ -1329,6 +1384,11 @@ const JS = `
   var minDate = dates.length ? dates[0] : anchor;
   var maxDate = dates.length ? dates[dates.length - 1] : anchor;
 
+  // Tracks the most recent filter result so the CSV export reflects what the
+  // user is actually looking at. Initialised to the full embedded payload.
+  var currentFiltered = SESSIONS.slice();
+  var currentFilterLabel = 'all';
+
   function inRange(s, mode, from, to) {
     if (mode === 'all') return true;
     var ld = localDate(s.start);
@@ -1402,12 +1462,15 @@ const JS = `
     for (var i = 0; i < SESSIONS.length; i++) {
       if (inRange(SESSIONS[i], mode, from, to)) filtered.push(SESSIONS[i]);
     }
+    currentFiltered = filtered;
+    currentFilterLabel = labelText;
     recompute(filtered);
     var host = document.getElementById('timeline-host');
     if (host) host.innerHTML = buildTimeline(filtered);
     toggleCards(filtered);
     setText('filter-pill-label', labelText);
     setText('stat-filter-value', labelText);
+    updateExportState();
   }
 
   var presetLabels = { all: 'All', today: 'Today', '7d': 'Last 7 days', '30d': 'Last 30 days' };
@@ -1475,6 +1538,98 @@ const JS = `
       closePop();
     });
   }
+
+  // -------------------------------------------------------------------------
+  // CSV export of the currently filtered sessions.
+  // -------------------------------------------------------------------------
+  var CSV_COLUMNS = [
+    'sessionId',
+    'startTime',
+    'label',
+    'inProgress',
+    'totalTokens',
+    'freshInputTokens',
+    'cacheReadTokens',
+    'cacheWriteTokens',
+    'outputTokens',
+    'apiDurationMs'
+  ];
+
+  function csvCell(v) {
+    if (v === null || v === undefined) return '';
+    var s = String(v);
+    // Defence-in-depth: neutralise CSV/spreadsheet formula-injection. A cell
+    // whose first character is =, +, -, @, TAB or CR is interpreted as a
+    // formula by Excel/Sheets/Numbers. Prepend a single quote so the cell
+    // is treated as text. The columns we currently export (UUIDs, ISO
+    // dates, non-negative integers, "true"/"false") shouldn't trigger this
+    // in practice, but it's free protection if the column set grows.
+    if (/^[=+\\-@\\t\\r]/.test(s)) s = "'" + s;
+    if (s.indexOf('"') !== -1 || s.indexOf(',') !== -1 || s.indexOf('\\n') !== -1 || s.indexOf('\\r') !== -1) {
+      return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  }
+
+  function buildCsv(list) {
+    var lines = [CSV_COLUMNS.join(',')];
+    for (var i = 0; i < list.length; i++) {
+      var s = list[i];
+      var row = [
+        csvCell(s.id),
+        csvCell(s.start || ''),
+        csvCell(s.label),
+        csvCell(s.inProgress ? 'true' : 'false'),
+        csvCell(s.totalTokens),
+        csvCell(s.input),
+        csvCell(s.cacheRead),
+        csvCell(s.cacheWrite),
+        csvCell(s.output),
+        csvCell(s.apiDurationMs == null ? '' : s.apiDurationMs)
+      ];
+      lines.push(row.join(','));
+    }
+    return lines.join('\\r\\n') + '\\r\\n';
+  }
+
+  function safeSlug(s) {
+    return String(s || 'filter').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'filter';
+  }
+
+  function downloadCsv(filename, csv) {
+    // UTF-8 BOM lets Excel detect encoding correctly.
+    var blob = new Blob(['\\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function() { URL.revokeObjectURL(url); }, 0);
+  }
+
+  function updateExportState() {
+    var btn = document.getElementById('export-csv');
+    if (!btn) return;
+    btn.disabled = currentFiltered.length === 0;
+    btn.setAttribute('title',
+      currentFiltered.length === 0
+        ? 'No sessions in the current filter to export'
+        : 'Download ' + currentFiltered.length + ' session(s) as a CSV file');
+  }
+
+  var exportBtn = document.getElementById('export-csv');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', function() {
+      if (currentFiltered.length === 0) return;
+      var csv = buildCsv(currentFiltered);
+      var datePart = DATA.reportDate || (anchor || 'report');
+      var filename = 'tscope-sessions-' + datePart + '-' + safeSlug(currentFilterLabel) + '.csv';
+      downloadCsv(filename, csv);
+    });
+  }
+  updateExportState();
 })();
 `.trim();
 
@@ -1535,6 +1690,7 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
         cacheRead,
         cacheWrite,
         output,
+        apiDurationMs: session.apiDurationMs ?? null,
         inProgress: false,
       };
     }),
@@ -1547,6 +1703,7 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
       cacheRead: 0,
       cacheWrite: 0,
       output: 0,
+      apiDurationMs: null,
       inProgress: true,
     })),
   ];
@@ -1640,6 +1797,10 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
     </div>
   </div>
 </header>
+
+<div class="report-toolbar container">
+  <button class="export-btn" id="export-csv" type="button" aria-label="Export filtered sessions to CSV" title="Download the currently filtered sessions as a CSV file">&#x2B07; Export CSV</button>
+</div>
 
 ${statCards}
 ${timelineSection}
