@@ -126,3 +126,23 @@ Tank delivered GitHub Actions CI workflow. All PRs now gated by lint + build + t
 **Contributors should know:**
 - Both issue templates auto-apply the `squad` label → Lead triage picks them up automatically.
 - The existing docs `contributing.md` in `docs/` is minimal (3 lines); the new root `CONTRIBUTING.md` is the canonical contributor doc. Consider linking or replacing the docs version in a future pass.
+
+### 2026-06-03 — Distribution Model Analysis
+
+**Question from robpitcher:** Should tscope be packaged as a Node package, a Copilot extension, or a gh CLI extension?
+
+**Research conducted:**
+- Verified Copilot CLI plugin model (docs.github.com, June 2026) — plugins bundle agents/skills/hooks/MCP/LSP configs, invoked inside Copilot CLI sessions. Real and documented.
+- Verified gh CLI extension model — interpreted scripts or precompiled binaries, installed via `gh extension install owner/gh-tscope`.
+- GitHub Copilot Extensions (marketplace/chat flavor) — requires HTTP server + OAuth, entirely wrong for tscope.
+
+**Recommendation:** D2 CONFIRMED — stay on npm. Not amending.
+
+**Reasoning:**
+- Copilot CLI plugins add agents/skills/hooks to the Copilot session. tscope is a standalone local file-reader that exits. Wrong shape entirely — cannot fit tscope into this model.
+- gh extension model is architecturally valid but adds no friction reduction for target users (Copilot CLI users already have Node). Binary path requires cross-platform build pipeline and 80-100MB binaries (pkg bundles Node runtime).
+- npm: zero friction for target user, already live at v0.3.0, best ecosystem fit for future HTML/JSON renderers (D5 Renderer interface).
+
+**Secondary option (future):** Add `gh-tscope` as an ADDITIVE distribution channel post-v1.0 once schema is stable and a cross-platform binary pipeline exists. Not a replacement — an additional reach channel.
+
+**Decision note:** `.squad/decisions/inbox/trinity-distribution-model-analysis.md`

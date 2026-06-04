@@ -177,3 +177,43 @@
 - All meaningful changes require team consensus
 - Document architectural decisions here
 - Keep history focused on work, decisions focused on direction
+
+## Decision: Distribution Model Analysis — npm vs Copilot Plugin vs gh Extension
+
+**Author:** Trinity (Lead/Architect)  
+**Date:** 2026-06-03  
+**Status:** Decision — D2 CONFIRMED (no amendment)  
+**Requested by:** robpitcher  
+
+### Summary
+
+Comprehensive analysis of three potential distribution channels: npm (primary), Copilot CLI plugins (rejected), and gh CLI extensions (secondary, post-v1.0).
+
+### Recommendation: Primary path is npm (`npm i -g tscope`). D2 stands unchanged.
+
+**Key findings:**
+
+- **npm:** Lowest friction (target users have Node), perfect distribution fit, D5 renderers leverage npm/Node ecosystem, already live at v0.3.0 with 236 tests passing. **Primary channel — no change to D2.**
+
+- **Copilot CLI plugin:** Fundamentally wrong architectural fit. Plugins extend the Copilot CLI's agentic experience (agents, skills, hooks, MCP servers). tscope is a standalone reporting CLI that reads local files and exits. No architectural overlap. **Do not pursue.**
+
+- **gh CLI extension:** Valid architecture (`gh tscope ...` via precompiled binary), but adds zero value for tscope's local-only workflow. Requires `gh` CLI dependency (not universally present like Node for Copilot users). **Valid as secondary channel only — post-v1.0, conditional on market reach justification.**
+
+### D2 Amendment Language
+
+**No amendment.** D2 stands as written: *"tscope will be built in Node.js / TypeScript, distributed via npm i -g tscope."*
+
+### Future Option: gh-tscope Extension (Post-v1.0)
+
+If market conditions justify broadening reach to GitHub-native tooling users:
+1. Create `gh-tscope` repo (separate or monorepo)
+2. Build cross-platform binary pipeline (GitHub Actions matrix: win/mac/linux × amd64/arm64) via `pkg` or `ncc`
+3. Publish releases with precompiled binaries
+4. Users invoke: `gh extension install robpitcher/gh-tscope` → `gh tscope [options]`
+
+Preconditions:
+- v1.0 stable (schema and CLI flags locked)
+- Binary size acceptable (pkg bundles Node runtime; ~80–100MB)
+- Market demand validated
+
+This is an additive channel, not a replacement. Both paths can coexist.
