@@ -149,3 +149,7 @@ npm i -g .         # global install → tscope command
 - `npm ci --no-fund --no-audit` for clean, deterministic install logs in CI
 - 10-minute job timeout is generous for the current suite; tighten if suite grows significantly
 - Matrix strategy on Node versions catches version-specific regressions at low cost (parallel runners)
+
+### 2026-06-03 — Repository URL Migration (Trinity Lead)
+
+Trinity completed migration of canonical repository URL from `devjoy-pub/tscope` to `robpitcher/tscope`. All in-repo references updated including critical `src/render/HtmlRenderer.ts` REPO_URL constant that drives HTML report links. Build clean, 236 tests passing. See `.squad/decisions/decisions.md` for full scope.

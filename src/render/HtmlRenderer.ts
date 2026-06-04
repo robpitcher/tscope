@@ -23,7 +23,7 @@ import { tokenPartition, totalTokens, hasTokenData } from "../tokens";
 import { Renderer } from "./Renderer";
 
 /** Public repository URL, surfaced in the header logo link and footer. */
-const REPO_URL = "https://github.com/devjoy-pub/tscope";
+const REPO_URL = "https://github.com/robpitcher/tscope";
 
 // ---------------------------------------------------------------------------
 // Helpers

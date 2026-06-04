@@ -119,7 +119,7 @@ describe("HtmlRenderer", () => {
       );
       expect(hrefs.length).toBeGreaterThan(0);
       for (const href of hrefs) {
-        expect(href).toContain("github.com/devjoy-pub/tscope");
+        expect(href).toContain("github.com/robpitcher/tscope");
       }
     });
 
@@ -321,7 +321,7 @@ describe("HtmlRenderer", () => {
   describe("GitHub repo links", () => {
     test("header contains a GitHub logo link to the repo", () => {
       const html = renderToString(EMPTY_REPORT, "html-test-gh-header.html");
-      expect(html).toContain('href="https://github.com/devjoy-pub/tscope"');
+      expect(html).toContain('href="https://github.com/robpitcher/tscope"');
       expect(html).toContain("View tscope on GitHub");
       expect(html).toContain("gh-link");
     });
@@ -329,7 +329,7 @@ describe("HtmlRenderer", () => {
     test("footer invites contributions and links the repo", () => {
       const html = renderToString(EMPTY_REPORT, "html-test-footer-contribute.html");
       expect(html.toLowerCase()).toContain("contribute or report issues");
-      expect(html).toContain("https://github.com/devjoy-pub/tscope");
+      expect(html).toContain("https://github.com/robpitcher/tscope");
     });
   });
 
