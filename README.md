@@ -12,10 +12,14 @@
 The `--html` dashboard follows your system's light/dark theme:
 
 <!-- The two images below use GitHub's theme-aware suffixes so only the one matching your theme renders. -->
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/dashboard-dark.png">
-  <img alt="tscope HTML dashboard" src="docs/images/dashboard-light.png">
-</picture>
+<a href="docs/images/dashboard-dark.png">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/dashboard-dark.png">
+    <img alt="tscope HTML dashboard" src="docs/images/dashboard-light.png">
+  </picture>
+</a>
+
+<sub>Click the image to view it full size.</sub>
 
 > _Generated from synthetic sample data._
 
