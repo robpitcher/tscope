@@ -1,7 +1,7 @@
 ---
 name: Bug report
 about: Something isn't working right
-labels: squad, bug
+labels: [squad, bug]
 ---
 
 ## What happened
