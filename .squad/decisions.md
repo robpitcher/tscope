@@ -158,6 +158,20 @@
 
 **Placement:** Immediately after tagline, before prose description — first substantive thing reader sees without overshadowing project name.
 
+## Decision: NPM Publishing Strategy
+
+**Author:** Trinity  
+**Date:** 2026-06-03  
+**Status:** Active
+
+**Decision:** Stick with npmjs.org as the sole registry for alpha and beyond.
+
+**Rationale:** GitHub Packages requires scoped package names and consumer `.npmrc`+auth, adding friction to `npm i -g tscope` with zero user benefit. npmjs.org is zero-friction default registry. Package name already claimed on npmjs.org (v0.3.0, same project). D2 distribution model ("one npm command") requires npmjs.org.
+
+**When this could change:** Org-internal pivot, GitHub-only enterprise demand, or scoped `@robpitcher/tscope` variant desired. Future trigger-based decision only.
+
+**Action items:** Publishing workflow should target npmjs.org with `NPM_TOKEN`. Do NOT add `publishConfig.registry` pointing to GitHub Packages.
+
 ## Governance
 
 - All meaningful changes require team consensus
