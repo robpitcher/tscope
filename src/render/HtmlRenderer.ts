@@ -1768,7 +1768,12 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
 <header class="site-header">
   <div class="container">
     <div class="site-title">
-      <span class="logo">ts</span>
+      <span class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="10.5" cy="10.5" r="6.5"></circle>
+          <line x1="15.25" y1="15.25" x2="20" y2="20"></line>
+        </svg>
+      </span>
       tscope
     </div>
     <div class="header-meta">
@@ -1808,8 +1813,7 @@ ${chronicleBox}
 ${sessionCardsHtml}
 
 <footer class="site-footer">
-  <p>tscope &middot; GitHub Copilot Token Usage Report</p>
-  <p class="footer-contribute">Contribute or report issues on <a href="${REPO_URL}" target="_blank" rel="noopener noreferrer">GitHub</a>.</p>
+  <p class="footer-contribute">Contribute or report issues <a href="${REPO_URL}" target="_blank" rel="noopener noreferrer">here</a>.</p>
 </footer>
 
 <div id="chart-tooltip" class="chart-tooltip" role="tooltip"></div>

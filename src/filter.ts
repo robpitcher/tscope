@@ -120,55 +120,33 @@ export function makeRangeDateFilter(startDate: string, endDate: string) {
 }
 
 /**
- * Select the `max` most recent SessionRefs from `refs`, ordered by their
- * resolved start timestamp descending (most recent first). Refs whose
- * timestamp cannot be determined (or is unparseable) are pushed to the end
- * and only included if needed to fill the limit. Ties are broken by
- * sessionId ascending for deterministic ordering.
+ * Returns the `max` most recent ParsedSessions ordered by startTime
+ * descending (most recent first). Ties (and sessions with unparseable
+ * startTimes) are broken deterministically by sessionId ascending so output
+ * is stable across runs.
  *
- * Reads each ref's events file at most once via `resolveSessionIsoTime`,
- * with bounded concurrency.
+ * Pure and synchronous — caller is expected to pre-filter to the set of
+ * sessions that should count toward the limit (e.g. those with token data).
  */
-export async function selectMostRecentRefs(
-  refs: SessionRef[],
-  max: number,
-  concurrency = 16
-): Promise<SessionRef[]> {
-  if (max <= 0 || refs.length === 0) return [];
-
-  const times: Array<number | null> = new Array<number | null>(refs.length).fill(null);
-  const workerCount = Math.min(Math.max(1, concurrency), refs.length);
-  let nextIndex = 0;
-
-  async function worker(): Promise<void> {
-    while (nextIndex < refs.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      const iso = await resolveSessionIsoTime(refs[index]);
-      if (iso === null) {
-        times[index] = null;
-        continue;
-      }
-      const ms = Date.parse(iso);
-      times[index] = Number.isFinite(ms) ? ms : null;
-    }
-  }
-
-  await Promise.all(Array.from({ length: workerCount }, () => worker()));
-
-  const indices = refs.map((_, i) => i);
+export function selectMostRecentSessions<T extends { startTime: string; sessionId: string }>(
+  sessions: T[],
+  max: number
+): T[] {
+  if (max <= 0 || sessions.length === 0) return [];
+  const indices = sessions.map((_, i) => i);
   indices.sort((a, b) => {
-    const ta = times[a];
-    const tb = times[b];
-    // Refs with no usable timestamp sort to the end.
-    if (ta === null && tb === null) {
-      return refs[a].sessionId.localeCompare(refs[b].sessionId);
+    const ta = Date.parse(sessions[a].startTime);
+    const tb = Date.parse(sessions[b].startTime);
+    const aValid = Number.isFinite(ta);
+    const bValid = Number.isFinite(tb);
+    // Sessions with unparseable startTimes sort to the end.
+    if (!aValid && !bValid) {
+      return sessions[a].sessionId.localeCompare(sessions[b].sessionId);
     }
-    if (ta === null) return 1;
-    if (tb === null) return -1;
+    if (!aValid) return 1;
+    if (!bValid) return -1;
     if (tb !== ta) return tb - ta; // descending by time
-    return refs[a].sessionId.localeCompare(refs[b].sessionId);
+    return sessions[a].sessionId.localeCompare(sessions[b].sessionId);
   });
-
-  return indices.slice(0, max).map((i) => refs[i]);
+  return indices.slice(0, max).map((i) => sessions[i]);
 }

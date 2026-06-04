@@ -17,8 +17,9 @@ import {
   isValidDateString,
   todayLocalDateString,
   localDateNDaysAgo,
-  selectMostRecentRefs,
+  selectMostRecentSessions,
 } from "./filter";
+import { hasTokenData } from "./tokens";
 import { Renderer, createRenderer } from "./render";
 import { ParsedSession, InProgressSession, Report, SessionRef } from "./types";
 
@@ -306,14 +307,7 @@ async function main(): Promise<void> {
   }
 
   const allRefs = discoverSessions(sessionStateDir);
-  let filteredRefs = await applyFilter(allRefs, args);
-
-  if (args.max !== undefined) {
-    const maxN = Number(args.max);
-    if (filteredRefs.length > maxN) {
-      filteredRefs = await selectMostRecentRefs(filteredRefs, maxN, FILTER_CONCURRENCY);
-    }
-  }
+  const filteredRefs = await applyFilter(allRefs, args);
 
   const completedSessions: ParsedSession[] = [];
   const inProgressSessions: InProgressSession[] = [];
@@ -336,11 +330,26 @@ async function main(): Promise<void> {
     }
   }
 
+  let finalCompleted: ParsedSession[] = completedSessions;
+  let finalInProgress: InProgressSession[] = inProgressSessions;
+
+  // --max counts the renderable sessions that will actually appear in the
+  // report. All renderers silently exclude in-progress sessions and
+  // completed sessions with no token data, so we must apply the same
+  // filter here before the recency-based slice — otherwise the user sees
+  // fewer than N rows even when more renderable sessions exist.
+  if (args.max !== undefined) {
+    const maxN = Number(args.max);
+    const renderable = completedSessions.filter((s) => hasTokenData(s.models));
+    finalCompleted = selectMostRecentSessions(renderable, maxN);
+    finalInProgress = [];
+  }
+
   const filterDescription = buildFilterDescription(args);
 
   const report: Report = {
-    sessions: completedSessions,
-    inProgressSessions,
+    sessions: finalCompleted,
+    inProgressSessions: finalInProgress,
     reportDate: today,
     filterDescription,
   };
