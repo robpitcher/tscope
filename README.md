@@ -24,6 +24,21 @@ tscope --html # generate and open an HTML dashboard
 
 Requires **Node.js 18+**.
 
+## Command-Line Parameters
+
+| Parameter | Values | Description | Required |
+| --- | --- | --- | --- |
+| `--all` | _(none)_ | Include all sessions (disables the default date filter). | No |
+| `--date` | `YYYY-MM-DD` | Show sessions that started on the given local date. | No |
+| `--help`, `-h` | _(none)_ | Show usage and options, then exit. | No |
+| `--html` | `[FILE]` (optional path) | Write a self-contained HTML dashboard to `FILE` (or a default filename) and open it. | No |
+| `--json` | _(none)_ | Emit the report as JSON (`tscope/report/v4`) to stdout instead of formatted text. | No |
+| `--lastdays` | `N` (positive integer) | Show sessions from the last `N` days (today plus the previous `N − 1`). | No |
+| `--range` | `START END` (two `YYYY-MM-DD` values) | Show sessions in the given local-date range, inclusive. | No |
+| `--version`, `-v` | _(none)_ | Print the installed version and exit. | No |
+
+With no flags, `tscope` reports today's sessions in formatted text. Date filters (`--date`, `--range`, `--lastdays`, `--all`) are mutually exclusive. See [Usage](docs/usage.md) for full details.
+
 ## Documentation
 
 Full documentation lives in the [`docs/`](docs/) folder:
