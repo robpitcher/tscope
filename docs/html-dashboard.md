@@ -7,6 +7,13 @@ tscope --html               # Generate dashboard with default filename and open 
 tscope --html report.html   # Generate dashboard at the specified path and open it
 ```
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/dashboard-dark.png">
+  <img alt="tscope HTML dashboard" src="images/dashboard-light.png">
+</picture>
+
+> _Generated from synthetic sample data._
+
 ## Features
 
 - **Total Tokens** summary stat card

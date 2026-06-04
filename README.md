@@ -7,12 +7,29 @@
 
 `tscope` is a command-line tool that reads your local Copilot CLI session files, measures tokens used per model (input, output, cache read, cache write), and displays a clear report — in the terminal, as JSON, or as an interactive HTML dashboard.
 
+## HTML Dashboard Preview
+
+The `--html` dashboard follows your system's light/dark theme:
+
+<!-- The two images below use GitHub's theme-aware suffixes so only the one matching your theme renders. -->
+<a href="docs/images/dashboard-dark.png">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/dashboard-dark.png">
+    <img alt="tscope HTML dashboard" src="docs/images/dashboard-light.png">
+  </picture>
+</a>
+
+<sub>Click the image to view it full size.</sub>
+
+> _Generated from synthetic sample data._
+
 ## Features
 
 - 📊 **Local-only analysis** — no network calls, no credentials needed
 - 🔍 **Per-session breakdown** — view token usage by session and model
 - 📅 **Today's default** — shows current day's sessions by default
 - 📈 **HTML dashboard** — sleek dashboard with token charts, an interactive date-range filter, and system light/dark theme
+- 💡 **Chronicle Insights** — if a session ran `/chronicle tips` or `/chronicle cost-tips`, the recommendations are surfaced in the HTML dashboard
 - 📤 **JSON output** — machine-readable schema (`tscope/report/v4`) for scripting
 
 ## Quick Start
