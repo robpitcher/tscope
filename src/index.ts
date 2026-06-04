@@ -94,6 +94,7 @@ interface ParsedArgs {
   filterEnd?: string;
   filterLastDays?: string;
   max?: string;
+  maxProvided: boolean;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -142,10 +143,15 @@ function parseArgs(argv: string[]): ParsedArgs {
   }
 
   if (maxIdx !== -1) {
-    max = args[maxIdx + 1];
+    // Reject the next token if it looks like another flag — keeps the user
+    // from accidentally consuming a sibling flag (e.g. `tscope --max --json`).
+    const next = args[maxIdx + 1];
+    if (next !== undefined && !next.startsWith("--")) {
+      max = next;
+    }
   }
 
-  return { help, version, json, html, htmlOutputPath, filterMode, filterDate, filterStart, filterEnd, filterLastDays, max };
+  return { help, version, json, html, htmlOutputPath, filterMode, filterDate, filterStart, filterEnd, filterLastDays, max, maxProvided: maxIdx !== -1 };
 }
 
 function validateArgs(args: ParsedArgs): void {
@@ -204,7 +210,13 @@ function validateArgs(args: ParsedArgs): void {
     }
   }
 
-  if (args.max !== undefined) {
+  if (args.maxProvided) {
+    if (args.max === undefined) {
+      process.stderr.write(
+        "Error: --max requires a positive integer argument (e.g. --max 10)\n"
+      );
+      process.exit(1);
+    }
     if (!/^\d+$/.test(args.max) || Number(args.max) < 1) {
       process.stderr.write(
         `Error: invalid value "${args.max}" for --max — expected a positive integer (e.g. 10)\n`
