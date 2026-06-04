@@ -1,59 +1,34 @@
 name: Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      release_type:
-        description: 'Type of release'
-        required: true
-        type: choice
-        default: patch
-        options:
-          - patch
-          - minor
-          - major
-          - prerelease
-      prerelease_id:
-        description: 'Prerelease identifier (only used when release_type is prerelease)'
-        required: false
-        type: choice
-        default: beta
-        options:
-          - alpha
-          - beta
-          - rc
-      dry_run:
-        description: 'Dry run (build & version locally without publishing or pushing)'
-        required: false
-        type: boolean
-        default: false
+  push:
+    branches:
+      - main
 
+# Required so the action can:
+#   contents: write       -> create release tags / GitHub releases
+#   pull-requests: write  -> open / update the "Version Packages" PR
+#   id-token: write       -> npm trusted publishing (OIDC)
 permissions:
   contents: write
+  pull-requests: write
   id-token: write
 
 concurrency:
-  group: release-${{ github.workflow }}
+  group: release-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   release:
-    name: Publish release
+    name: Release
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
-      - name: Validate branch
-        if: github.ref != 'refs/heads/main'
-        run: |
-          echo "::error::Releases can only be run from the main branch (current: ${{ github.ref }})"
-          exit 1
-
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -77,60 +52,16 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Configure git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      - name: Bump version
-        id: bump
+      - name: Create release PR or publish
+        uses: changesets/action@v1
+        with:
+          # Runs `npm run version` when opening/updating the PR (consumes
+          # changesets, bumps package.json, updates CHANGELOG.md).
+          version: npm run version
+          # Runs `npm run release` after the version PR is merged
+          # (build + `changeset publish` -> npm publish + git tag).
+          publish: npm run release
+          commit: "chore(release): version packages"
+          title: "chore(release): version packages"
         env:
-          RELEASE_TYPE: ${{ inputs.release_type }}
-          PRERELEASE_ID: ${{ inputs.prerelease_id }}
-        run: |
-          if [ "$RELEASE_TYPE" = "prerelease" ]; then
-            NEW_VERSION=$(npm version prerelease --preid "$PRERELEASE_ID" -m "chore(release): %s")
-          else
-            NEW_VERSION=$(npm version "$RELEASE_TYPE" -m "chore(release): %s")
-          fi
-          echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "tag=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
-          if [ "$RELEASE_TYPE" = "prerelease" ]; then
-            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
-            echo "npm_tag=next" >> "$GITHUB_OUTPUT"
-          else
-            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
-            echo "npm_tag=latest" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Push commit and tag
-        if: ${{ !inputs.dry_run }}
-        run: |
-          git push origin HEAD:main
-          git push origin "${{ steps.bump.outputs.tag }}"
-
-      - name: Publish to npm
-        if: ${{ !inputs.dry_run }}
-        run: npm publish --access public --tag "${{ steps.bump.outputs.npm_tag }}"
-
-      - name: Create GitHub release
-        if: ${{ !inputs.dry_run }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.bump.outputs.tag }}
-          IS_PRERELEASE: ${{ steps.bump.outputs.is_prerelease }}
-        run: |
-          ARGS=( "$TAG" --title "$TAG" --generate-notes )
-          if [ "$IS_PRERELEASE" = "true" ]; then
-            ARGS+=( --prerelease )
-          else
-            ARGS+=( --latest )
-          fi
-          gh release create "${ARGS[@]}"
-
-      - name: Dry run summary
-        if: ${{ inputs.dry_run }}
-        run: |
-          echo "Dry run complete. Version that would be released: ${{ steps.bump.outputs.version }}"
-          echo "npm dist-tag: ${{ steps.bump.outputs.npm_tag }}"
-          echo "Prerelease: ${{ steps.bump.outputs.is_prerelease }}"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
