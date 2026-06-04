@@ -34,6 +34,7 @@ Requires **Node.js 18+**.
 | `--html` | `[FILE]` (optional path) | Write a self-contained HTML dashboard to `FILE` (or a default filename) and open it. | No |
 | `--json` | _(none)_ | Emit the report as JSON (`tscope/report/v4`) to stdout instead of formatted text. | No |
 | `--lastdays` | `N` (positive integer) | Show sessions from the last `N` days (today plus the previous `N − 1`). | No |
+| `--max` | `N` (positive integer) | After date filtering, keep only the `N` most recent sessions (ordered by start time, newest first). | No |
 | `--range` | `START END` (two `YYYY-MM-DD` values) | Show sessions in the given local-date range, inclusive. | No |
 | `--version`, `-v` | _(none)_ | Print the installed version and exit. | No |
 

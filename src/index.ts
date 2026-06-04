@@ -17,6 +17,7 @@ import {
   isValidDateString,
   todayLocalDateString,
   localDateNDaysAgo,
+  selectMostRecentRefs,
 } from "./filter";
 import { Renderer, createRenderer } from "./render";
 import { ParsedSession, InProgressSession, Report, SessionRef } from "./types";
@@ -43,6 +44,8 @@ OPTIONS
   --range START END   Show sessions in a local-date range (inclusive)
   --lastdays N        Show sessions from the last N days (today and the
                       preceding N-1 days)
+  --max N             Keep only the N most recent sessions from the matched
+                      set (sessions are ordered by start time, newest first)
 
 DESCRIPTION
   With no arguments, tscope discovers all Copilot CLI sessions from today
@@ -61,6 +64,8 @@ EXAMPLES
   tscope --range 2026-05-01 2026-05-31    Report sessions in a date range
                                           (dates are YYYY-MM-DD, inclusive)
   tscope --date 2026-06-02                Report a specific local date
+  tscope --lastdays 30 --max 10           Report the 10 most recent sessions
+                                          from the last 30 days
   tscope --all --html                     Open full history as an HTML dashboard
 
 DATA SOURCE
@@ -87,6 +92,7 @@ interface ParsedArgs {
   filterStart?: string;
   filterEnd?: string;
   filterLastDays?: string;
+  max?: string;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -111,12 +117,14 @@ function parseArgs(argv: string[]): ParsedArgs {
   const dateIdx = args.indexOf("--date");
   const rangeIdx = args.indexOf("--range");
   const lastDaysIdx = args.indexOf("--lastdays");
+  const maxIdx = args.indexOf("--max");
 
   let filterMode: FilterMode = "today";
   let filterDate: string | undefined;
   let filterStart: string | undefined;
   let filterEnd: string | undefined;
   let filterLastDays: string | undefined;
+  let max: string | undefined;
 
   if (all) {
     filterMode = "all";
@@ -132,7 +140,11 @@ function parseArgs(argv: string[]): ParsedArgs {
     filterLastDays = args[lastDaysIdx + 1];
   }
 
-  return { help, version, json, html, htmlOutputPath, filterMode, filterDate, filterStart, filterEnd, filterLastDays };
+  if (maxIdx !== -1) {
+    max = args[maxIdx + 1];
+  }
+
+  return { help, version, json, html, htmlOutputPath, filterMode, filterDate, filterStart, filterEnd, filterLastDays, max };
 }
 
 function validateArgs(args: ParsedArgs): void {
@@ -190,6 +202,15 @@ function validateArgs(args: ParsedArgs): void {
       process.exit(1);
     }
   }
+
+  if (args.max !== undefined) {
+    if (!/^\d+$/.test(args.max) || Number(args.max) < 1) {
+      process.stderr.write(
+        `Error: invalid value "${args.max}" for --max — expected a positive integer (e.g. 10)\n`
+      );
+      process.exit(1);
+    }
+  }
 }
 
 async function filterRefsWithConcurrency(
@@ -241,15 +262,23 @@ async function applyFilter(
 
 /** Build the human-readable filter description for reports */
 function buildFilterDescription(args: ParsedArgs): string {
-  if (args.filterMode === "all") return "all time";
-  if (args.filterMode === "date") return args.filterDate!;
-  if (args.filterMode === "range")
-    return `${args.filterStart} to ${args.filterEnd}`;
-  if (args.filterMode === "lastdays") {
+  let base: string;
+  if (args.filterMode === "all") base = "all time";
+  else if (args.filterMode === "date") base = args.filterDate!;
+  else if (args.filterMode === "range") base = `${args.filterStart} to ${args.filterEnd}`;
+  else if (args.filterMode === "lastdays") {
     const n = Number(args.filterLastDays);
-    return n === 1 ? "today" : `last ${n} days`;
+    base = n === 1 ? "today" : `last ${n} days`;
+  } else {
+    base = "today";
   }
-  return "today";
+
+  if (args.max !== undefined) {
+    const n = Number(args.max);
+    const noun = n === 1 ? "session" : "sessions";
+    return `${base} (top ${n} most recent ${noun})`;
+  }
+  return base;
 }
 
 async function main(): Promise<void> {
@@ -277,7 +306,14 @@ async function main(): Promise<void> {
   }
 
   const allRefs = discoverSessions(sessionStateDir);
-  const filteredRefs = await applyFilter(allRefs, args);
+  let filteredRefs = await applyFilter(allRefs, args);
+
+  if (args.max !== undefined) {
+    const maxN = Number(args.max);
+    if (filteredRefs.length > maxN) {
+      filteredRefs = await selectMostRecentRefs(filteredRefs, maxN, FILTER_CONCURRENCY);
+    }
+  }
 
   const completedSessions: ParsedSession[] = [];
   const inProgressSessions: InProgressSession[] = [];
