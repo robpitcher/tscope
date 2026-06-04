@@ -144,6 +144,20 @@
 
 **Dependency convention:** Issues use `Depends on #N` labels; `ready` label for startable tasks, `blocked` for waiting tasks
 
+## Decision: Alpha Disclaimer in README
+
+**Author:** Trinity  
+**Date:** 2026-06-03  
+**Status:** Active
+
+**Decision:** Added a `> [!WARNING]` GitHub-flavored markdown alert block after the one-line tagline and before the description paragraph.
+
+**Context:** README needs to communicate that tscope is alpha-stage software with expected bugs and potential schema changes.
+
+**Wording:** Bold "Alpha software" lead with single sentence covering early-stage status, bug expectations, schema-may-change caveat, and link to issues page. Tone kept friendly with 🙏 emoji.
+
+**Placement:** Immediately after tagline, before prose description — first substantive thing reader sees without overshadowing project name.
+
 ## Governance
 
 - All meaningful changes require team consensus

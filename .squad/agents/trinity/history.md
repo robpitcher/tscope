@@ -77,3 +77,12 @@ Tank delivered GitHub Actions CI workflow. All PRs now gated by lint + build + t
 4. No other changes to the core pipeline.
 
 **Outcome:** 20/20 tests pass, strict TS build clean, CLI output byte-identical to pre-refactor.
+
+### 2026-06-03 — Alpha Stage Disclaimer Added
+
+**Work completed:**
+- Added `> [!WARNING]` GitHub-flavored markdown alert block to README immediately after tagline
+- Wording emphasizes: early-stage/alpha status, expected bugs, potential schema changes, link to issues page
+- Tone: friendly, scannable, using 🙏 emoji to match project voice
+
+**Outcome:** Stakeholders and users now see clear alpha-stage caveat at first glance in README. Reduces support friction from users encountering bugs. Addresses robpitcher's request to clearly communicate development status.
