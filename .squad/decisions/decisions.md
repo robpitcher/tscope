@@ -1,5 +1,26 @@
 # Team Decisions
 
+## Decision: Distribution Model Analysis — npm vs Copilot Plugin vs gh Extension
+
+**Author:** Trinity (Lead/Architect)  
+**Date:** 2026-06-03  
+**Status:** Decision — D2 CONFIRMED (no amendment)  
+**Requested by:** robpitcher  
+**Context:** Analyzed distribution strategy across npm, Copilot CLI plugins, and gh CLI extensions.
+
+### Recommendation: Primary path is npm (`npm i -g tscope`). D2 stands unchanged.
+
+**Key findings:**
+- **npm:** Lowest friction, perfect distribution fit, target users (Copilot CLI) have Node, D5 renderers benefit from npm/Node ecosystem, already live at v0.3.0. **Adopt.**
+- **Copilot CLI plugin:** Wrong architectural shape — plugins extend agentic experience with agents/skills/hooks; tscope is standalone binary. Do not pursue.
+- **gh CLI extension:** Valid architecture but limited value for local-only workflow. Secondary option only post-v1.0 if reach expansion justified.
+
+**D2 amendment:** None. D2 is correct as written.
+
+**Future channel:** Possible `gh-tscope` extension post-v1.0 with precompiled binaries (Windows/macOS/Linux, amd64/arm64) if market reach justifies complexity. Not a blocker for v1.0.
+
+---
+
 ## Decision: CI Workflow for tscope
 
 **Author:** Tank  
