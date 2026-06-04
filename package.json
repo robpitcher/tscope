@@ -31,7 +31,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/robpitcher/tscope.git"
+    "url": "https://github.com/robpitcher/tscope"
   },
   "bugs": {
     "url": "https://github.com/robpitcher/tscope/issues"
