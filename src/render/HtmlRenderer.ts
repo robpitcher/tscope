@@ -516,9 +516,16 @@ function buildSessionCard(session: NormalizedSession): string {
       <span class="session-datetime">${dateStr}</span>
     </div>
     <div class="session-summary-chips">
+      ${session.source === "otel"
+        ? `<span class="source-badge source-badge--otel" title="Data source: OpenTelemetry">OTel</span>`
+        : `<span class="source-badge source-badge--logs" title="Data source: event log parser — cost data unavailable">log parser</span>`}
       ${session.apiDurationMs !== undefined ? `<span class="chip chip-duration" title="Cumulative model API time (compute only — excludes idle / user think time)">${esc(fmtDuration(session.apiDurationMs))} API</span>` : ""}
       <span class="chip chip-tokens">${fmtNum(totalTokensForCard)} tokens</span>
-      ${session.totalCost !== undefined ? `<span class="chip chip-credits" title="Estimated AI credits from OpenTelemetry billing data">${session.totalCost.toFixed(2)} credits</span>` : ""}
+      ${session.totalCost !== undefined
+        ? `<span class="chip chip-credits" title="Estimated AI credits from OpenTelemetry billing data">${session.totalCost.toFixed(2)} credits</span>`
+        : session.source === "logs"
+        ? `<span class="chip chip-cost-unavail" title="Cost data unavailable — run &#x27;tscope otel enable&#x27; to get billing data">no cost data</span>`
+        : ""}
     </div>
   </div>
   <div class="session-path">${esc(session.eventsPath)}</div>
@@ -1250,6 +1257,31 @@ button.filter-badge:hover { background: var(--border); color: var(--text-primary
   border-color: var(--border);
 }
 
+/* Coverage summary in header (mixed source reports) */
+.coverage-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+.cov-otel { color: var(--accent-blue); }
+.cov-sep { color: var(--text-muted); }
+.cov-logs { color: var(--text-muted); }
+
+/* Cost-unavailable chip (logs sessions — complements .chip base class) */
+.chip-cost-unavail {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px dashed var(--border);
+  font-weight: 400;
+}
+
 /* AI credits chip (OTel sessions) */
 .chip-credits { background: rgba(63,185,80,.12); color: var(--accent-green); border: 1px solid rgba(63,185,80,.25); }
 
@@ -1744,7 +1776,7 @@ const JS = `
 // ---------------------------------------------------------------------------
 
 function buildHtml(report: Report, generatedAt: string, generatedAtIso: string): string {
-  const { sessions, inProgressSessions, filterDescription, reportDate, source, costAvailable } = report;
+  const { sessions, inProgressSessions, filterDescription, reportDate, source, costAvailable, coverage } = report;
 
   const completedCount = sessions.length;
   const inProgressCount = inProgressSessions.length;
@@ -1775,7 +1807,7 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
   <div class="stat-card">
     <div class="stat-label">Total Credits</div>
     <div class="stat-value accent-green">${grandTotalCredits.toFixed(2)}</div>
-    <div class="stat-sub">AI billing credits</div>
+    <div class="stat-sub">${source === "mixed" ? "OTel sessions only" : "AI billing credits"}</div>
   </div>` : ""}
   <div class="stat-card">
     <div class="stat-label">Date Filter</div>
@@ -1910,6 +1942,8 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
       </div>
       ${source === "otel"
         ? `<span class="source-badge source-badge--otel" title="Data source: OpenTelemetry — includes server-side billing credits">OpenTelemetry</span>`
+        : source === "mixed"
+        ? `<span class="coverage-summary" title="Sources: ${coverage.otelCount} OTel + ${coverage.logsCount} logs sessions — cost available for OTel sessions only"><span class="cov-otel">${coverage.otelCount} OTel</span><span class="cov-sep"> · </span><span class="cov-logs">${coverage.logsCount} logs</span></span>`
         : `<span class="source-badge source-badge--logs" title="Data source: event logs (historical) — cost data unavailable. Run &#x27;tscope otel enable&#x27; to use OpenTelemetry.">event logs</span>`
       }
       <span style="font-size:12px;color:var(--text-muted)">Generated ${esc(generatedAt)}</span>

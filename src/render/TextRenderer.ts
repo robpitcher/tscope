@@ -99,6 +99,7 @@ function renderSessionBlock(session: NormalizedSession, styled: boolean): string
     lines.push(`API time: ${fmtDurationMs(session.apiDurationMs)} (cumulative model compute)`);
   }
   lines.push(dim(`Path:    ${session.eventsPath}`, styled));
+  lines.push(`Source:  ${session.source === "otel" ? "OTel" : "log parser"}`);
   lines.push(LIGHT);
 
   const modelEntries = Object.entries(session.models);
@@ -175,11 +176,14 @@ export class TextRenderer implements Renderer {
       );
     }
 
-    const sourceLabel =
-      report.source === "otel" ? "OpenTelemetry" :
-      report.source === "mixed" ? "mixed (OTel + logs)" :
-      "event logs (historical)";
-    const costNote = report.source === "logs" ? " — cost data unavailable" : "";
-    process.stdout.write(`Source: ${sourceLabel}${costNote}\n`);
+    if (report.source === "mixed") {
+      const { otelCount, logsCount } = report.coverage;
+      process.stdout.write(`Sources: ${otelCount} OTel, ${logsCount} logs — cost available for OTel sessions only\n`);
+    } else {
+      const sourceLabel =
+        report.source === "otel" ? "OpenTelemetry" : "event logs (historical)";
+      const costNote = report.source === "logs" ? " — cost data unavailable" : "";
+      process.stdout.write(`Source: ${sourceLabel}${costNote}\n`);
+    }
   }
 }

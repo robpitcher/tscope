@@ -396,9 +396,11 @@ describe("TextRenderer", () => {
     test("source footer appears after SUMMARY for non-empty report", () => {
       const out = captureText({ ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] });
       const summaryIdx = out.indexOf("SUMMARY:");
-      const sourceIdx = out.indexOf("Source:");
+      // Use lastIndexOf: the footer is always the last "Source:" occurrence
+      // (per-session "Source:" lines appear inside session blocks before SUMMARY).
+      const sourceFooterIdx = out.lastIndexOf("Source:");
       expect(summaryIdx).toBeGreaterThan(-1);
-      expect(sourceIdx).toBeGreaterThan(summaryIdx);
+      expect(sourceFooterIdx).toBeGreaterThan(summaryIdx);
     });
   });
 
@@ -475,6 +477,91 @@ describe("TextRenderer", () => {
     test("does not show Context line for logs sessions", () => {
       const out = captureText({ ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] });
       expect(out).not.toContain("Context:");
+    });
+  });
+
+  describe("per-session source tag", () => {
+    test("logs session block contains 'Source:  log parser'", () => {
+      const out = captureText({ ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] });
+      const sessionStart = out.indexOf(`SESSION: ${SAMPLE_SESSION.sessionId}`);
+      expect(sessionStart).toBeGreaterThan(-1);
+      // Grab from the session header to the next heavy divider (end of block)
+      const blockEnd = out.indexOf("═", sessionStart + 40);
+      const sessionBlock = out.slice(sessionStart, blockEnd);
+      expect(sessionBlock).toContain("Source:");
+      expect(sessionBlock).toContain("log parser");
+    });
+
+    test("OTel session block contains 'Source:  OTel'", () => {
+      const out = captureText({ ...OTEL_EMPTY_REPORT, sessions: [OTEL_SESSION] });
+      const sessionStart = out.indexOf(`SESSION: ${OTEL_SESSION.sessionId}`);
+      expect(sessionStart).toBeGreaterThan(-1);
+      const blockEnd = out.indexOf("═", sessionStart + 40);
+      const sessionBlock = out.slice(sessionStart, blockEnd);
+      expect(sessionBlock).toContain("Source:");
+      expect(sessionBlock).toContain("OTel");
+    });
+
+    test("OTel session block does not say 'log parser'", () => {
+      const out = captureText({ ...OTEL_EMPTY_REPORT, sessions: [OTEL_SESSION] });
+      const sessionStart = out.indexOf(`SESSION: ${OTEL_SESSION.sessionId}`);
+      const blockEnd = out.indexOf("═", sessionStart + 40);
+      const sessionBlock = out.slice(sessionStart, blockEnd);
+      expect(sessionBlock).not.toContain("log parser");
+    });
+
+    test("logs session block does not say 'OTel'", () => {
+      const out = captureText({ ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] });
+      const sessionStart = out.indexOf(`SESSION: ${SAMPLE_SESSION.sessionId}`);
+      const blockEnd = out.indexOf("═", sessionStart + 40);
+      const sessionBlock = out.slice(sessionStart, blockEnd);
+      expect(sessionBlock).not.toContain("OTel");
+    });
+
+    test("per-session source tag appears between the session header and the LIGHT divider", () => {
+      const out = captureText({ ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] });
+      const sessionStart = out.indexOf(`SESSION: ${SAMPLE_SESSION.sessionId}`);
+      const lightIdx = out.indexOf("─", sessionStart);
+      const headerSection = out.slice(sessionStart, lightIdx);
+      expect(headerSection).toContain("Source:");
+    });
+  });
+
+  describe("mixed report coverage footer", () => {
+    const MIXED_REPORT: Report = {
+      ...EMPTY_REPORT,
+      source: "mixed",
+      costAvailable: true,
+      coverage: { otelCount: 2, logsCount: 3, costCoverage: "partial" },
+      sessions: [OTEL_SESSION, SAMPLE_SESSION],
+    };
+
+    test("mixed report footer shows 'Sources: N OTel, M logs'", () => {
+      const out = captureText(MIXED_REPORT);
+      expect(out).toContain("Sources: 2 OTel, 3 logs");
+    });
+
+    test("mixed report footer mentions OTel sessions only for cost", () => {
+      const out = captureText(MIXED_REPORT);
+      expect(out).toContain("OTel sessions only");
+    });
+
+    test("mixed report footer does not say 'Source: mixed' (old label gone)", () => {
+      const out = captureText(MIXED_REPORT);
+      expect(out).not.toContain("Source: mixed");
+    });
+
+    test("mixed report footer does not say 'cost data unavailable' (partial, not none)", () => {
+      const out = captureText(MIXED_REPORT);
+      expect(out).not.toContain("cost data unavailable");
+    });
+
+    test("mixed report footer starts with 'Sources:' not 'Source:'", () => {
+      const out = captureText(MIXED_REPORT);
+      // Footer is the last line; check it starts with 'Sources:'
+      const lines = out.trimEnd().split("\n");
+      const footerLine = lines[lines.length - 1];
+      expect(footerLine).toMatch(/^Sources:/);
     });
   });
 });

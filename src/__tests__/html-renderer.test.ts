@@ -877,6 +877,250 @@ describe("HtmlRenderer", () => {
     });
   });
 
+  describe("per-session source badge on session cards", () => {
+    const OTEL_SESSION: NormalizedSession = {
+      ...SAMPLE_SESSION,
+      sessionId: "otel-per-card-0000-1111-2222-333344445555",
+      source: "otel",
+      totalCost: 1.5,
+      modelCosts: { "claude-sonnet-4-5": 1.5 },
+    };
+
+    test("each OTel session card carries source-badge--otel and 'OTel' label", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", sessions: [OTEL_SESSION] },
+        "html-test-per-session-otel-badge.html"
+      );
+      // Find the article element, not the SVG timeline bar (which also carries data-session-id)
+      const cardStart = html.indexOf(`class="session-card" data-session-id="${OTEL_SESSION.sessionId}"`);
+      expect(cardStart).toBeGreaterThan(-1);
+      const cardChips = html.slice(cardStart, cardStart + 800);
+      expect(cardChips).toContain("source-badge--otel");
+      expect(cardChips).toContain(">OTel<");
+    });
+
+    test("each logs session card carries source-badge--logs and 'log parser' label", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-per-session-logs-badge.html"
+      );
+      const cardStart = html.indexOf(`class="session-card" data-session-id="${SAMPLE_SESSION.sessionId}"`);
+      expect(cardStart).toBeGreaterThan(-1);
+      const cardChips = html.slice(cardStart, cardStart + 800);
+      expect(cardChips).toContain("source-badge--logs");
+      expect(cardChips).toContain("log parser");
+    });
+
+    test("in a mixed report, each card shows its own badge independent of report.source", () => {
+      const logsSession: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        sessionId: "logs-per-card-aaaa-bbbb-cccc-ddddeeeeffff",
+        source: "logs",
+      };
+      const mixedReport: Report = {
+        ...EMPTY_REPORT,
+        source: "mixed",
+        costAvailable: true,
+        coverage: { otelCount: 1, logsCount: 1, costCoverage: "partial" },
+        sessions: [OTEL_SESSION, logsSession],
+      };
+      const html = renderToString(mixedReport, "html-test-mixed-per-session-badges.html");
+
+      const otelCardIdx = html.indexOf(`class="session-card" data-session-id="${OTEL_SESSION.sessionId}"`);
+      const logsCardIdx = html.indexOf(`class="session-card" data-session-id="${logsSession.sessionId}"`);
+      expect(otelCardIdx).toBeGreaterThan(-1);
+      expect(logsCardIdx).toBeGreaterThan(-1);
+
+      const otelChips = html.slice(otelCardIdx, otelCardIdx + 800);
+      expect(otelChips).toContain("source-badge--otel");
+      expect(otelChips).not.toContain("source-badge--logs");
+
+      const logsChips = html.slice(logsCardIdx, logsCardIdx + 800);
+      expect(logsChips).toContain("source-badge--logs");
+      expect(logsChips).not.toContain("source-badge--otel");
+    });
+
+    test("per-session badge appears before the tokens chip in the chips row", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-badge-before-tokens.html"
+      );
+      const cardStart = html.indexOf(`class="session-card" data-session-id="${SAMPLE_SESSION.sessionId}"`);
+      const chipsHtml = html.slice(cardStart, cardStart + 800);
+      const badgeIdx = chipsHtml.indexOf("source-badge--logs");
+      const tokensIdx = chipsHtml.indexOf("chip-tokens");
+      expect(badgeIdx).toBeGreaterThan(-1);
+      expect(tokensIdx).toBeGreaterThan(-1);
+      expect(badgeIdx).toBeLessThan(tokensIdx);
+    });
+  });
+
+  describe("mixed report coverage summary in header", () => {
+    const OTEL_SESSION: NormalizedSession = {
+      ...SAMPLE_SESSION,
+      sessionId: "otel-cov-hdr-0000-1111-2222-333344445555",
+      source: "otel",
+      totalCost: 1.5,
+      modelCosts: { "claude-sonnet-4-5": 1.5 },
+    };
+    const LOGS_SESSION: NormalizedSession = {
+      ...SAMPLE_SESSION,
+      sessionId: "logs-cov-hdr-aaaa-bbbb-cccc-ddddeeeeffff",
+      source: "logs",
+    };
+
+    test("mixed report shows coverage-summary element in header", () => {
+      const html = renderToString(
+        {
+          ...EMPTY_REPORT,
+          source: "mixed",
+          costAvailable: true,
+          coverage: { otelCount: 1, logsCount: 1, costCoverage: "partial" },
+          sessions: [OTEL_SESSION, LOGS_SESSION],
+        },
+        "html-test-mixed-coverage-header.html"
+      );
+      expect(html).toContain("coverage-summary");
+    });
+
+    test("mixed coverage summary shows N OTel and M logs counts", () => {
+      const html = renderToString(
+        {
+          ...EMPTY_REPORT,
+          source: "mixed",
+          costAvailable: true,
+          coverage: { otelCount: 4, logsCount: 7, costCoverage: "partial" },
+          sessions: [OTEL_SESSION],
+        },
+        "html-test-mixed-coverage-counts.html"
+      );
+      expect(html).toContain("4 OTel");
+      expect(html).toContain("7 logs");
+    });
+
+    test("mixed report does not show single source-badge--otel or source-badge--logs in header", () => {
+      const html = renderToString(
+        {
+          ...EMPTY_REPORT,
+          source: "mixed",
+          costAvailable: true,
+          coverage: { otelCount: 1, logsCount: 1, costCoverage: "partial" },
+          sessions: [OTEL_SESSION],
+        },
+        "html-test-mixed-no-single-badge.html"
+      );
+      // The header area uses coverage-summary, not a single source-badge
+      const headerArea = html.slice(html.indexOf('<header'), html.indexOf('</header>'));
+      expect(headerArea).not.toContain("source-badge--otel");
+      expect(headerArea).not.toContain("source-badge--logs");
+      expect(headerArea).toContain("coverage-summary");
+    });
+
+    test("coverage summary CSS class is defined in the style block", () => {
+      const html = renderToString(EMPTY_REPORT, "html-test-coverage-css.html");
+      expect(html).toContain(".coverage-summary");
+      expect(html).toContain(".cov-otel");
+      expect(html).toContain(".cov-logs");
+    });
+  });
+
+  describe("cost unavailable chip on logs session cards", () => {
+    test("logs session card shows chip-cost-unavail chip", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-cost-unavail-chip.html"
+      );
+      expect(html).toContain("chip-cost-unavail");
+      expect(html).toContain("no cost data");
+    });
+
+    test("OTel session with totalCost does not show chip-cost-unavail", () => {
+      const otelSession: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        source: "otel",
+        totalCost: 2.34,
+        modelCosts: { "claude-sonnet-4-5": 2.34 },
+      };
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [otelSession] },
+        "html-test-no-cost-unavail-otel.html"
+      );
+      expect(html).not.toMatch(/class="[^"]*chip-cost-unavail/);
+    });
+
+    test("chip-cost-unavail CSS class is defined in the style block", () => {
+      const html = renderToString(EMPTY_REPORT, "html-test-cost-unavail-css.html");
+      expect(html).toContain(".chip-cost-unavail");
+    });
+
+    test("in a mixed report, logs card shows cost-unavail and OTel card shows credits chip", () => {
+      const otelSession: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        sessionId: "otel-cost-mix-0000-aaaa-bbbb-ccccddddeeee",
+        source: "otel",
+        totalCost: 1.5,
+        modelCosts: { "claude-sonnet-4-5": 1.5 },
+      };
+      const logsSession: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        sessionId: "logs-cost-mix-1111-aaaa-bbbb-ccccddddeeee",
+        source: "logs",
+      };
+      const mixedReport: Report = {
+        ...EMPTY_REPORT,
+        source: "mixed",
+        costAvailable: true,
+        coverage: { otelCount: 1, logsCount: 1, costCoverage: "partial" },
+        sessions: [otelSession, logsSession],
+      };
+      const html = renderToString(mixedReport, "html-test-mixed-cost-chips.html");
+
+      const otelCardIdx = html.indexOf(`class="session-card" data-session-id="${otelSession.sessionId}"`);
+      const logsCardIdx = html.indexOf(`class="session-card" data-session-id="${logsSession.sessionId}"`);
+
+      const otelChips = html.slice(otelCardIdx, otelCardIdx + 800);
+      expect(otelChips).toContain("chip-credits");
+      expect(otelChips).not.toContain("chip-cost-unavail");
+
+      const logsChips = html.slice(logsCardIdx, logsCardIdx + 800);
+      expect(logsChips).toContain("chip-cost-unavail");
+      expect(logsChips).not.toContain("chip-credits");
+    });
+  });
+
+  describe("Total Credits stat card subtitle in mixed reports", () => {
+    const OTEL_SESSION: NormalizedSession = {
+      ...SAMPLE_SESSION,
+      source: "otel",
+      totalCost: 3.14,
+      modelCosts: { "claude-sonnet-4-5": 3.14 },
+    };
+
+    test("pure OTel report still shows 'AI billing credits' subtitle", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION] },
+        "html-test-otel-credits-subtitle.html"
+      );
+      expect(html).toContain("AI billing credits");
+      expect(html).not.toContain("OTel sessions only");
+    });
+
+    test("mixed report shows 'OTel sessions only' subtitle on Total Credits card", () => {
+      const html = renderToString(
+        {
+          ...EMPTY_REPORT,
+          source: "mixed",
+          costAvailable: true,
+          coverage: { otelCount: 1, logsCount: 2, costCoverage: "partial" },
+          sessions: [OTEL_SESSION],
+        },
+        "html-test-mixed-credits-subtitle.html"
+      );
+      expect(html).toContain("OTel sessions only");
+      expect(html).not.toContain("AI billing credits");
+    });
+  });
+
   describe("cost display (OTel reports)", () => {
     const OTEL_SESSION: NormalizedSession = {
       ...SAMPLE_SESSION,
