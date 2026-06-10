@@ -21,6 +21,7 @@ import {
 } from "./filter";
 import { hasTokenData } from "./tokens";
 import { Renderer, createRenderer } from "./render";
+import { runOtel } from "./otel";
 import { ParsedSession, InProgressSession, Report, SessionRef } from "./types";
 
 const packageJson = createRequire(__filename)("../package.json") as { version: string };
@@ -47,6 +48,13 @@ OPTIONS
                       preceding N-1 days)
   --max N             Keep only the N most recent sessions from the matched
                       set (sessions are ordered by start time, newest first)
+
+SUBCOMMANDS
+  otel status         Show whether Copilot OTel export is configured
+  otel enable         Add OTel file-export config to your shell profile
+                      (preview only; re-run with --apply to write)
+  otel disable        Remove OTel file-export config from your shell profile
+                      (preview only; re-run with --apply to write)
 
 DESCRIPTION
   With no arguments, tscope discovers all Copilot CLI sessions from today
@@ -295,6 +303,13 @@ function buildFilterDescription(args: ParsedArgs): string {
 }
 
 async function main(): Promise<void> {
+  // Subcommand routing: `tscope otel <status|enable|disable>` is handled
+  // separately from the report flow and exits early.
+  const rawArgs = process.argv.slice(2);
+  if (rawArgs[0] === "otel") {
+    process.exit(runOtel(rawArgs.slice(1)));
+  }
+
   const args = parseArgs(process.argv);
 
   if (args.help) {
