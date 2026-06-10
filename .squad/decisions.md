@@ -217,3 +217,84 @@ Preconditions:
 - Market demand validated
 
 This is an additive channel, not a replacement. Both paths can coexist.
+
+## OTel-Primary Pivot — Tank Feasibility (2026-06-10)
+
+**Status:** Proposed (pending user approval)
+
+**Author:** Tank (Backend / Data Engineer)  
+**Date:** 2026-06-10
+
+### Verdict
+
+**OTel as primary source for per-session, per-model token + cost analysis is FEASIBLE.**
+
+Token counts from OTel span attributes match `events.jsonl` session.shutdown aggregates **exactly** across all 4 live sessions tested (6 distinct model+session combinations, zero discrepancy). All required fields are present with stable OTel GenAI semantic convention names.
+
+**Top 3 caveats:**
+
+1. **Metrics records have no session scope.** The 40 `metric` records in the file are histograms aggregated over an export window and carry no `gen_ai.conversation.id`. Per-session analysis must be built exclusively from the 13 `span` records. Metrics are useful only for aggregate/fleet-level analytics.
+
+2. **Single append-only file for all sessions.** Unlike `events.jsonl` (one file per session directory), `otel.jsonl` intermingles all sessions. The parser must group by `gen_ai.conversation.id` and cannot assume one session per file. No file rotation was found; unbounded growth is a risk in long-term use.
+
+3. **OTel only captures forward from enablement.** Sessions before `tscope otel enable --apply` have no OTel data. The `events.jsonl` path is required as historical/fallback. Dual-source architecture is necessary.
+
+### Field Availability
+
+| Required Field | Status | OTel Source | Verified |
+|---|---|---|---|
+| Input tokens | **AVAILABLE** | `gen_ai.usage.input_tokens` | ✅ exact match |
+| Output tokens | **AVAILABLE** | `gen_ai.usage.output_tokens` | ✅ exact match |
+| Cache-read tokens | **AVAILABLE** | `gen_ai.usage.cache_read_input_tokens` | ✅ exact match |
+| Cache-write tokens | **AVAILABLE** | `gen_ai.usage.cache_creation_input_tokens` | ✅ exact match (name differs) |
+| Reasoning tokens | **AVAILABLE** | `gen_ai.usage.reasoning_output_tokens` | ✅ exact match |
+| Model identity | **AVAILABLE** | `gen_ai.response.model` | ✅ same model strings |
+| Session identifier | **AVAILABLE** | `gen_ai.conversation.id` | ✅ same UUID |
+| Estimated credits | **BONUS** | `github.copilot.nano_aiu` (÷1e9) | ✅ server-side; no rate table needed |
+
+### Bonus Signals in OTel
+
+Server-side billing (`github.copilot.nano_aiu`), per-request latency, streaming metrics, tool call counts, agentic turn depth, stop reasons, context window utilization, MCP server health, tool definitions, anonymized user ID.
+
+## Decision: OTel-Primary Architecture — tscope Pivot (2026-06-10)
+
+**Status:** Proposed (pending user approval)
+
+**Author:** Trinity (Lead/Architect)  
+**Date:** 2026-06-10
+
+### Summary
+
+tscope introduces a DataSource abstraction: both an OTel reader and the existing events.jsonl parser produce a common `NormalizedSession` model. OTel is the default source when data exists; logs are the automatic fallback for historical/pre-enablement data. The CLI surface gains `--source` for explicit control.
+
+### Key Decisions
+
+**D-OTel-1: DataSource Interface & Normalized Model**
+
+A `DataSource` interface produces `NormalizedSession[]` from either OTel or events.jsonl. The normalized model extends the current `ParsedSession` with: source provenance tag, optional extended metrics (latency, request count, tool calls, errors), and coverage metadata. Both sources produce the same shape; renderers never know which source was used.
+
+**D-OTel-2: Source Selection Default**
+
+Default is `auto`: use OTel data when `~/.copilot/tscope/otel.jsonl` exists and has entries in the requested date range; fall back to events.jsonl otherwise. Per-session, not all-or-nothing — if OTel covers 5 of 8 sessions and logs cover the other 3, both contribute. De-duplication by session ID (OTel wins on conflict).
+
+**D-OTel-3: CLI Argument Redesign**
+
+New flag: `--source otel|logs|auto` (default: auto). Existing date filters unchanged. `--verbose` added for source-provenance annotations. The `otel` subcommand retained. No flags removed (alpha, but no gratuitous breaks).
+
+**D-OTel-4: Schema Bump to v5**
+
+JSON schema bumps to `tscope/report/v5`. Adds: `source` field per session, `coverage` object at report level, optional `extended` metrics block per session. v4 consumers break on schema string but field additions are additive.
+
+**D-OTel-5: Extended Metrics — Optional Block**
+
+OTel-sourced sessions MAY include an `extended` object with latency, request counts, tool call counts, error counts, model routing info. These appear in HTML dashboard's detail view and JSON but not in the default text renderer. Core view remains token+cost.
+
+### Pending User Decisions (5 Open Forks)
+
+1. **Cost re-introduction:** Should tscope re-introduce per-token cost estimates from `github.copilot.nano_aiu` (OTel) or remain token-only until GitHub publishes a pricing API?
+2. **File rotation:** Should tscope implement size/age-based rotation for `otel.jsonl`?
+3. **Bonus signals in v1:** Include latency, tool call counts, and other extended metrics in v1, or defer to v2?
+4. **JSON v5 bump:** Ship v5 schema immediately, or stay on v4 for backward compat with external consumers?
+5. **CLI surface changes:** Accept `--source` flag and `--verbose` for alpha, or hold for v1.0?
+
+**Implementation status:** Not started; 5-phase plan ready (Trinity review gates at phases 2, 4).

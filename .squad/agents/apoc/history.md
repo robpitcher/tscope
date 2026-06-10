@@ -24,3 +24,7 @@ Trinity created full GitHub collaboration infrastructure: CONTRIBUTING.md (contr
 ### 2026-06-04 — Distribution Model Analysis Complete (Trinity Lead)
 
 Trinity validated D2 (npm as primary distribution channel) against comprehensive analysis of Copilot CLI plugin model and gh CLI extensions. **Outcome: D2 confirmed, no amendment.** Copilot plugins are wrong architectural fit for standalone binary. gh-tscope extension viable as secondary channel post-v1.0 if reach expansion justifies cross-platform binary pipeline. Decision merged to decisions.md. Future horizon noted: add gh-tscope extension + precompiled binaries (win/mac/linux, amd64/arm64) post-v1.0, conditional on market demand.
+
+### 2026-06-10 — OTel-Primary Pivot Planning (Planning Batch)
+
+Tank and Trinity completed empirical OTel investigation and architecture proposal for OTel-primary pivot + CLI redesign. **Outcome: FEASIBLE.** OTel span token counts match events.jsonl exactly; session ID preserved; bonus signals (latency, tool calls, server-side billing) exposed. Architecture: DataSource abstraction, `--source otel|logs|auto`, JSON v4→v5. **Status:** Proposed decisions merged to decisions.md pending user approval on 5 open forks (cost re-intro, file rotation, bonus signals in v1, v5 timing, CLI surface). **Upcoming work for Apoc:** P3/P4 — Test suite expansion for dual-source parsing (OTel + events.jsonl), extended metrics validation; timeline depends on user fork resolutions. Implementation blocked until user decision.

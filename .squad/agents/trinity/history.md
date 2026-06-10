@@ -146,3 +146,25 @@ Tank delivered GitHub Actions CI workflow. All PRs now gated by lint + build + t
 **Secondary option (future):** Add `gh-tscope` as an ADDITIVE distribution channel post-v1.0 once schema is stable and a cross-platform binary pipeline exists. Not a replacement — an additional reach channel.
 
 **Decision note:** `.squad/decisions/inbox/trinity-distribution-model-analysis.md`
+
+### 2026-06-10 — OTel-Primary Architecture Proposal
+
+**Context:** User wants OTel as the primary, enterprise-stable data source for per-session/per-model token+cost analysis. Events.jsonl retained as historical/fallback. CLI arguments to be redesigned.
+
+**Architecture decisions proposed:**
+
+1. **DataSource abstraction:** A `DataSource` interface (`discover() → NormalizedSession[]`) sits between ingestion and the existing pipeline. Two implementations: `OtelDataSource` (reads `~/.copilot/tscope/otel.jsonl`) and `LogsDataSource` (existing events.jsonl parser, refactored into this interface). Both produce `NormalizedSession` — an extension of `ParsedSession` adding `source` provenance, optional `extended` metrics, and coverage metadata.
+
+2. **Source selection:** Default = `auto`. Logic: if OTel file exists and has data in the date range → use OTel for those sessions. For sessions not covered by OTel → fall back to events.jsonl. De-duplication by session ID; OTel wins on conflict. Explicit override: `--source otel|logs|auto`.
+
+3. **CLI redesign:** Added `--source otel|logs|auto` and `--verbose` (shows source provenance per session). All existing date filters and output flags retained unchanged. `otel` subcommand stays. No gratuitous breaks.
+
+4. **Schema bump to v5:** `tscope/report/v5` adds `source` per session, `coverage` at report level (otelRange, logsRange, sessionsBySource counts), and optional `extended` block for bonus OTel metrics.
+
+5. **Extended metrics:** Latency, request counts, tool calls, errors — shown in HTML detail view and JSON `extended` block. Not in default text view. Core remains token+cost.
+
+6. **Phased plan:** Phase 1 (Tank) = OTel reader + NormalizedSession model + source-selection logic. Phase 2 (Tank) = DataSource interface refactor of existing parser. Phase 3 (Switch) = dashboard updates for source badges + extended metrics. Phase 4 (Apoc) = edge-case tests (overlap, gaps, unknown sessions). Trinity gates all PRs.
+
+**Key dependency:** Tank's parallel investigation of what otel.jsonl actually contains. The design is resilient — if OTel lacks cache-read/cache-write, we fall back gracefully. If it lacks session IDs, the join strategy changes (to timestamp correlation instead of ID match).
+
+**Decision note:** `.squad/decisions/inbox/trinity-otel-primary-architecture.md`
