@@ -3,8 +3,14 @@
  * Parsing, storage, and rendering are decoupled through these types.
  */
 
-/** Which data source produced a session or report. */
+/** Which data source produced a single session. */
 export type DataSourceKind = "otel" | "logs";
+
+/**
+ * Report-level provenance. "mixed" means the report contains sessions from
+ * both OTel and the log parser (the default `--source auto` merged case).
+ */
+export type ReportSourceKind = DataSourceKind | "mixed";
 
 /**
  * A predicate that decides whether a session should be included in a report.
@@ -127,6 +133,24 @@ export interface InProgressSession {
 
 export type Session = ParsedSession | InProgressSession;
 
+/**
+ * Per-source session counts and cost-availability summary for a merged report.
+ * Renderers can use this to display "N OTel / M logs" coverage labels.
+ */
+export interface SourceCoverage {
+  /** Number of sessions sourced from OTel in this report. */
+  otelCount: number;
+  /** Number of sessions sourced from the log parser in this report. */
+  logsCount: number;
+  /**
+   * Cost-data availability across the report:
+   *   "all"     — every session has authoritative cost data (pure OTel)
+   *   "partial" — some sessions have cost data (OTel + logs mixed)
+   *   "none"    — no sessions have cost data (pure logs or empty)
+   */
+  costCoverage: "all" | "partial" | "none";
+}
+
 /** Final report data passed to renderers */
 export interface Report {
   /** Completed sessions with token data (source determined by Report.source). */
@@ -135,13 +159,23 @@ export interface Report {
   reportDate: string; // local date string YYYY-MM-DD
   /** Human-readable description of the active filter, e.g. "today", "2026-06-02", "2026-06-01 to 2026-06-02", "all time" */
   filterDescription: string;
-  /** Which data source produced the sessions in this report. */
-  source: DataSourceKind;
   /**
-   * Whether authoritative cost data is available for this report.
-   * true for OTel-sourced reports (github.copilot.nano_aiu); false for log-sourced.
+   * Which data source(s) produced the sessions in this report.
+   * "otel"  — all sessions from OTel
+   * "logs"  — all sessions from the log parser
+   * "mixed" — merged OTel + logs (default --source auto when OTel is available)
+   */
+  source: ReportSourceKind;
+  /**
+   * Whether cost data is present for at least the OTel subset of this report.
+   * true when source is "otel" or "mixed" (otelCount > 0).
    */
   costAvailable: boolean;
+  /**
+   * Per-source session counts and cost-availability summary.
+   * Use this for "N OTel / M logs" coverage displays and partial-cost indicators.
+   */
+  coverage: SourceCoverage;
 }
 
 /** Raw session folder info from discovery */

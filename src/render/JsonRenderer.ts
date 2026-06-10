@@ -4,9 +4,10 @@ import { hasTokenData } from "../tokens";
 
 /**
  * Schema version — bumped to v5.
- * v5 adds: `source` provenance field at the top level (which data source
- * produced the report: "otel" or "logs"), `costAvailable` signal, and
- * optional per-session `totalCost` / `modelCosts` fields (OTel only).
+ * v5 adds: `source` provenance field at the top level ("otel", "logs", or
+ * "mixed" for merged auto-mode reports), `costAvailable` signal, `coverage`
+ * object (per-source session counts + costCoverage indicator), and optional
+ * per-session `totalCost` / `modelCosts` fields (OTel only).
  * All v4 fields are preserved and additive.
  *
  * (v4 history: removed per-session `premiumRequests` field.
@@ -85,8 +86,13 @@ function serializeCompletedSession(session: NormalizedSession) {
  * Top-level fields:
  *   schema         — stable identifier, bump on breaking changes
  *   generatedAt    — ISO 8601 UTC timestamp of report generation
- *   source         — "otel" or "logs" — which data source produced the report
- *   costAvailable  — true if cost data is present (OTel only)
+ *   source         — "otel" | "logs" | "mixed" — data source(s) in this report
+ *   costAvailable  — true if any OTel sessions are present (otelCount > 0)
+ *   coverage       — { otelCount, logsCount, costCoverage: "all"|"partial"|"none" }
+ *                    N OTel / M logs session counts; costCoverage:
+ *                      "all"     = all sessions have cost (pure OTel)
+ *                      "partial" = mixed: some have cost (OTel), some don't (logs)
+ *                      "none"    = no sessions have cost (pure logs or empty)
  *   filter         — description and reportDate of the active filter
  *   summary        — sessionCount, completedCount, inProgressCount, totalTokens
  *                    (in-progress sessions are silently excluded, so
@@ -98,8 +104,9 @@ function serializeCompletedSession(session: NormalizedSession) {
  *                    silently excluded — see JsonRenderer.render)
  *     sessionId, path, startTime (ISO UTC string), localDateTime (YYYY-MM-DD HH:MM string),
  *     inProgress (always false), apiDurationMs (cumulative model API ms across
- *     runs, or null when no shutdown reported it), source, totalCost (OTel only,
- *     in AI credits), modelCosts (OTel only, per-model credits), models[], totals
+ *     runs, or null when no shutdown reported it), source ("otel"|"logs"),
+ *     totalCost (OTel only, in AI credits), modelCosts (OTel only, per-model
+ *     credits), models[], totals
  *   models[]       — modelName, usage{input,output,cacheRead,cacheWrite,reasoning}
  *   totals         — summed token counts; `total` = input+output (cacheRead and
  *                    cacheWrite are subsets of input, not added on top)
@@ -125,6 +132,7 @@ export class JsonRenderer implements Renderer {
       generatedAt: new Date().toISOString(),
       source: report.source,
       costAvailable: report.costAvailable,
+      coverage: report.coverage,
       filter: {
         description: report.filterDescription,
         reportDate: report.reportDate,

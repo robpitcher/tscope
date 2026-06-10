@@ -29,6 +29,7 @@ const EMPTY_REPORT: Report = {
   filterDescription: "today",
   source: "logs",
   costAvailable: false,
+  coverage: { otelCount: 0, logsCount: 0, costCoverage: "none" },
 };
 
 const SAMPLE_SESSION: NormalizedSession = {
@@ -102,6 +103,88 @@ describe("JsonRenderer", () => {
       expect(out.costAvailable).toBe(true);
     });
 
+    test("source is 'mixed' when report.source is mixed", () => {
+      const report: Report = {
+        ...EMPTY_REPORT,
+        source: "mixed",
+        costAvailable: true,
+        coverage: { otelCount: 2, logsCount: 3, costCoverage: "partial" },
+      };
+      const out = captureJson(report);
+      expect(out.source).toBe("mixed");
+    });
+  });
+
+  describe("coverage field", () => {
+    test("coverage field is present in output", () => {
+      const out = captureJson(EMPTY_REPORT);
+      expect(out.coverage).toBeDefined();
+    });
+
+    test("coverage has otelCount, logsCount, costCoverage fields", () => {
+      const out = captureJson(EMPTY_REPORT);
+      expect(typeof out.coverage.otelCount).toBe("number");
+      expect(typeof out.coverage.logsCount).toBe("number");
+      expect(typeof out.coverage.costCoverage).toBe("string");
+    });
+
+    test("empty logs report has coverage {otelCount:0, logsCount:0, costCoverage:'none'}", () => {
+      const out = captureJson(EMPTY_REPORT);
+      expect(out.coverage.otelCount).toBe(0);
+      expect(out.coverage.logsCount).toBe(0);
+      expect(out.coverage.costCoverage).toBe("none");
+    });
+
+    test("otel-only coverage: costCoverage is 'all'", () => {
+      const otelSession: NormalizedSession = { ...SAMPLE_SESSION, source: "otel" };
+      const report: Report = {
+        ...EMPTY_REPORT,
+        source: "otel",
+        costAvailable: true,
+        coverage: { otelCount: 1, logsCount: 0, costCoverage: "all" },
+        sessions: [otelSession],
+      };
+      const out = captureJson(report);
+      expect(out.coverage.otelCount).toBe(1);
+      expect(out.coverage.logsCount).toBe(0);
+      expect(out.coverage.costCoverage).toBe("all");
+    });
+
+    test("mixed coverage: costCoverage is 'partial'", () => {
+      const otelSession: NormalizedSession = { ...SAMPLE_SESSION, source: "otel" };
+      const logsSession: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        sessionId: "logs-session-id",
+        source: "logs",
+      };
+      const report: Report = {
+        ...EMPTY_REPORT,
+        source: "mixed",
+        costAvailable: true,
+        coverage: { otelCount: 1, logsCount: 1, costCoverage: "partial" },
+        sessions: [otelSession, logsSession],
+      };
+      const out = captureJson(report);
+      expect(out.coverage.otelCount).toBe(1);
+      expect(out.coverage.logsCount).toBe(1);
+      expect(out.coverage.costCoverage).toBe("partial");
+      expect(out.source).toBe("mixed");
+    });
+
+    test("logs-only coverage: costCoverage is 'none', otelCount is 0", () => {
+      const report: Report = {
+        ...EMPTY_REPORT,
+        coverage: { otelCount: 0, logsCount: 2, costCoverage: "none" },
+        sessions: [SAMPLE_SESSION, { ...SAMPLE_SESSION, sessionId: "s2" }],
+      };
+      const out = captureJson(report);
+      expect(out.coverage.otelCount).toBe(0);
+      expect(out.coverage.logsCount).toBe(2);
+      expect(out.coverage.costCoverage).toBe("none");
+    });
+  });
+
+  describe("top-level schema fields (continued)", () => {
     test("includes generatedAt as ISO 8601 UTC string", () => {
       const out = captureJson(EMPTY_REPORT);
       expect(typeof out.generatedAt).toBe("string");

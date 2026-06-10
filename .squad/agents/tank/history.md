@@ -6,11 +6,43 @@
 
 **Decisions:** OTel primary, one source/run, cost from `nano_aiu`, v1 signals (reasoning+context), rotation deferred.
 
-**Invariants:** `Session=ParsedSession|InProgressSession`, `NormalizedSession` superset, `costAvailable⟺source==="otel"`, one source/run, OTel=`chat` spans, Logs=no cost/extended.
+~~**Invariants:** `costAvailable⟺source==="otel"`, one source/run~~  
+**SUPERSEDED** by merge pivot below.
 
 **Impl:** OTel reads `~/.copilot/tscope/otel.jsonl`, groups by `gen_ai.conversation.id`. Logs single-pass. Selection: `auto`/`otel`/`logs`.
 
 See `history-archive.md` for full notes.
+
+## Learnings — 2026-06-10 Merge Pivot
+
+**Decision reversal (coordinator-merge-reversal.md):** `--source auto` now MERGES OTel + logs into a unified `NormalizedSession[]`. OTel wins on overlap (same `sessionId`). `--source otel` and `--source logs` remain single-source.
+
+**New types in `src/types.ts`:**
+- `ReportSourceKind = "otel" | "logs" | "mixed"` — report-level source (per-session still uses `DataSourceKind = "otel" | "logs"`)
+- `SourceCoverage { otelCount, logsCount, costCoverage: "all"|"partial"|"none" }` — coverage summary
+- `Report.source` → `ReportSourceKind` (was `DataSourceKind`)
+- `Report.coverage: SourceCoverage` — NEW required field
+- `Report.costAvailable: boolean` — kept; semantics: `coverage.otelCount > 0`
+
+**New module `src/sources/merge.ts`:**
+- `mergeSessions(otel, logs)` — dedup, OTel wins
+- `computeSourceCoverage(sessions)` — counts per source + costCoverage
+- `computeReportSource(coverage)` — "otel"|"logs"|"mixed"
+
+**`src/index.ts` auto mode:**
+- Loads BOTH OTel and logs under the same predicate
+- Calls `mergeSessions` + `computeSourceCoverage` + `computeReportSource`
+- Hint: only fires for `--source otel` (explicit) or `auto`+OTel+0-total; hint text differs per case
+- `costAvailable = coverage.otelCount > 0`
+
+**`src/render/JsonRenderer.ts`:** `coverage` field added to top-level output (after `costAvailable`).
+
+**`src/render/TextRenderer.ts`:** handles `source === "mixed"` → "mixed (OTel + logs)" label (minimal; full UI is Switch's phase).
+
+**Schema:** v5 in-place, no v6 bump. New top-level field: `coverage`.
+
+**Test count:** 395 → 437 (16 suites, all passing). New suites: `merge.test.ts` (42 tests). New tests in `source-selection.test.ts` (mixed/coverage integration) and `json-renderer.test.ts` (coverage shape).
+
 
 ### Phase 2 CI Validation — 2026-06-03
 

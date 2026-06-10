@@ -63,6 +63,7 @@ const OTEL_REPORT_EMPTY: Report = {
   filterDescription: "today",
   source: "otel",
   costAvailable: true,
+  coverage: { otelCount: 0, logsCount: 0, costCoverage: "none" },
 };
 
 const BASE_OTEL_SESSION: NormalizedSession = {
@@ -297,6 +298,7 @@ describe("HtmlRenderer — renderer edge cases", () => {
         filterDescription: "today",
         source: "logs",
         costAvailable: false,
+        coverage: { otelCount: 0, logsCount: 1, costCoverage: "none" },
       };
       const html = renderHtml(logsReport, "rendedge-credits-no-stat.html");
       expect(html).not.toContain("Total Credits");

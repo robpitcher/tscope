@@ -175,7 +175,10 @@ export class TextRenderer implements Renderer {
       );
     }
 
-    const sourceLabel = report.source === "otel" ? "OpenTelemetry" : "event logs (historical)";
+    const sourceLabel =
+      report.source === "otel" ? "OpenTelemetry" :
+      report.source === "mixed" ? "mixed (OTel + logs)" :
+      "event logs (historical)";
     const costNote = report.source === "logs" ? " — cost data unavailable" : "";
     process.stdout.write(`Source: ${sourceLabel}${costNote}\n`);
   }

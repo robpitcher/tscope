@@ -46,6 +46,50 @@ function writeValidOtelSpan(otelDir: string): void {
 }
 
 /**
+ * Write a minimal completed events.jsonl log session.
+ * The session will have 1 model ("gpt-4") with the given token counts.
+ */
+function writeLogsSession(
+  sessionStateDir: string,
+  sessionId: string,
+  startTimeISO: string,
+  inputTokens = 500,
+  outputTokens = 200
+): void {
+  const sessionDir = path.join(sessionStateDir, sessionId);
+  fs.mkdirSync(sessionDir, { recursive: true });
+  const lines = [
+    JSON.stringify({
+      type: "session.start",
+      data: { sessionId, startTime: startTimeISO },
+      timestamp: startTimeISO,
+    }),
+    JSON.stringify({
+      type: "session.shutdown",
+      data: {
+        modelMetrics: {
+          "gpt-4": {
+            usage: {
+              inputTokens,
+              outputTokens,
+              cacheReadTokens: 0,
+              cacheWriteTokens: 0,
+              reasoningTokens: 0,
+            },
+          },
+        },
+        totalApiDurationMs: 1000,
+      },
+    }),
+  ];
+  fs.writeFileSync(
+    path.join(sessionDir, "events.jsonl"),
+    lines.join("\n") + "\n",
+    "utf8"
+  );
+}
+
+/**
  * Spawn `node dist/index.js ...args` with HOME/USERPROFILE overridden to fakeHome.
  */
 function runCli(
@@ -317,6 +361,126 @@ describe("source-selection integration (subprocess)", () => {
       expect(stderr).toContain("auto");
       expect(stderr).toContain("otel");
       expect(stderr).toContain("logs");
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // --source auto merge (OTel + logs unified report)
+  // ---------------------------------------------------------------------------
+
+  describe("--source auto merge behavior", () => {
+    // The OTel span's session ID (from writeValidOtelSpan):
+    const OTEL_SESSION_ID = "sess-integration-test";
+    // An ISO timestamp that maps to the same local date as the OTel span
+    const OTEL_SPAN_ISO = "2025-06-03T00:00:00.000Z";
+
+    test("auto + OTel + distinct logs session → source: mixed", () => {
+      const otelDir = path.join(tmpHome, ".copilot", "tscope");
+      writeValidOtelSpan(otelDir);
+
+      const sessionStateDir = path.join(tmpHome, ".copilot", "session-state");
+      writeLogsSession(sessionStateDir, "unique-logs-session", OTEL_SPAN_ISO);
+
+      const { stdout } = runCli(["--all", "--json"], tmpHome);
+      const report = JSON.parse(stdout);
+      expect(report.source).toBe("mixed");
+      expect(report.costAvailable).toBe(true);
+    });
+
+    test("auto + OTel + distinct logs session → coverage counts (1 OTel, 1 logs)", () => {
+      const otelDir = path.join(tmpHome, ".copilot", "tscope");
+      writeValidOtelSpan(otelDir);
+
+      const sessionStateDir = path.join(tmpHome, ".copilot", "session-state");
+      writeLogsSession(sessionStateDir, "unique-logs-session", OTEL_SPAN_ISO);
+
+      const { stdout } = runCli(["--all", "--json"], tmpHome);
+      const report = JSON.parse(stdout);
+      expect(report.coverage.otelCount).toBe(1);
+      expect(report.coverage.logsCount).toBe(1);
+      expect(report.coverage.costCoverage).toBe("partial");
+    });
+
+    test("auto + OTel + distinct logs → session count is 2 (union, no dedup needed)", () => {
+      const otelDir = path.join(tmpHome, ".copilot", "tscope");
+      writeValidOtelSpan(otelDir);
+
+      const sessionStateDir = path.join(tmpHome, ".copilot", "session-state");
+      writeLogsSession(sessionStateDir, "unique-logs-session", OTEL_SPAN_ISO);
+
+      const { stdout } = runCli(["--all", "--json"], tmpHome);
+      const report = JSON.parse(stdout);
+      expect(report.summary.sessionCount).toBe(2);
+    });
+
+    test("auto + overlap: OTel wins, logs duplicate is dropped → session count is 1", () => {
+      const otelDir = path.join(tmpHome, ".copilot", "tscope");
+      writeValidOtelSpan(otelDir); // session ID = OTEL_SESSION_ID
+
+      const sessionStateDir = path.join(tmpHome, ".copilot", "session-state");
+      // Same session ID in both sources → OTel wins
+      writeLogsSession(sessionStateDir, OTEL_SESSION_ID, OTEL_SPAN_ISO);
+
+      const { stdout } = runCli(["--all", "--json"], tmpHome);
+      const report = JSON.parse(stdout);
+      expect(report.sessions).toHaveLength(1);
+      expect(report.sessions[0].source).toBe("otel");
+    });
+
+    test("auto + overlap: after OTel wins, source is 'otel' (no logs remain)", () => {
+      const otelDir = path.join(tmpHome, ".copilot", "tscope");
+      writeValidOtelSpan(otelDir);
+
+      const sessionStateDir = path.join(tmpHome, ".copilot", "session-state");
+      writeLogsSession(sessionStateDir, OTEL_SESSION_ID, OTEL_SPAN_ISO);
+
+      const { stdout } = runCli(["--all", "--json"], tmpHome);
+      const report = JSON.parse(stdout);
+      expect(report.source).toBe("otel");
+      expect(report.coverage.otelCount).toBe(1);
+      expect(report.coverage.logsCount).toBe(0);
+      expect(report.coverage.costCoverage).toBe("all");
+    });
+
+    test("auto + no OTel file: source is 'logs', coverage.otelCount is 0", () => {
+      const { stdout } = runCli(["--all", "--json"], tmpHome);
+      const report = JSON.parse(stdout);
+      expect(report.source).toBe("logs");
+      expect(report.coverage.otelCount).toBe(0);
+      expect(report.coverage.costCoverage).toBe("none");
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // coverage field in JSON output
+  // ---------------------------------------------------------------------------
+
+  describe("coverage field in JSON output", () => {
+    test("JSON output always includes a coverage object", () => {
+      const { stdout } = runCli(["--all", "--json"], tmpHome);
+      const report = JSON.parse(stdout);
+      expect(report.coverage).toBeDefined();
+      expect(typeof report.coverage.otelCount).toBe("number");
+      expect(typeof report.coverage.logsCount).toBe("number");
+      expect(typeof report.coverage.costCoverage).toBe("string");
+    });
+
+    test("--source otel: coverage.logsCount is 0 and costCoverage is 'all'", () => {
+      const otelDir = path.join(tmpHome, ".copilot", "tscope");
+      writeValidOtelSpan(otelDir);
+
+      const { stdout } = runCli(["--source", "otel", "--all", "--json"], tmpHome);
+      const report = JSON.parse(stdout);
+      expect(report.coverage.logsCount).toBe(0);
+      expect(report.coverage.otelCount).toBeGreaterThan(0);
+      expect(report.coverage.costCoverage).toBe("all");
+    });
+
+    test("--source logs: coverage.otelCount is 0 and costCoverage is 'none'", () => {
+      const { stdout } = runCli(["--source", "logs", "--all", "--json"], tmpHome);
+      const report = JSON.parse(stdout);
+      expect(report.coverage.otelCount).toBe(0);
+      expect(report.coverage.costCoverage).toBe("none");
     });
   });
 });

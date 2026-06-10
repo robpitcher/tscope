@@ -19,9 +19,10 @@ import { hasTokenData } from "./tokens";
 import { Renderer, createRenderer } from "./render";
 import { runOtel } from "./otel";
 import { getOtelExportPath } from "./otel";
-import { NormalizedSession, InProgressSession, Report, SessionDatePredicate, DataSourceKind } from "./types";
+import { NormalizedSession, InProgressSession, Report, SessionDatePredicate } from "./types";
 import { LogsDataSource } from "./sources/logsSource";
 import { OtelDataSource, isOtelAvailable } from "./sources/otelSource";
+import { mergeSessions, computeSourceCoverage, computeReportSource } from "./sources/merge";
 import { getSessionStateDir } from "./discovery";
 
 const packageJson = createRequire(__filename)("../package.json") as { version: string };
@@ -37,8 +38,11 @@ OPTIONS
   --help              Show this help text and exit
   --version           Print version and exit
   --source SOURCE     Data source: "auto" (default), "otel", or "logs"
-                      auto: use OTel if available, fall back to logs with notice
-                      otel: force OTel; exits with error if unavailable
+                      auto: merge OTel + log sessions into a unified report;
+                           OTel wins when the same session appears in both;
+                           falls back to logs-only with notice when OTel is
+                           unavailable
+                      otel: OTel only; exits with error if unavailable
                       logs: force the existing events.jsonl parser
   --json              Output JSON to stdout instead of formatted text
   --html [FILE]       Write a self-contained HTML dashboard to FILE and open
@@ -64,9 +68,12 @@ DESCRIPTION
   (current local date), parses token usage, and prints a formatted report
   with per-model token counts and session totals.
 
-  In auto mode (default), tscope uses the OTel export when available —
-  this provides authoritative server-side cost data. When OTel is not
-  configured, it falls back to the events.jsonl log parser.
+  In auto mode (default), tscope merges sessions from both the OTel export and
+  the log parser into a single unified report. When the same session appears in
+  both sources, the OTel record wins (no double-counting). This gives you the
+  full historical picture from log files plus authoritative server-side cost data
+  for any session captured by OTel. When OTel is not configured, auto falls back
+  to the log parser only.
 
   Use --json to get machine-readable output suitable for piping to jq or
   other tools.
@@ -352,12 +359,13 @@ async function main(): Promise<void> {
   const today = todayLocalDateString();
   const predicate = buildDatePredicate(args);
 
-  // --- Source selection ---
-  let chosenSource: DataSourceKind;
+  // --- Source selection and session loading ---
+  let completedSessions: NormalizedSession[];
+  let inProgressSessions: InProgressSession[];
+  // Track whether OTel was loaded (for the empty-result hint).
+  let otelActiveInAutoMode = false;
 
-  if (args.sourceMode === "logs") {
-    chosenSource = "logs";
-  } else if (args.sourceMode === "otel") {
+  if (args.sourceMode === "otel") {
     if (!isOtelAvailable()) {
       process.stderr.write(
         `Error: --source otel specified but no OTel data found at:\n` +
@@ -366,29 +374,10 @@ async function main(): Promise<void> {
       );
       process.exit(1);
     }
-    chosenSource = "otel";
-  } else {
-    // auto
-    if (isOtelAvailable()) {
-      chosenSource = "otel";
-    } else {
-      chosenSource = "logs";
-      process.stderr.write(
-        `No OpenTelemetry data found — falling back to log-file parsing.\n` +
-        `Run 'tscope otel enable' to use OTel.\n`
-      );
-    }
-  }
-
-  // --- Load sessions via chosen DataSource ---
-  let completedSessions: NormalizedSession[];
-  let inProgressSessions: InProgressSession[];
-
-  if (chosenSource === "otel") {
     const otelSource = new OtelDataSource();
     completedSessions = await otelSource.loadSessions(predicate);
     inProgressSessions = [];
-  } else {
+  } else if (args.sourceMode === "logs") {
     const sessionStateDir = getSessionStateDir();
     if (!fs.existsSync(sessionStateDir)) {
       process.stderr.write(
@@ -399,17 +388,51 @@ async function main(): Promise<void> {
     const { completed, inProgress } = await logsSource.loadAll(predicate);
     completedSessions = completed;
     inProgressSessions = inProgress;
+  } else {
+    // auto: merge OTel + logs; OTel wins on overlap
+    if (isOtelAvailable()) {
+      otelActiveInAutoMode = true;
+      const otelSource = new OtelDataSource();
+      const otelSessions = await otelSource.loadSessions(predicate);
+
+      const sessionStateDir = getSessionStateDir();
+      const logsSource = new LogsDataSource(sessionStateDir);
+      const { completed: logsSessions, inProgress } = await logsSource.loadAll(predicate);
+
+      completedSessions = mergeSessions(otelSessions, logsSessions);
+      inProgressSessions = inProgress;
+    } else {
+      process.stderr.write(
+        `No OpenTelemetry data found — falling back to log-file parsing.\n` +
+        `Run 'tscope otel enable' to use OTel.\n`
+      );
+      const sessionStateDir = getSessionStateDir();
+      if (!fs.existsSync(sessionStateDir)) {
+        process.stderr.write(
+          `Warning: Copilot session-state directory not found: ${sessionStateDir}\n`
+        );
+      }
+      const logsSource = new LogsDataSource(sessionStateDir);
+      const { completed, inProgress } = await logsSource.loadAll(predicate);
+      completedSessions = completed;
+      inProgressSessions = inProgress;
+    }
   }
 
   // --- Empty-result OTel hint ---
-  // When OTel is the active source but no sessions matched the date range,
-  // remind the user that OTel coverage is forward-only from enablement.
-  if (chosenSource === "otel" && completedSessions.length === 0) {
+  // Reminds the user that OTel coverage is forward-only from enablement.
+  if (args.sourceMode === "otel" && completedSessions.length === 0) {
     const extra = args.filterMode !== "all"
       ? " Use --source logs for historical data, or --all to see all available OTel sessions."
       : " Use --source logs for historical data.";
     process.stderr.write(
       `Hint: No OTel sessions found for this date range.` +
+      ` OTel only captures sessions since 'tscope otel enable' was run.${extra}\n`
+    );
+  } else if (otelActiveInAutoMode && completedSessions.length === 0) {
+    const extra = args.filterMode !== "all" ? " Try --all to see all sessions." : "";
+    process.stderr.write(
+      `Hint: No sessions found for this date range in OTel or log files.` +
       ` OTel only captures sessions since 'tscope otel enable' was run.${extra}\n`
     );
   }
@@ -427,13 +450,17 @@ async function main(): Promise<void> {
 
   const filterDescription = buildFilterDescription(args);
 
+  const coverage = computeSourceCoverage(finalCompleted);
+  const reportSource = computeReportSource(coverage);
+
   const report: Report = {
     sessions: finalCompleted,
     inProgressSessions: finalInProgress,
     reportDate: today,
     filterDescription,
-    source: chosenSource,
-    costAvailable: chosenSource === "otel",
+    source: reportSource,
+    costAvailable: coverage.otelCount > 0,
+    coverage,
   };
 
   let format: string;

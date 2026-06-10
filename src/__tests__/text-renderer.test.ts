@@ -19,6 +19,7 @@ const EMPTY_REPORT: Report = {
   filterDescription: "today",
   source: "logs",
   costAvailable: false,
+  coverage: { otelCount: 0, logsCount: 0, costCoverage: "none" },
 };
 
 const OTEL_EMPTY_REPORT: Report = {
