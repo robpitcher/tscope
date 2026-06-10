@@ -9,11 +9,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
 import { createRequire } from "module";
-import { discoverSessions, getSessionStateDir } from "./discovery";
-import { parseEventsFile } from "./parser";
 import {
-  makeDateFilter,
-  makeRangeDateFilter,
   isValidDateString,
   todayLocalDateString,
   localDateNDaysAgo,
@@ -22,11 +18,14 @@ import {
 import { hasTokenData } from "./tokens";
 import { Renderer, createRenderer } from "./render";
 import { runOtel } from "./otel";
-import { ParsedSession, InProgressSession, Report, SessionRef } from "./types";
+import { getOtelExportPath } from "./otel";
+import { NormalizedSession, InProgressSession, Report, SessionDatePredicate, DataSourceKind } from "./types";
+import { LogsDataSource } from "./sources/logsSource";
+import { OtelDataSource, isOtelAvailable } from "./sources/otelSource";
+import { getSessionStateDir } from "./discovery";
 
 const packageJson = createRequire(__filename)("../package.json") as { version: string };
 const VERSION = packageJson.version;
-const FILTER_CONCURRENCY = 16;
 
 const HELP_TEXT = `
 tscope — GitHub Copilot session token usage viewer
@@ -37,6 +36,10 @@ USAGE
 OPTIONS
   --help              Show this help text and exit
   --version           Print version and exit
+  --source SOURCE     Data source: "auto" (default), "otel", or "logs"
+                      auto: use OTel if available, fall back to logs with notice
+                      otel: force OTel; exits with error if unavailable
+                      logs: force the existing events.jsonl parser
   --json              Output JSON to stdout instead of formatted text
   --html [FILE]       Write a self-contained HTML dashboard to FILE and open
                       it in the default browser
@@ -58,8 +61,12 @@ SUBCOMMANDS
 
 DESCRIPTION
   With no arguments, tscope discovers all Copilot CLI sessions from today
-  (current local date), parses token usage from each session's events.jsonl,
-  and prints a formatted report with per-model token counts and session totals.
+  (current local date), parses token usage, and prints a formatted report
+  with per-model token counts and session totals.
+
+  In auto mode (default), tscope uses the OTel export when available —
+  this provides authoritative server-side cost data. When OTel is not
+  configured, it falls back to the events.jsonl log parser.
 
   Use --json to get machine-readable output suitable for piping to jq or
   other tools.
@@ -76,9 +83,12 @@ EXAMPLES
   tscope --lastdays 30 --max 10           Report the 10 most recent sessions
                                           from the last 30 days
   tscope --all --html                     Open full history as an HTML dashboard
+  tscope --source otel                    Force OTel data source
+  tscope --source logs                    Force events.jsonl log parser
 
 DATA SOURCE
-  ~/.copilot/session-state/<session-id>/events.jsonl
+  OTel (preferred): ~/.copilot/tscope/otel.jsonl
+  Logs (fallback):  ~/.copilot/session-state/<session-id>/events.jsonl
 
 NOTES
   • Sessions are bucketed by their start date, so a session continued from a
@@ -88,7 +98,7 @@ NOTES
 `.trim();
 
 type FilterMode = "today" | "date" | "range" | "lastdays" | "all";
-type SessionPredicate = (ref: SessionRef) => Promise<boolean>;
+type SourceMode = "auto" | "otel" | "logs";
 
 interface ParsedArgs {
   help: boolean;
@@ -103,6 +113,7 @@ interface ParsedArgs {
   filterLastDays?: string;
   max?: string;
   maxProvided: boolean;
+  sourceMode: SourceMode;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -117,7 +128,6 @@ function parseArgs(argv: string[]): ParsedArgs {
   const html = htmlIdx !== -1;
   let htmlOutputPath: string | undefined;
   if (html) {
-    // Next arg is the output path if it doesn't start with '--'
     const next = args[htmlIdx + 1];
     if (next && !next.startsWith("--")) {
       htmlOutputPath = next;
@@ -128,6 +138,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   const rangeIdx = args.indexOf("--range");
   const lastDaysIdx = args.indexOf("--lastdays");
   const maxIdx = args.indexOf("--max");
+  const sourceIdx = args.indexOf("--source");
 
   let filterMode: FilterMode = "today";
   let filterDate: string | undefined;
@@ -151,18 +162,48 @@ function parseArgs(argv: string[]): ParsedArgs {
   }
 
   if (maxIdx !== -1) {
-    // Reject the next token if it looks like another flag — keeps the user
-    // from accidentally consuming a sibling flag (e.g. `tscope --max --json`).
     const next = args[maxIdx + 1];
     if (next !== undefined && !next.startsWith("--")) {
       max = next;
     }
   }
 
-  return { help, version, json, html, htmlOutputPath, filterMode, filterDate, filterStart, filterEnd, filterLastDays, max, maxProvided: maxIdx !== -1 };
+  let sourceMode: SourceMode = "auto";
+  if (sourceIdx !== -1) {
+    const next = args[sourceIdx + 1];
+    if (next === "otel" || next === "logs" || next === "auto") {
+      sourceMode = next;
+    } else {
+      // Invalid value — leave as "auto"; validateArgs will catch and exit
+      sourceMode = next as SourceMode;
+    }
+  }
+
+  return {
+    help,
+    version,
+    json,
+    html,
+    htmlOutputPath,
+    filterMode,
+    filterDate,
+    filterStart,
+    filterEnd,
+    filterLastDays,
+    max,
+    maxProvided: maxIdx !== -1,
+    sourceMode,
+  };
 }
 
 function validateArgs(args: ParsedArgs): void {
+  if (args.sourceMode !== "auto" && args.sourceMode !== "otel" && args.sourceMode !== "logs") {
+    process.stderr.write(
+      `Error: --source must be "auto", "otel", or "logs" — got "${args.sourceMode}"\n`
+    );
+    process.exit(1);
+  }
+
   if (args.filterMode === "date") {
     if (!args.filterDate) {
       process.stderr.write("Error: --date requires a YYYY-MM-DD argument\n");
@@ -234,51 +275,36 @@ function validateArgs(args: ParsedArgs): void {
   }
 }
 
-async function filterRefsWithConcurrency(
-  refs: SessionRef[],
-  predicate: SessionPredicate,
-  concurrency: number
-): Promise<SessionRef[]> {
-  if (refs.length === 0) {
-    return [];
-  }
-
-  const keep = new Array<boolean>(refs.length).fill(false);
-  const workerCount = Math.min(Math.max(1, concurrency), refs.length);
-  let nextIndex = 0;
-
-  async function worker(): Promise<void> {
-    while (nextIndex < refs.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      keep[index] = await predicate(refs[index]);
-    }
-  }
-
-  await Promise.all(Array.from({ length: workerCount }, () => worker()));
-  return refs.filter((_, index) => keep[index]);
-}
-
-/** Apply the active filter and return matching SessionRefs */
-async function applyFilter(
-  allRefs: SessionRef[],
-  args: ParsedArgs
-): Promise<SessionRef[]> {
-  if (args.filterMode === "all") {
-    return allRefs;
-  }
+/**
+ * Build a synchronous date predicate from the parsed filter arguments.
+ * Returns undefined for "all" mode (no filtering needed).
+ *
+ * The predicate takes a local date string (YYYY-MM-DD) and returns true if
+ * the session should be included. The data source is responsible for resolving
+ * the session's local date before calling this predicate.
+ */
+function buildDatePredicate(args: ParsedArgs): SessionDatePredicate | undefined {
+  if (args.filterMode === "all") return undefined;
 
   const today = todayLocalDateString();
-  const predicate =
-    args.filterMode === "today"
-      ? makeDateFilter(today)
-      : args.filterMode === "date"
-      ? makeDateFilter(args.filterDate!)
-      : args.filterMode === "lastdays"
-      ? makeRangeDateFilter(localDateNDaysAgo(Number(args.filterLastDays!) - 1), today)
-      : makeRangeDateFilter(args.filterStart!, args.filterEnd!);
 
-  return filterRefsWithConcurrency(allRefs, predicate, FILTER_CONCURRENCY);
+  if (args.filterMode === "today") {
+    return (localDate) => localDate === today;
+  }
+  if (args.filterMode === "date") {
+    const d = args.filterDate!;
+    return (localDate) => localDate === d;
+  }
+  if (args.filterMode === "range") {
+    const start = args.filterStart!;
+    const end = args.filterEnd!;
+    return (localDate) => localDate >= start && localDate <= end;
+  }
+  if (args.filterMode === "lastdays") {
+    const startDate = localDateNDaysAgo(Number(args.filterLastDays!) - 1);
+    return (localDate) => localDate >= startDate && localDate <= today;
+  }
+  return undefined;
 }
 
 /** Build the human-readable filter description for reports */
@@ -303,8 +329,7 @@ function buildFilterDescription(args: ParsedArgs): string {
 }
 
 async function main(): Promise<void> {
-  // Subcommand routing: `tscope otel <status|enable|disable>` is handled
-  // separately from the report flow and exits early.
+  // Subcommand routing: `tscope otel <status|enable|disable>` exits early.
   const rawArgs = process.argv.slice(2);
   if (rawArgs[0] === "otel") {
     process.exit(runOtel(rawArgs.slice(1)));
@@ -325,46 +350,61 @@ async function main(): Promise<void> {
   validateArgs(args);
 
   const today = todayLocalDateString();
-  const sessionStateDir = getSessionStateDir();
+  const predicate = buildDatePredicate(args);
 
-  if (!fs.existsSync(sessionStateDir)) {
-    process.stderr.write(
-      `Warning: Copilot session-state directory not found: ${sessionStateDir}\n`
-    );
-  }
+  // --- Source selection ---
+  let chosenSource: DataSourceKind;
 
-  const allRefs = discoverSessions(sessionStateDir);
-  const filteredRefs = await applyFilter(allRefs, args);
-
-  const completedSessions: ParsedSession[] = [];
-  const inProgressSessions: InProgressSession[] = [];
-
-  for (const ref of filteredRefs) {
-    let session;
-    try {
-      session = await parseEventsFile(ref.sessionId, ref.eventsPath);
-    } catch (err) {
+  if (args.sourceMode === "logs") {
+    chosenSource = "logs";
+  } else if (args.sourceMode === "otel") {
+    if (!isOtelAvailable()) {
       process.stderr.write(
-        `Warning: failed to parse session ${ref.sessionId}: ${String(err)}\n`
+        `Error: --source otel specified but no OTel data found at:\n` +
+        `  ${getOtelExportPath()}\n\n` +
+        `Run 'tscope otel enable --apply' to enable OTel collection, then start a new Copilot session.\n`
       );
-      continue;
+      process.exit(1);
     }
-
-    if (session.inProgress) {
-      inProgressSessions.push(session as InProgressSession);
+    chosenSource = "otel";
+  } else {
+    // auto
+    if (isOtelAvailable()) {
+      chosenSource = "otel";
     } else {
-      completedSessions.push(session as ParsedSession);
+      chosenSource = "logs";
+      process.stderr.write(
+        `No OpenTelemetry data found — falling back to log-file parsing.\n` +
+        `Run 'tscope otel enable' to use OTel.\n`
+      );
     }
   }
 
-  let finalCompleted: ParsedSession[] = completedSessions;
+  // --- Load sessions via chosen DataSource ---
+  let completedSessions: NormalizedSession[];
+  let inProgressSessions: InProgressSession[];
+
+  if (chosenSource === "otel") {
+    const otelSource = new OtelDataSource();
+    completedSessions = await otelSource.loadSessions(predicate);
+    inProgressSessions = [];
+  } else {
+    const sessionStateDir = getSessionStateDir();
+    if (!fs.existsSync(sessionStateDir)) {
+      process.stderr.write(
+        `Warning: Copilot session-state directory not found: ${sessionStateDir}\n`
+      );
+    }
+    const logsSource = new LogsDataSource(sessionStateDir);
+    const { completed, inProgress } = await logsSource.loadAll(predicate);
+    completedSessions = completed;
+    inProgressSessions = inProgress;
+  }
+
+  // --- Apply --max (post-load recency slice) ---
+  let finalCompleted: NormalizedSession[] = completedSessions;
   let finalInProgress: InProgressSession[] = inProgressSessions;
 
-  // --max counts the renderable sessions that will actually appear in the
-  // report. All renderers silently exclude in-progress sessions and
-  // completed sessions with no token data, so we must apply the same
-  // filter here before the recency-based slice — otherwise the user sees
-  // fewer than N rows even when more renderable sessions exist.
   if (args.max !== undefined) {
     const maxN = Number(args.max);
     const renderable = completedSessions.filter((s) => hasTokenData(s.models));
@@ -379,6 +419,8 @@ async function main(): Promise<void> {
     inProgressSessions: finalInProgress,
     reportDate: today,
     filterDescription,
+    source: chosenSource,
+    costAvailable: chosenSource === "otel",
   };
 
   let format: string;
@@ -417,3 +459,4 @@ main().catch((err) => {
   process.stderr.write(`Fatal error: ${String(err)}\n`);
   process.exit(1);
 });
+

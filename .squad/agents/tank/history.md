@@ -221,3 +221,65 @@ Trinity completed migration of canonical repository URL from `devjoy-pub/tscope`
 
 Trinity validated D2 (npm as primary distribution channel) against comprehensive analysis of Copilot CLI plugin model and gh CLI extensions. **Outcome: D2 confirmed, no amendment.** Copilot plugins are wrong architectural fit for standalone binary. gh-tscope extension viable as secondary channel post-v1.0 if reach expansion justifies cross-platform binary pipeline. Decision merged to decisions.md. Future horizon noted: add gh-tscope extension + precompiled binaries (win/mac/linux, amd64/arm64) post-v1.0, conditional on market demand.
 
+### 2026-06-10 — DataSource Abstraction + OTel Integration (Phase 1 & 2)
+
+**Branch:** `otel`
+
+**New module layout:**
+```
+src/
+  types.ts           +DataSourceKind, +ExtendedMetrics, +NormalizedSession,
+                     +SessionDatePredicate, +DataSource, +Report.source/costAvailable
+  sources/
+    logsSource.ts    LogsDataSource — wraps discovery + parseEventsFile
+    otelSource.ts    OtelDataSource — parses otel.jsonl + isOtelAvailable()
+  index.ts           --source auto|otel|logs, DataSource wiring, auto-select logic
+  render/
+    JsonRenderer.ts  Schema bumped v4→v5, adds source/costAvailable/totalCost/modelCosts
+  __tests__/
+    otel-source.test.ts  Focused OTel parser unit tests (14 tests)
+```
+
+**Key type shapes:**
+- `DataSourceKind = "otel" | "logs"`
+- `NormalizedSession extends ParsedSession` — adds `source: DataSourceKind`, optional `modelCosts: Record<string, number>`, `totalCost: number`, `extended: ExtendedMetrics`
+- `ExtendedMetrics` — optional `reasoningTokens: number`, `contextWindow: { usedTokens, limitTokens, utilizationRatio }`
+- `DataSource` interface — `loadSessions(predicate?)`, optional `loadInProgressSessions?(predicate?)`
+- `SessionDatePredicate = (localDateString, sessionId) => boolean` (sync; async IO done by DataSource)
+- `Report` — adds `source: DataSourceKind`, `costAvailable: boolean`; `sessions` changed from `ParsedSession[]` to `NormalizedSession[]`
+- `Session = ParsedSession | InProgressSession` — preserved for parser.ts backward compat
+
+**Source selection `--source` logic:**
+- `auto` (default): `isOtelAvailable()` checks file exists + non-empty → OTel; else → logs + stderr notice
+- `otel`: force OTel; exits 1 with helpful message if unavailable
+- `logs`: force log parser (current behavior unchanged)
+- OTel sessions: `source:"otel"`, has `totalCost`/`modelCosts`/`extended`, `costAvailable: true`
+- Logs sessions: `source:"logs"`, no cost fields, `costAvailable: false`
+- Mutual exclusion enforced: single source per run, no merging
+
+**OTel parsing approach (confirmed correct from feasibility):**
+- Only `span` records where `name.startsWith("chat ")` — ignores `invoke_agent` (duplicates), `execute_tool`, `metric` records
+- Group by `gen_ai.conversation.id`
+- Per-span: accumulate tokens via `addTokenCounts()`, credits via `nano_aiu ÷ 1e9`, track earliest startTime
+- Malformed lines: silently skip on JSON.parse failure
+- Date predicate: convert earliest span time to ISO → local date string → predicate
+- `eventsPath` for OTel sessions points to the shared `otel.jsonl` file
+
+**LogsDataSource internal design:**
+- `loadAll()` single-pass method — reads each file once and splits completed/in-progress
+- `index.ts` calls `logsSource.loadAll()` for efficiency (avoids double file reads)
+- Concurrent date filtering: 16-way concurrency via async workers (same as old `filterRefsWithConcurrency`)
+
+**JSON schema v5 changes:**
+- Added: `source`, `costAvailable` at top level
+- Added: `source`, `totalCost?`, `modelCosts?` per session
+- All v4 fields preserved; changes are additive
+
+**Test count:** 236 → 262 (11 suites, all passing). Build: `npm run build` clean. Lint: `npm run lint` clean.
+
+**Gotchas:**
+- `Session = ParsedSession | InProgressSession` must stay for `parseEventsFile` return type compat. Do NOT change it to `NormalizedSession | InProgressSession` — that's only the DataSource level.
+- `isOtelAvailable()` exported from `otelSource.ts`, used in `index.ts` for auto-select.
+- `LogsDataSource.loadAll()` is the preferred entry point from `index.ts` (single pass); `loadSessions()` and `loadInProgressSessions()` are separate slower methods kept for interface compliance.
+- `NormalizedSession[]` is assignable to `ParsedSession[]` contexts in TypeScript (structural subtyping) — all existing renderers work unchanged.
+

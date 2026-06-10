@@ -4,7 +4,7 @@
  */
 
 import { TextRenderer } from "../render/TextRenderer";
-import { Report, ParsedSession, InProgressSession } from "../types";
+import { Report, NormalizedSession, InProgressSession } from "../types";
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -15,9 +15,11 @@ const EMPTY_REPORT: Report = {
   inProgressSessions: [],
   reportDate: "2026-06-02",
   filterDescription: "today",
+  source: "logs",
+  costAvailable: false,
 };
 
-const SAMPLE_SESSION: ParsedSession = {
+const SAMPLE_SESSION: NormalizedSession = {
   sessionId: "abc-00000000-1111-2222-3333-444444444444",
   eventsPath: "/home/user/.copilot/session-state/abc/events.jsonl",
   startTime: "2026-06-02T20:00:00.000Z",
@@ -39,24 +41,26 @@ const SAMPLE_SESSION: ParsedSession = {
   },
   chronicleTips: [],
   inProgress: false,
+  source: "logs",
 };
 
-const SECOND_SESSION: ParsedSession = {
+const SECOND_SESSION: NormalizedSession = {
   ...SAMPLE_SESSION,
   sessionId: "def-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
   startTime: "2026-06-02T21:00:00.000Z",
 };
 
-const EMPTY_MODELS_SESSION: ParsedSession = {
+const EMPTY_MODELS_SESSION: NormalizedSession = {
   sessionId: "zero-empty-models",
   eventsPath: "/home/user/.copilot/session-state/zero1/events.jsonl",
   startTime: "2026-06-02T19:00:00.000Z",
   models: {},
   chronicleTips: [],
   inProgress: false,
+  source: "logs",
 };
 
-const ALL_ZERO_SESSION: ParsedSession = {
+const ALL_ZERO_SESSION: NormalizedSession = {
   sessionId: "zero-all-zero",
   eventsPath: "/home/user/.copilot/session-state/zero2/events.jsonl",
   startTime: "2026-06-02T19:30:00.000Z",
@@ -71,6 +75,7 @@ const ALL_ZERO_SESSION: ParsedSession = {
   },
   chronicleTips: [],
   inProgress: false,
+  source: "logs",
 };
 
 const SAMPLE_IN_PROGRESS: InProgressSession = {

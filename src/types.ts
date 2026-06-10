@@ -3,6 +3,49 @@
  * Parsing, storage, and rendering are decoupled through these types.
  */
 
+/** Which data source produced a session or report. */
+export type DataSourceKind = "otel" | "logs";
+
+/**
+ * A predicate that decides whether a session should be included in a report.
+ * Receives the session's local date string (YYYY-MM-DD) and session ID.
+ * Returning true includes the session; returning false excludes it.
+ * Synchronous — async date resolution is the data source's responsibility.
+ */
+export type SessionDatePredicate = (localDateString: string, sessionId: string) => boolean;
+
+/**
+ * Extended metrics available from the OTel source only.
+ * v1 populates reasoningTokens and contextWindow; designed for future fields.
+ */
+export interface ExtendedMetrics {
+  /** Chain-of-thought token count from gen_ai.usage.reasoning_output_tokens */
+  reasoningTokens?: number;
+  /** Context-window utilization from event.github.copilot.current_tokens vs token_limit */
+  contextWindow?: {
+    usedTokens: number;
+    limitTokens: number;
+    utilizationRatio: number;
+  };
+}
+
+/**
+ * Abstraction over data sources (OTel and logs).
+ * Each source produces NormalizedSession[] from its own storage.
+ */
+export interface DataSource {
+  /**
+   * Load and return sessions passing the predicate.
+   * Pass undefined to return all sessions (no date filtering).
+   */
+  loadSessions(predicate?: SessionDatePredicate): Promise<NormalizedSession[]>;
+  /**
+   * Load in-progress sessions (logs source only; always empty for OTel).
+   * Optional so OtelDataSource doesn't need to implement it.
+   */
+  loadInProgressSessions?(predicate?: SessionDatePredicate): Promise<InProgressSession[]>;
+}
+
 /** Per-model token usage counts extracted from session.shutdown.data.modelMetrics */
 export interface TokenCounts {
   inputTokens: number;
@@ -48,6 +91,29 @@ export interface ParsedSession {
   inProgress: false;
 }
 
+/**
+ * A normalized session produced by either the OTel or log data source.
+ * Superset of ParsedSession — all existing renderers that accept ParsedSession
+ * remain compatible without changes.
+ */
+export interface NormalizedSession extends ParsedSession {
+  /** Which data source produced this session. */
+  source: DataSourceKind;
+  /**
+   * Per-model estimated AI credits (OTel only, from github.copilot.nano_aiu ÷ 1e9).
+   * Undefined for log-sourced sessions — render as "cost unavailable".
+   * Key = model name, matching the keys in `models`.
+   */
+  modelCosts?: Record<string, number>;
+  /**
+   * Total session AI credits (sum of all modelCosts).
+   * Undefined for log-sourced sessions.
+   */
+  totalCost?: number;
+  /** Extended OTel-only metrics (v1: reasoning tokens, context window). */
+  extended?: ExtendedMetrics;
+}
+
 /** Session where no shutdown event was found */
 export interface InProgressSession {
   sessionId: string;
@@ -63,11 +129,19 @@ export type Session = ParsedSession | InProgressSession;
 
 /** Final report data passed to renderers */
 export interface Report {
-  sessions: ParsedSession[];
+  /** Completed sessions with token data (source determined by Report.source). */
+  sessions: NormalizedSession[];
   inProgressSessions: InProgressSession[];
   reportDate: string; // local date string YYYY-MM-DD
   /** Human-readable description of the active filter, e.g. "today", "2026-06-02", "2026-06-01 to 2026-06-02", "all time" */
   filterDescription: string;
+  /** Which data source produced the sessions in this report. */
+  source: DataSourceKind;
+  /**
+   * Whether authoritative cost data is available for this report.
+   * true for OTel-sourced reports (github.copilot.nano_aiu); false for log-sourced.
+   */
+  costAvailable: boolean;
 }
 
 /** Raw session folder info from discovery */

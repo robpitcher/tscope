@@ -1,19 +1,19 @@
-import { Report, ParsedSession } from "../types";
+import { Report, NormalizedSession } from "../types";
 import { Renderer } from "./Renderer";
 import { hasTokenData } from "../tokens";
 
 /**
- * Schema version — bumped to v4.
- * Breaking change vs v3: removed the per-session `premiumRequests` field.
- * tscope no longer surfaces Copilot's `totalPremiumRequests` value because
- * it's a legacy request-count metric with no actionable use in this tool.
+ * Schema version — bumped to v5.
+ * v5 adds: `source` provenance field at the top level (which data source
+ * produced the report: "otel" or "logs"), `costAvailable` signal, and
+ * optional per-session `totalCost` / `modelCosts` fields (OTel only).
+ * All v4 fields are preserved and additive.
  *
- * (v3 history, retained for reference: bumped from v2 because
- * `summary.totalTokens` and per-session `totals.total` switched to
- * `input + output` only — adding cache read/write on top would double-count
- * since `inputTokens` already includes them.)
+ * (v4 history: removed per-session `premiumRequests` field.
+ *  v3: `summary.totalTokens` and per-session `totals.total` switched to
+ *  `input + output` only. v2: removed credit estimation entirely.)
  */
-const SCHEMA_VERSION = "tscope/report/v4";
+const SCHEMA_VERSION = "tscope/report/v5";
 
 /** Convert UTC ISO string to local "YYYY-MM-DD HH:MM" or null if invalid */
 function toLocalDateTime(utcIso: string): string | null {
@@ -27,7 +27,7 @@ function toLocalDateTime(utcIso: string): string | null {
   return `${year}-${month}-${day} ${hour}:${min}`;
 }
 
-function serializeCompletedSession(session: ParsedSession) {
+function serializeCompletedSession(session: NormalizedSession) {
   let totalInput = 0;
   let totalOutput = 0;
   let totalCacheRead = 0;
@@ -59,6 +59,9 @@ function serializeCompletedSession(session: ParsedSession) {
     localDateTime: toLocalDateTime(session.startTime),
     inProgress: false as const,
     apiDurationMs: session.apiDurationMs ?? null,
+    source: session.source,
+    ...(session.totalCost !== undefined ? { totalCost: session.totalCost } : {}),
+    ...(session.modelCosts !== undefined ? { modelCosts: session.modelCosts } : {}),
     models,
     totals: {
       input: totalInput,
@@ -77,10 +80,12 @@ function serializeCompletedSession(session: ParsedSession) {
  *
  * Stdout receives only valid JSON (pipeable to jq, etc.).
  *
- * ## Schema: tscope/report/v4
+ * ## Schema: tscope/report/v5
  * Top-level fields:
  *   schema         — stable identifier, bump on breaking changes
  *   generatedAt    — ISO 8601 UTC timestamp of report generation
+ *   source         — "otel" or "logs" — which data source produced the report
+ *   costAvailable  — true if cost data is present (OTel only)
  *   filter         — description and reportDate of the active filter
  *   summary        — sessionCount, completedCount, inProgressCount, totalTokens
  *                    (in-progress sessions are silently excluded, so
@@ -92,7 +97,8 @@ function serializeCompletedSession(session: ParsedSession) {
  *                    silently excluded — see JsonRenderer.render)
  *     sessionId, path, startTime (ISO UTC string), localDateTime (YYYY-MM-DD HH:MM string),
  *     inProgress (always false), apiDurationMs (cumulative model API ms across
- *     runs, or null when no shutdown reported it), models[], totals
+ *     runs, or null when no shutdown reported it), source, totalCost (OTel only,
+ *     in AI credits), modelCosts (OTel only, per-model credits), models[], totals
  *   models[]       — modelName, usage{input,output,cacheRead,cacheWrite,reasoning}
  *   totals         — summed token counts; `total` = input+output (cacheRead and
  *                    cacheWrite are subsets of input, not added on top)
@@ -116,6 +122,8 @@ export class JsonRenderer implements Renderer {
     const output = {
       schema: SCHEMA_VERSION,
       generatedAt: new Date().toISOString(),
+      source: report.source,
+      costAvailable: report.costAvailable,
       filter: {
         description: report.filterDescription,
         reportDate: report.reportDate,

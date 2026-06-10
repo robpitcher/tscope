@@ -9,7 +9,7 @@ import * as path from "path";
 import { HtmlRenderer } from "../render/HtmlRenderer";
 import {
   Report,
-  ParsedSession,
+  NormalizedSession,
   InProgressSession,
 } from "../types";
 
@@ -22,9 +22,11 @@ const EMPTY_REPORT: Report = {
   inProgressSessions: [],
   reportDate: "2026-06-02",
   filterDescription: "today",
+  source: "logs",
+  costAvailable: false,
 };
 
-const SAMPLE_SESSION: ParsedSession = {
+const SAMPLE_SESSION: NormalizedSession = {
   sessionId: "abc-00000000-1111-2222-3333-444444444444",
   eventsPath: "/home/user/.copilot/session-state/abc/events.jsonl",
   startTime: "2026-06-02T20:00:00.000Z",
@@ -46,6 +48,7 @@ const SAMPLE_SESSION: ParsedSession = {
   },
   chronicleTips: [],
   inProgress: false,
+  source: "logs",
 };
 
 const SAMPLE_IN_PROGRESS: InProgressSession = {
@@ -209,7 +212,7 @@ describe("HtmlRenderer", () => {
   describe("HTML-escapes dangerous strings", () => {
     test("escapes <script> in model name", () => {
       const maliciousModel = "<script>alert('xss')</script>";
-      const evilSession: ParsedSession = {
+      const evilSession: NormalizedSession = {
         ...SAMPLE_SESSION,
         models: {
           [maliciousModel]: {
@@ -230,7 +233,7 @@ describe("HtmlRenderer", () => {
     });
 
     test("escapes <img onerror> in session path", () => {
-      const evil: ParsedSession = {
+      const evil: NormalizedSession = {
         ...SAMPLE_SESSION,
         eventsPath: `"><img src=x onerror=alert(1)>`,
       };
@@ -286,7 +289,7 @@ describe("HtmlRenderer", () => {
 
   describe("multiple sessions", () => {
     test("renders multiple completed sessions", () => {
-      const session2: ParsedSession = {
+      const session2: NormalizedSession = {
         ...SAMPLE_SESSION,
         sessionId: "def-11111111-2222-3333-4444-555555555555",
         startTime: "2026-06-02T22:00:00.000Z",
@@ -374,7 +377,7 @@ describe("HtmlRenderer", () => {
       variant: "tips" | "cost-tips" = "cost-tips",
       timestamp = "2026-06-02T23:00:00.000Z",
       sessionId = SAMPLE_SESSION.sessionId
-    ): ParsedSession => ({
+    ): NormalizedSession => ({
       ...SAMPLE_SESSION,
       sessionId,
       chronicleTips: [{ variant, timestamp, markdown }],
@@ -611,7 +614,7 @@ describe("HtmlRenderer", () => {
     });
 
     test("renders the API time chip on the session card when duration is known", () => {
-      const sessionWithDuration: ParsedSession = {
+      const sessionWithDuration: NormalizedSession = {
         ...SAMPLE_SESSION,
         apiDurationMs: 4669,
       };
@@ -709,7 +712,7 @@ describe("HtmlRenderer", () => {
     });
 
     test("payload escapes < so it cannot break out of the script tag", () => {
-      const evil: ParsedSession = {
+      const evil: NormalizedSession = {
         ...SAMPLE_SESSION,
         sessionId: "a</script><b",
       };
@@ -726,16 +729,17 @@ describe("HtmlRenderer", () => {
   });
 
   describe("zero-token completed sessions are silently excluded", () => {
-    const EMPTY_MODELS_SESSION: ParsedSession = {
+    const EMPTY_MODELS_SESSION: NormalizedSession = {
       sessionId: "zero-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
       eventsPath: "/home/user/.copilot/session-state/zero/events.jsonl",
       startTime: "2026-06-02T19:00:00.000Z",
       models: {},
       chronicleTips: [],
       inProgress: false,
+      source: "logs",
     };
 
-    const ALL_ZERO_SESSION: ParsedSession = {
+    const ALL_ZERO_SESSION: NormalizedSession = {
       sessionId: "zzz-11111111-2222-3333-4444-555555555555",
       eventsPath: "/home/user/.copilot/session-state/zzz/events.jsonl",
       startTime: "2026-06-02T19:30:00.000Z",
@@ -750,6 +754,7 @@ describe("HtmlRenderer", () => {
       },
       chronicleTips: [],
       inProgress: false,
+      source: "logs",
     };
 
     function extractPayload(html: string): { sessions: Array<{ id: string }> } {

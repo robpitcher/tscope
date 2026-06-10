@@ -1,12 +1,10 @@
 /**
  * Tests for JsonRenderer — verifies JSON shape, field types, and edge cases.
- * Schema: tscope/report/v4 (totalTokens = input+output; cache is part of input)
+ * Schema: tscope/report/v5 (adds source provenance + costAvailable; v4 fields intact)
  */
 
 import { JsonRenderer } from "../render/JsonRenderer";
-import { Report, ParsedSession, InProgressSession } from "../types";
-
-/** Capture stdout output from a renderer call */
+import { Report, NormalizedSession, InProgressSession } from "../types";
 function captureOutput(report: Report): string {
   const chunks: string[] = [];
   jest.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
@@ -29,9 +27,11 @@ const EMPTY_REPORT: Report = {
   inProgressSessions: [],
   reportDate: "2026-06-02",
   filterDescription: "today",
+  source: "logs",
+  costAvailable: false,
 };
 
-const SAMPLE_SESSION: ParsedSession = {
+const SAMPLE_SESSION: NormalizedSession = {
   sessionId: "abc-00000000-1111-2222-3333-444444444444",
   eventsPath: "/home/user/.copilot/session-state/abc/events.jsonl",
   startTime: "2026-06-02T20:00:00.000Z",
@@ -53,6 +53,7 @@ const SAMPLE_SESSION: ParsedSession = {
   },
   chronicleTips: [],
   inProgress: false,
+  source: "logs",
 };
 
 const SAMPLE_IN_PROGRESS: InProgressSession = {
@@ -79,9 +80,26 @@ describe("JsonRenderer", () => {
   });
 
   describe("top-level schema fields", () => {
-    test("includes schema field with v4 value", () => {
+    test("includes schema field with v5 value", () => {
       const out = captureJson(EMPTY_REPORT);
-      expect(out.schema).toBe("tscope/report/v4");
+      expect(out.schema).toBe("tscope/report/v5");
+    });
+
+    test("includes source field matching report.source", () => {
+      const out = captureJson(EMPTY_REPORT);
+      expect(out.source).toBe("logs");
+    });
+
+    test("includes costAvailable field matching report.costAvailable", () => {
+      const out = captureJson(EMPTY_REPORT);
+      expect(out.costAvailable).toBe(false);
+    });
+
+    test("source is 'otel' when report.source is otel", () => {
+      const report: Report = { ...EMPTY_REPORT, source: "otel", costAvailable: true };
+      const out = captureJson(report);
+      expect(out.source).toBe("otel");
+      expect(out.costAvailable).toBe(true);
     });
 
     test("includes generatedAt as ISO 8601 UTC string", () => {
@@ -328,13 +346,14 @@ describe("JsonRenderer", () => {
 
   describe("sessions with no token data are silently excluded", () => {
     test("completed session with empty models map is excluded", () => {
-      const emptyModelsSession: ParsedSession = {
+      const emptyModelsSession: NormalizedSession = {
         sessionId: "empty-models",
         eventsPath: "/some/path",
         startTime: "2026-06-02T20:00:00.000Z",
         models: {},
         chronicleTips: [],
         inProgress: false,
+        source: "logs",
       };
       const report: Report = {
         ...EMPTY_REPORT,
@@ -348,7 +367,7 @@ describe("JsonRenderer", () => {
     });
 
     test("completed session with all-zero token counts is excluded", () => {
-      const zeroSession: ParsedSession = {
+      const zeroSession: NormalizedSession = {
         sessionId: "all-zero",
         eventsPath: "/some/path",
         startTime: "2026-06-02T20:00:00.000Z",
@@ -363,6 +382,7 @@ describe("JsonRenderer", () => {
         },
         chronicleTips: [],
         inProgress: false,
+        source: "logs",
       };
       const report: Report = {
         ...EMPTY_REPORT,
@@ -374,13 +394,14 @@ describe("JsonRenderer", () => {
     });
 
     test("mixed report drops empty session but keeps session with real data", () => {
-      const emptyModelsSession: ParsedSession = {
+      const emptyModelsSession: NormalizedSession = {
         sessionId: "empty-models",
         eventsPath: "/some/path",
         startTime: "2026-06-02T20:00:00.000Z",
         models: {},
         chronicleTips: [],
         inProgress: false,
+        source: "logs",
       };
       const report: Report = {
         ...EMPTY_REPORT,
