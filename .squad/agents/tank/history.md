@@ -221,7 +221,30 @@ Trinity completed migration of canonical repository URL from `devjoy-pub/tscope`
 
 Trinity validated D2 (npm as primary distribution channel) against comprehensive analysis of Copilot CLI plugin model and gh CLI extensions. **Outcome: D2 confirmed, no amendment.** Copilot plugins are wrong architectural fit for standalone binary. gh-tscope extension viable as secondary channel post-v1.0 if reach expansion justifies cross-platform binary pipeline. Decision merged to decisions.md. Future horizon noted: add gh-tscope extension + precompiled binaries (win/mac/linux, amd64/arm64) post-v1.0, conditional on market demand.
 
-### 2026-06-10 — DataSource Abstraction + OTel Integration (Phase 1 & 2)
+### 2026-06-10 — OTel Wrap-up (cleanups + docs + changeset)
+
+**Branch:** `otel`
+
+**Code cleanups (Part 1):**
+- `src/index.ts`: Added empty-result OTel hint — when OTel source (auto or explicit) finds no sessions for the date range, prints advisory to stderr with mention of forward-only OTel coverage. Suggests `--source logs` for historical data; suggests `--all` when non-all filter is active. Hint is advisory (exit 0), not an error.
+- `src/sources/logsSource.ts`: Removed stale re-export of `hasTokenData` (was imported from `tokens.ts` then re-exported; no caller used it from here — Trinity non-blocking follow-up).
+- `src/__tests__/source-selection.test.ts`: 6 new tests covering hint behavior (fires for otel/auto, suppressed for logs, correct suggestion text for `--all` path, exits 0).
+
+**Documentation (Part 2):**
+- `README.md`: Added `Data Sources` section (OTel vs log parser table, auto-fallback notice, local-only note); added `--source` row to parameters table; updated JSON schema version mention to v5.
+- `docs/usage.md`: New `Data Source` section documenting `--source`, three modes, auto-fallback notice, empty-range hint, cost-per-source table, date-filter interaction.
+- `docs/json-output.md`: Full v5 schema with OTel + logs examples, top-level and per-session field reference tables, extended metrics table, v4 → v5 migration note.
+- `docs/how-it-works.md`: Full rewrite to cover two-source architecture, no-merge / one-source-per-run rule, OTel span filtering (chat-only, not invoke_agent/metrics), field mapping table, log-parser section preserved.
+- `docs/html-dashboard.md`: Documented source badge, per-session credit chips, Credits by Model chart, Total Credits card, and context-window utilization bar (amber ≥80%).
+
+**Changeset (Part 3):**
+- `.changeset/otel-primary-pivot.md`: minor bump; concise summary of OTel pivot features.
+
+**Final state:** 395 tests pass (389 pre-existing + 6 new hint tests). Build clean, lint clean.
+
+**Commit:** `b5cbc36` on `otel` branch.
+
+
 
 **Branch:** `otel`
 
