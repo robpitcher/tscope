@@ -314,6 +314,8 @@ OTel-sourced sessions include an `extended` object with reasoning tokens + conte
 2. **NO MERGING (architecture improvement):** OTel and log-parser data are mutually exclusive per run — never combined in a single report.
    - `--source auto` (default): use OTel if available; otherwise fall back to log parser with stderr notice.
    - HTML and JSON output must indicate which source generated it.
+   
+   **⚠️ SUPERSEDED (2026-06-10T22:40:00Z)** — This decision has been reversed. See "REVERSAL — merge sources in the report (OTel authoritative on overlap)" for new direction.
 
 3. **Cost:** Show authoritative OTel cost (`github.copilot.nano_aiu` ÷ 1e9). Logs-only sessions marked **"cost unavailable"**.
 
@@ -497,3 +499,446 @@ All five phases complete and ratified:
 - Phase 3: Renderer provenance + extended display (Switch) — COMPLETE
 - Phase 4: Edge-case + reconciliation tests (Apoc) — CLEAN, no bugs
 - Phase 5: Wrap-up documentation + changeset (Tank) — COMPLETE
+
+---
+
+## MERGE-REWORK PHASE (2026-06-10)
+
+The earlier "NO MERGING" decision (above) has been **SUPERSEDED** by the following merge-reversal increment, which reverts to a unified report with OTel as the authoritative source on overlaps.
+
+### 2026-06-10T22:40:00Z: REVERSAL — merge sources in the report (OTel authoritative on overlap)
+
+**By:** robpitcher (via Copilot / Squad coordinator)
+**Status:** SUPERSEDES the earlier "no merge / mutually exclusive sources per run" decision.
+
+**What changed:**
+- `--source auto` (default) now **MERGES** OTel + log-parser sessions into a single unified report (log data fills history; OTel covers the recent window).
+- **Overlap rule:** when a session exists in BOTH sources (same session id), use the **authoritative OTel** record and discard the logs duplicate — do NOT combine/sum them (no double-counting).
+- `--source otel` and `--source logs` remain single-source overrides (unchanged).
+- When no OTel data exists, `auto` is effectively logs-only (keep a tasteful notice).
+
+**Provenance (now per-session, since reports are mixed):**
+- **HTML: each session bubble/card MUST display its own source badge — "OTel" vs the old log method. (Hard user requirement.)**
+- Text + JSON carry per-session source too; plus a coverage summary (e.g. "12 OTel / 3 logs").
+- Cost shows for OTel sessions; log-only sessions show "cost unavailable".
+
+**Schema:** v5 is still UNRELEASED (in draft PR #8), so evolve `tscope/report/v5` in place (per-session `source` already exists; add/adjust coverage + mixed cost representation). Do NOT bump to v6.
+
+**Why:** A single report that spans full history (logs) while trusting authoritative OTel data wherever available is more useful than forcing the user to pick one source. The user explicitly wants merged output with OTel winning overlaps, and clear per-session provenance in the HTML dashboard.
+
+---
+
+### 2026-06-10: tank-merge-impl.md — Merge Rule, Report Coverage Model, Handoff
+
+**Date:** 2026-06-10  
+**Author:** Tank  
+**Status:** IMPLEMENTED — otel branch, ready for Trinity review gate
+
+#### What changed
+
+`--source auto` now **merges** OTel + log-parser sessions into a single unified report (was: mutually exclusive, one source per run).
+
+#### Merge rule
+
+```
+auto = mergeSessions(otelSessions, logsSessions)
+```
+
+1. Load OTel with the same date predicate.
+2. Load logs with the same date predicate (`loadAll` for completed + in-progress).
+3. `mergeSessions(otel, logs)` → union; any logs session whose `sessionId` matches an OTel session is **dropped** (OTel is authoritative; no combining/summing).
+4. `inProgressSessions` always come from logs only (OTel has no in-progress concept).
+
+If OTel is not available (`isOtelAvailable()` returns false), `auto` falls back to logs-only and prints:
+```
+No OpenTelemetry data found — falling back to log-file parsing.
+```
+
+`--source otel` and `--source logs` are unchanged (single-source overrides).
+
+#### Report coverage model — exact field names
+
+**New type: `ReportSourceKind` (`src/types.ts`)**
+```typescript
+type ReportSourceKind = "otel" | "logs" | "mixed";
+```
+- `"otel"` — all sessions from OTel
+- `"logs"` — all sessions from the log parser
+- `"mixed"` — merged (OTel + logs, default `--source auto` when OTel is available)
+
+**New interface: `SourceCoverage` (`src/types.ts`)**
+```typescript
+interface SourceCoverage {
+  otelCount: number;          // sessions with source: "otel" in this report
+  logsCount: number;          // sessions with source: "logs" in this report
+  costCoverage: "all" | "partial" | "none";
+    // "all"     = all sessions have cost (pure OTel)
+    // "partial" = some have cost (OTel+logs mixed)
+    // "none"    = no sessions have cost (pure logs or empty)
+}
+```
+
+**Updated `Report` fields (`src/types.ts`)**
+| Field | Type | Semantics |
+|---|---|---|
+| `source` | `ReportSourceKind` | `"otel"` / `"logs"` / `"mixed"` |
+| `costAvailable` | `boolean` | `coverage.otelCount > 0` |
+| `coverage` | `SourceCoverage` | per-source counts + costCoverage |
+
+`costAvailable` is kept for backward compat. For mixed reports it is `true` (cost present for the OTel subset).
+
+**Per-session `NormalizedSession.source` (`src/types.ts`, unchanged)**
+```typescript
+source: "otel" | "logs"   // DataSourceKind, per row
+```
+Every session carries its own source. Renderers **must** use `session.source` for per-session badges/chips, not `report.source`.
+
+#### JSON schema v5 — new top-level fields (in-place, no v6 bump)
+
+```json
+{
+  "schema": "tscope/report/v5",
+  "source": "mixed",
+  "costAvailable": true,
+  "coverage": {
+    "otelCount": 12,
+    "logsCount": 3,
+    "costCoverage": "partial"
+  },
+  ...
+}
+```
+
+Per-session `source` already serialized (`sessions[].source`).
+
+#### Handoff for Switch (renderers — next phase)
+
+**Per-session source badge (HARD REQUIREMENT):**
+- Read `session.source` (not `report.source`) to choose the badge.
+- `"otel"` → use existing `source-badge--otel` CSS class + label "OTel"
+- `"logs"` → use existing `source-badge--logs` CSS class + label "log parser"
+- Add a `source-badge--logs` per-session badge inside each session bubble/card.
+
+**Coverage summary:**
+- Read `report.coverage.otelCount` and `report.coverage.logsCount` for "N OTel / M logs" line.
+- Read `report.coverage.costCoverage` for the indicator:
+  - `"all"` → all sessions have cost data
+  - `"partial"` → show partial-cost notice (e.g. "Cost available for OTel sessions only")
+  - `"none"` → show "cost unavailable"
+- `report.costAvailable` is `true` when `otelCount > 0` — safe to use as "at least some cost data".
+
+**Per-session cost chip:**
+- Show `session.totalCost.toFixed(2) + " credits"` when `session.totalCost !== undefined`
+- Show "cost unavailable" when `session.source === "logs"` (no `totalCost`)
+- OTel sessions: `session.modelCosts` has per-model breakdown; `session.totalCost` is the sum
+
+**TextRenderer (mixed label already added):**
+- `source === "mixed"` → "mixed (OTel + logs)". Switch can improve later.
+
+#### Handoff for Apoc (tests — next phase)
+
+The following are already covered in the new suites but Apoc should extend:
+
+| Area | What to test |
+|---|---|
+| `merge.test.ts` ✅ | All covered: dedup, OTel-only, logs-only, coverage, round-trips |
+| `source-selection.test.ts` ✅ | Mixed mode, overlap, coverage counts in JSON |
+| `json-renderer.test.ts` ✅ | Coverage field shape, costCoverage values, mixed source |
+| **Not yet covered** | `--max` + mixed: coverage counts reflect the sliced set, not raw |
+| **Not yet covered** | `--source auto` when OTel has sessions but logs dir is missing (OTel-only path) |
+| **Not yet covered** | HTML/text output for `source === "mixed"` (Switch's phase; add after Switch ships) |
+
+#### Files changed this turn
+
+| File | Change |
+|---|---|
+| `src/types.ts` | Added `ReportSourceKind`, `SourceCoverage`; updated `Report.source`, added `Report.coverage` |
+| `src/sources/merge.ts` | **NEW** — `mergeSessions`, `computeSourceCoverage`, `computeReportSource` |
+| `src/index.ts` | Auto mode now merges; `coverage` in Report; updated hint logic + HELP_TEXT |
+| `src/render/JsonRenderer.ts` | `coverage` field in JSON output; updated docstring |
+| `src/render/TextRenderer.ts` | Handles `source === "mixed"` in `sourceLabel` |
+| `src/__tests__/merge.test.ts` | **NEW** — 42 unit tests |
+| `src/__tests__/source-selection.test.ts` | Added `writeLogsSession` helper + mixed/coverage integration tests |
+| `src/__tests__/json-renderer.test.ts` | Added coverage describe block (6 tests) |
+| `src/__tests__/html-renderer.test.ts` | Added `coverage` to EMPTY_REPORT fixture |
+| `src/__tests__/text-renderer.test.ts` | Added `coverage` to EMPTY_REPORT fixture |
+| `src/__tests__/renderer-edge-cases.test.ts` | Added `coverage` to fixtures |
+| `.squad/agents/tank/history.md` | Appended Learnings section |
+
+---
+
+### 2026-06-10: Trinity Merge Review — Data Layer Gate
+
+**Date:** 2026-06-10
+**Reviewer:** Trinity (Lead / Architect)
+**Commit:** adce689 (Tank)
+**Branch:** otel
+
+#### VERDICT: APPROVED
+
+The merge implementation is correct, well-tested (437 tests pass), and precisely scoped to the reversal decision.
+
+#### Criteria Assessment
+
+**1. Dedup correctness ✅**
+
+`mergeSessions()` builds a `Set` of OTel session IDs and drops any logs session whose ID matches. The join key is the same Copilot CLI session UUID on both sides:
+- OTel: `gen_ai.conversation.id` attribute (otelSource.ts:145)
+- Logs: directory name under `~/.copilot/session-state/` (discovery.ts:58)
+
+OTel wins completely — the logs duplicate is discarded with no summing or combining. No double-counting possible.
+
+**2. Merge integrity ✅**
+
+- Date predicate built once and passed to both sources identically (index.ts:396, 400).
+- `--max` applied post-merge via `selectMostRecentSessions` — source-agnostic recency sort.
+- Coverage (`computeSourceCoverage`) computed on the FINAL sliced set (post-max), not raw.
+- No cost leakage: logs sessions never carry `modelCosts`/`totalCost` — only `source: "logs"` is spread onto the ParsedSession.
+
+**3. Provenance model ✅**
+
+- `Report.source`: "mixed" iff both otelCount > 0 AND logsCount > 0; "otel" for pure OTel; "logs" otherwise.
+- `coverage.costCoverage`: "all" for pure OTel, "partial" for mixed, "none" for pure logs/empty.
+- `costAvailable = coverage.otelCount > 0` — correct, backward-compat.
+- Per-session `NormalizedSession.source` set at parse time by each data source — reliable for renderers.
+
+**4. Single-source modes intact ✅**
+
+`--source otel` and `--source logs` code paths do not call `mergeSessions` — they load from a single source and flow directly to the coverage/report computation. Unchanged from pre-reversal behavior.
+
+**5. Schema v5 — additive, no v6 ✅**
+
+`SCHEMA_VERSION = "tscope/report/v5"` unchanged. New fields (`source`, `costAvailable`, `coverage`) are additive at top level. Per-session `source`, `totalCost`, `modelCosts` conditionally included. All existing v4 fields preserved.
+
+**6. Scope ✅**
+
+No creep. Changes are strictly: merge helper + coverage model + index.ts auto-merge wiring + JSON/text renderer adjustments + test fixtures. Nothing beyond the reversal decision.
+
+#### Non-blocking observations
+
+| Area | Note | Priority |
+|------|------|----------|
+| `--max` + mixed | Coverage counts reflect the sliced set (correct), but no dedicated test exists yet. Tank flagged in handoff. | Low — trivially correct by code path |
+| Empty-result hint | Checks pre-max merged set for emptiness — correct behavior but subtle. | Informational |
+
+#### Summary
+
+Ship it. The merge logic is sound, the dedup join key is identity-verified, and the provenance model is clean. Switch can safely depend on `session.source` for per-session badges and `report.coverage` for summary displays.
+
+---
+
+### 2026-06-10: switch-merge-provenance.md — Per-session badges + coverage summary
+
+**Date:** 2026-06-10  
+**Author:** Switch  
+**Status:** IMPLEMENTED — otel branch, commit f298a9c
+
+#### What was rendered
+
+**HTML**
+
+**Per-session source badge (HARD REQUIREMENT — done)**
+
+Every session card now has a source badge as the first chip in the `.session-summary-chips` row, reading `session.source`:
+
+- `"otel"` → `<span class="source-badge source-badge--otel">OTel</span>` (accent-blue pill)
+- `"logs"` → `<span class="source-badge source-badge--logs">log parser</span>` (muted pill, dashed border conveying "historical")
+
+The badge is placed *before* the duration/tokens chips so left-to-right reading order is: provenance → speed → volume → cost.
+
+**Coverage summary in header (mixed reports)**
+
+For `report.source === "mixed"`, the old single badge is replaced by:
+```html
+<span class="coverage-summary" title="Sources: 1 OTel + 3 logs sessions — cost available for OTel sessions only">
+  <span class="cov-otel">1 OTel</span>
+  <span class="cov-sep"> · </span>
+  <span class="cov-logs">3 logs</span>
+</span>
+```
+Pure `"otel"` / `"logs"` headers keep their existing single `source-badge` (no change — existing tests preserved).
+
+**Cost unavailable chip on logs cards**
+
+Logs session cards show `<span class="chip chip-cost-unavail">no cost data</span>` (transparent background, dashed border, muted text) instead of a credits chip. OTel cards keep their green `.chip-credits`. "Total Credits" stat subtitle is "OTel sessions only" for mixed reports.
+
+**Text Renderer**
+
+Each session block now has a `Source:  OTel` or `Source:  log parser` line between the `Path:` line and the light `────` divider.
+
+Footer for mixed reports changed from the old "Source: mixed (OTel + logs)" to:
+```
+Sources: 2 OTel, 3 logs — cost available for OTel sessions only
+```
+(reads `report.coverage.otelCount` and `report.coverage.logsCount`)
+
+Pure otel/logs footers are unchanged.
+
+**JSON Renderer**
+
+No changes needed. Tank's implementation already serializes:
+- `sessions[].source` per session ✅
+- Top-level `coverage` object ✅
+- `extended` object per OTel session ✅
+
+#### What Apoc should test in the renderers
+
+**New coverage needed (not in Switch's test files)**
+
+| Area | What to test |
+|---|---|
+| HTML per-session badge | OTel card has `source-badge--otel`, logs card has `source-badge--logs` — covered in Switch's `html-renderer.test.ts` ✅ |
+| HTML coverage summary | Mixed report: coverage-summary element present, correct counts — covered ✅ |
+| HTML cost chip | Logs card: `chip-cost-unavail` present; OTel card: no chip-cost-unavail — covered ✅ |
+| HTML mixed credits subtitle | "OTel sessions only" for mixed, "AI billing credits" for pure OTel — covered ✅ |
+| Text per-session tag | "Source:  OTel" / "Source:  log parser" inside each session block — covered ✅ |
+| Text mixed footer | "Sources: N OTel, M logs" — covered ✅ |
+| **Not yet covered** | `--max` flag + mixed report: coverage counts in HTML reflect the *sliced* session set (currently the HTML receives the pre-sliced `report.sessions`, so this should work, but integration test worth having) |
+| **Not yet covered** | Edge: `coverage.otelCount === 0` but `source === "mixed"` — e.g. "0 OTel · 5 logs" in coverage summary. Should render gracefully (no crash, shows "0 OTel"). |
+| **Not yet covered** | Text renderer: mixed report where `logsCount === 0` — "Sources: 3 OTel, 0 logs". Cosmetically odd but shouldn't crash. |
+| **Not yet covered** | HTML: per-session badge tooltip for a logs card says "cost data unavailable" — currently not asserted (the card-level `chip-cost-unavail` carries that text in its title, and the per-session badge's title also mentions "cost data unavailable"). Worth a dedicated tooltip test. |
+| **Not yet covered** | HTML: client-side CSV export for a mixed report — `source` column not in the CSV schema yet; confirm no regressions in the download path. |
+
+**Regression risk areas from this change**
+
+1. **`renderer-edge-cases.test.ts` badge-position tests** — verified passing (461 total pass). Those tests look for `class="source-badge` from the header region, which still works because pure otel/logs header badges are unchanged.
+
+2. **Text `source footer appears after SUMMARY` test** — was updated to use `lastIndexOf("Source:")` since per-session lines now precede the footer. Apoc should be aware if adding new "Source:" prefixed content to session blocks.
+
+3. **`chip-cost-unavail` on every logs session** — even in a pure logs report every card shows "no cost data". This is intentional (always-honest) but the volume of chips in a logs-only report could feel noisy. Worth a UX review if user feedback surfaces it; easy to scope to `source === "mixed"` only if needed.
+
+---
+
+### 2026-06-10: apoc-merge-tests.md — Phase 4 Merge Edition: Test Coverage Report
+
+**Date:** 2026-06-10  
+**Author:** Apoc  
+**Status:** COMPLETE — otel branch, commit 6ff20a7
+
+#### Total test count
+
+| Baseline (before this turn) | New this turn | Final total |
+|---|---|---|
+| 461 | 69 | **530** |
+
+All 530 tests pass. `npm run build` and `npm run lint` clean.
+
+#### What's covered
+
+**merge-integrity.test.ts (28 tests) — pure reconciliation**
+
+| Area | Tests |
+|---|---|
+| Dedup: exactly one entry per overlap pattern | 4 |
+| Token counts: OTel values preserved, not doubled | 3 |
+| Cost integrity: credits from OTel only, none from logs | 5 |
+| Coverage accuracy: otelCount + logsCount == merged.length | 4 |
+| costAvailable === (otelCount > 0) invariant | 5 |
+| Report source label derivation (otel/logs/mixed) | 4 |
+| Large-cardinality reconciliation (50+50, 30+30+20, 5-cost sum) | 3 |
+
+**Key invariants verified (pure functions):**
+- `merged.length == uniqueOtelIds.length + uniqueLogsIds.length` for any overlap pattern
+- `sum(merged.totalCost) == sum(otelSessions.totalCost)` to float precision
+- `merged[overlap].models["gpt-4"].inputTokens == otelSession.inputTokens` (NOT otel+logs sum)
+- `computeSourceCoverage(merged).otelCount + .logsCount == merged.length`
+- `coverage.otelCount > 0` iff at least one OTel session survived
+
+**merge-integration.test.ts (18 tests) — subprocess end-to-end**
+
+| Area | Tests |
+|---|---|
+| `--max` after merge: coverage sums to slice size | 3 |
+| Auto mode + OTel present + no session-state dir | 3 |
+| Both sources empty after date filter: graceful | 3 |
+| `--source otel`/`--source logs` never produce `mixed` | 4 |
+| JSON provenance: per-session source, overlap dedup visible | 5 |
+
+**Gap coverage (from Tank's handoff):**
+- `--max N` on mixed set: `coverage.otelCount + coverage.logsCount == N` ✅
+- `--source auto` + OTel present + missing session-state dir: `source='otel'`, `logsCount=0` ✅
+
+**merge-renderer-gaps.test.ts (23 tests) — renderer edge cases**
+
+| Area | Tests |
+|---|---|
+| HTML: `otelCount=0` + `source='mixed'` → "0 OTel", no crash | 4 |
+| Text: `logsCount=0` + `source='mixed'` → "Sources: N OTel, 0 logs" | 3 |
+| HTML: per-session logs badge has `title` mentioning "cost data unavailable" | 2 |
+| JSON: `coverage.otelCount/logsCount` match actual session sources | 7 |
+| HTML: `--max` simulation — slice coverage matches rendered HTML | 2 |
+| Text: per-session source tags in mixed report | 4 |
+| (Subtotal note: 4+3+2+7+2+4 = 22; one describe block has an extra test) | +1 |
+
+**Gap coverage (from Switch's handoff):**
+- HTML `otelCount=0` + `source='mixed'` edge case ✅
+- Text `logsCount=0` + `source='mixed'` edge case ✅
+- HTML per-session logs badge `title` attribute (cost unavailability) ✅
+- JSON per-session `source` vs `coverage` consistency ✅
+- HTML `--max` simulation with coverage-summary ✅
+
+#### Reconciliation verdict
+
+**CLEAN.** All arithmetic invariants hold end-to-end:
+
+1. **No double-counting:** `merged[overlap].tokens == otelSession.tokens` (not OTel+logs sum or half).
+2. **Cost accuracy:** `sum(merged.totalCost) == sum(OTel costs only)` verified to `toBeCloseTo(…, 8)` precision.
+3. **Coverage math:** `otelCount + logsCount == sessions.length` for all test cases.
+4. **costAvailable gate:** `true` exactly when `otelCount > 0` — invariant holds in subprocess JSON output across pure-otel, pure-logs, mixed, and empty scenarios.
+5. **Single-source isolation:** `--source otel` and `--source logs` never produce `source='mixed'`; logs sessions are absent from OTel output and vice-versa.
+6. **Merge dedup end-to-end:** Subprocess test confirms that when `SHARED_ID` appears in both sources, exactly one session with that ID appears in JSON output with `source='otel'`.
+
+#### Bugs found
+
+**None.** The implementation reconciles correctly across all invariant tests. The merge helper (`src/sources/merge.ts`), OTel data source, logs source, and all three renderers are consistent.
+
+#### Not covered by this turn (out of scope / cosmetic)
+
+- HTML: CSV export `source` column — Switch's note flagged this as a potential regression. Light check confirms the CSV schema test in `html-renderer.test.ts` still passes (no `source` column in current CSV schema, no regression). Adding a `source` column to the CSV is a product decision, not a bug.
+- HTML: tooltip title text on OTel per-session badges — already covered in Switch's suite.
+- Text formatter carry-over edge cases — already covered in `text-renderer.test.ts`.
+
+---
+
+### 2026-06-10: tank-merge-docs.md — Docs Update for Merge Behavior
+
+**Date:** 2026-06-10  
+**Author:** Tank  
+**Status:** COMPLETED — docs + changeset committed, otel branch
+
+#### Summary
+
+Updated all user-facing documentation to reflect the new **merge-based** `--source auto` behavior, replacing the old "one source per run" model.
+
+#### Files Updated
+
+| File | Change |
+|---|---|
+| `README.md` | Data Sources table: `auto` now merges OTel + logs; OTel authoritative on overlap; cost shown for OTel, unavailable for logs |
+| `docs/usage.md` | Data Source section: expanded to explain merge flow, per-session cost availability, single-source overrides |
+| `docs/json-output.md` | Added mixed report example; documented `coverage` object (`otelCount`, `logsCount`, `costCoverage`); updated v5 migration notes (new `source`, `coverage` fields) |
+| `docs/how-it-works.md` | Rewrote "Source Selection" → "Source Selection — Smart Merging"; described dedup rule (OTel wins, no double-count); logs-only fallback path |
+| `docs/html-dashboard.md` | Added per-session source badge description; coverage summary for mixed reports; cost unavailable chip on logs cards |
+| `.changeset/otel-primary-pivot.md` | Updated to describe merge model instead of old single-source behavior |
+| `.squad/agents/tank/history.md` | Appended detailed Learnings section: types, modules, schema, HTML changes, docs updates |
+
+#### Key Messaging
+
+**Old model (REMOVED):** "tscope reads from one of two local sources per run (no merging)."
+
+**New model (NOW DOCUMENTED):**
+- `--source auto` (default) merges OTel + logs into a unified report
+- Sessions present in both are deduplicated — OTel record is authoritative, logs duplicate dropped
+- Logs provide historical context; OTel provides recent, authoritative data with cost metrics
+- Per-session `source` badges on every HTML card show which sessions have cost data
+- Coverage summary on mixed reports: "N OTel · M logs"
+
+#### Validation
+
+- ✅ `npm run lint` — no errors
+- ✅ `npm run build` — no errors
+- ✅ Commit: `docs: update for merge-based source mode` (0e6059a)
+
+#### Handoff Notes
+
+All documentation now aligns with Tank's merge implementation (merging-pivot turn) and Switch's HTML rendering (per-session badges, coverage summary). The alpha-software tone is preserved; tscope is still local-only (reads OTel from `~/.copilot/tscope/otel.jsonl`).
