@@ -39,6 +39,19 @@ Added 87 new tests across 4 new test files; total suite grew from 302 → 389, a
 
 **Bugs found:** None. All invariants reconciled correctly.
 
+### 2026-06-10 — Phase 4 Merge Edition: Reconciliation & Renderer Gap Coverage (Apoc)
+
+Added 69 new tests across 3 new test files; total suite grew from 461 → 530, all passing. Build and lint clean.
+
+**Files created:**
+- `src/__tests__/merge-integrity.test.ts` (28 tests) — Pure arithmetic reconciliation on top of Tank's merge unit tests: exact-one-entry dedup per overlap, token values from OTel only (not doubled), total cost = sum(OTel costs) + 0*(logs) verified to float precision, coverage counts = post-dedup lengths, `costAvailable === (otelCount > 0)` invariant, report source label derivation, 50+50/30+30+20/5-cost large-cardinality scenarios.
+- `src/__tests__/merge-integration.test.ts` (18 tests) — Subprocess integration for gaps Tank identified: `--max` on mixed set (coverage sums to slice size); `--source auto` + OTel present + missing session-state dir (exits 0, source='otel', logsCount=0); both sources empty after date filter (0 sessions, all-zero coverage); `--source otel`/`--source logs` never produce `source='mixed'`; JSON provenance per-session source + overlap dedup visible end-to-end.
+- `src/__tests__/merge-renderer-gaps.test.ts` (23 tests) — Renderer edge cases from Switch's not-covered list: HTML `coverage.otelCount=0` with `source='mixed'` renders "0 OTel" (no crash); Text `logsCount=0` mixed renders "Sources: 3 OTel, 0 logs"; HTML per-session logs badge title attribute mentions "cost data unavailable"; JSON `coverage.otelCount`/`logsCount` match actual session sources; HTML `--max` simulation — pure-otel slice shows single badge not coverage-summary; Text mixed shows both source labels with per-session tags before footer.
+
+**Reconciliation verdict:** CLEAN. Token counts and costs from OTel never doubled. `otelCount + logsCount == merged.length` invariant holds for all overlap patterns. `costAvailable === (otelCount > 0)` verified end-to-end in subprocess JSON output. Logs sessions carry no cost fields throughout the merge pipeline.
+
+**Bugs found:** None. All arithmetic invariants reconciled correctly.
+
 ### 2026-06-10 — OTel-Primary Pivot Planning (Planning Batch)
 
 Tank and Trinity completed empirical OTel investigation and architecture proposal for OTel-primary pivot + CLI redesign. **Outcome: FEASIBLE.** OTel span token counts match events.jsonl exactly; session ID preserved; bonus signals (latency, tool calls, server-side billing) exposed. Architecture: DataSource abstraction, `--source otel|logs|auto`, JSON v4→v5. **Status:** Proposed decisions merged to decisions.md pending user approval on 5 open forks (cost re-intro, file rotation, bonus signals in v1, v5 timing, CLI surface). **Upcoming work for Apoc:** P3/P4 — Test suite expansion for dual-source parsing (OTel + events.jsonl), extended metrics validation; timeline depends on user fork resolutions. Implementation blocked until user decision.
