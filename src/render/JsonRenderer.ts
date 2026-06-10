@@ -62,6 +62,7 @@ function serializeCompletedSession(session: NormalizedSession) {
     source: session.source,
     ...(session.totalCost !== undefined ? { totalCost: session.totalCost } : {}),
     ...(session.modelCosts !== undefined ? { modelCosts: session.modelCosts } : {}),
+    ...(session.extended !== undefined ? { extended: session.extended } : {}),
     models,
     totals: {
       input: totalInput,

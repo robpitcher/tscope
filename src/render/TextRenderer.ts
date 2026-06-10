@@ -1,4 +1,4 @@
-import { Report, ParsedSession, TokenCounts } from "../types";
+import { Report, NormalizedSession, TokenCounts } from "../types";
 import { tokenPartition, totalTokens, hasTokenData } from "../tokens";
 import { Renderer } from "./Renderer";
 import { ansiEnabled, bold, dim } from "./style";
@@ -49,6 +49,9 @@ function renderModelBlock(modelName: string, tokens: TokenCounts, styled: boolea
   lines.push(`  ${bold(modelName, styled)}`);
   lines.push(tokenRow("Fresh Input", p.freshInput, "Output", p.output));
   lines.push(tokenRow("Cache Read", p.cacheRead, "Cache Write", p.cacheWrite));
+  if (tokens.reasoningTokens > 0) {
+    lines.push(singleRow("Reasoning", tokens.reasoningTokens));
+  }
   lines.push(singleRow("Total (I/O)", p.total));
   return lines.join("\n");
 }
@@ -87,7 +90,7 @@ function fmtDurationMs(ms: number): string {
   return `${hr}h ${min}m`;
 }
 
-function renderSessionBlock(session: ParsedSession, styled: boolean): string {
+function renderSessionBlock(session: NormalizedSession, styled: boolean): string {
   const lines: string[] = [];
   lines.push(bold(HEAVY, styled));
   lines.push(bold(`SESSION: ${session.sessionId}`, styled));
@@ -109,7 +112,7 @@ function renderSessionBlock(session: ParsedSession, styled: boolean): string {
 
   lines.push(LIGHT);
 
-  let totalFreshInput = 0, totalCacheRead = 0, totalCacheWrite = 0, totalOutput = 0, grandTotal = 0;
+  let totalFreshInput = 0, totalCacheRead = 0, totalCacheWrite = 0, totalOutput = 0, grandTotal = 0, totalReasoning = 0;
   for (const tokens of Object.values(session.models)) {
     const p = tokenPartition(tokens);
     totalFreshInput += p.freshInput;
@@ -117,12 +120,28 @@ function renderSessionBlock(session: ParsedSession, styled: boolean): string {
     totalCacheWrite += p.cacheWrite;
     totalOutput += p.output;
     grandTotal += totalTokens(tokens);
+    totalReasoning += tokens.reasoningTokens;
   }
 
   lines.push(`  ${bold("TOTALS", styled)}`);
   lines.push(tokenRow("Fresh Input", totalFreshInput, "Output", totalOutput));
   lines.push(tokenRow("Cache Read", totalCacheRead, "Cache Write", totalCacheWrite));
+  if (totalReasoning > 0) {
+    lines.push(singleRow("Reasoning", totalReasoning));
+  }
   lines.push(singleRow("Total (I/O)", grandTotal));
+
+  if (session.totalCost !== undefined) {
+    const numStr = session.totalCost.toFixed(2).padStart(12);
+    lines.push(`    ${"Cost:".padEnd(14)}${numStr} credits`);
+  }
+  if (session.extended?.contextWindow) {
+    const cw = session.extended.contextWindow;
+    const pct = (cw.utilizationRatio * 100).toFixed(0);
+    const usedStr = fmt(cw.usedTokens).padStart(12);
+    lines.push(`    ${"Context:".padEnd(14)}${usedStr} / ${fmt(cw.limitTokens)} tokens (${pct}% used)`);
+  }
+
   lines.push(bold(HEAVY, styled));
 
   return lines.join("\n");
@@ -145,16 +164,19 @@ export class TextRenderer implements Renderer {
 
     if (allSessions.length === 0) {
       process.stdout.write(`No sessions found for ${report.filterDescription}.\n`);
-      return;
+    } else {
+      for (const block of allSessions) {
+        process.stdout.write(block + "\n\n");
+      }
+
+      const totalSessions = sessionsWithData.length;
+      process.stdout.write(
+        `${bold(`SUMMARY: ${totalSessions} session${totalSessions !== 1 ? "s" : ""}`, styled)}\n`
+      );
     }
 
-    for (const block of allSessions) {
-      process.stdout.write(block + "\n\n");
-    }
-
-    const totalSessions = sessionsWithData.length;
-    process.stdout.write(
-      `${bold(`SUMMARY: ${totalSessions} session${totalSessions !== 1 ? "s" : ""}`, styled)}\n`
-    );
+    const sourceLabel = report.source === "otel" ? "OpenTelemetry" : "event logs (historical)";
+    const costNote = report.source === "logs" ? " — cost data unavailable" : "";
+    process.stdout.write(`Source: ${sourceLabel}${costNote}\n`);
   }
 }

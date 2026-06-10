@@ -324,6 +324,85 @@ describe("JsonRenderer", () => {
     });
   });
 
+  describe("extended metrics serialization", () => {
+    const OTEL_SESSION: NormalizedSession = {
+      ...SAMPLE_SESSION,
+      source: "otel",
+      totalCost: 2.34,
+      modelCosts: { "claude-sonnet-4-5": 2.34 },
+      extended: {
+        reasoningTokens: 150,
+        contextWindow: {
+          usedTokens: 12500,
+          limitTokens: 128000,
+          utilizationRatio: 0.0977,
+        },
+      },
+    };
+
+    test("extended field is included in serialized session when present", () => {
+      const report: Report = {
+        ...EMPTY_REPORT,
+        source: "otel",
+        costAvailable: true,
+        sessions: [OTEL_SESSION],
+      };
+      const out = captureJson(report);
+      expect(out.sessions[0].extended).toBeDefined();
+    });
+
+    test("extended.reasoningTokens is serialized correctly", () => {
+      const report: Report = {
+        ...EMPTY_REPORT,
+        source: "otel",
+        costAvailable: true,
+        sessions: [OTEL_SESSION],
+      };
+      const out = captureJson(report);
+      expect(out.sessions[0].extended.reasoningTokens).toBe(150);
+    });
+
+    test("extended.contextWindow is serialized correctly", () => {
+      const report: Report = {
+        ...EMPTY_REPORT,
+        source: "otel",
+        costAvailable: true,
+        sessions: [OTEL_SESSION],
+      };
+      const out = captureJson(report);
+      const cw = out.sessions[0].extended.contextWindow;
+      expect(cw.usedTokens).toBe(12500);
+      expect(cw.limitTokens).toBe(128000);
+      expect(cw.utilizationRatio).toBeCloseTo(0.0977);
+    });
+
+    test("extended field is absent when session has no extended data (logs)", () => {
+      const report: Report = {
+        ...EMPTY_REPORT,
+        sessions: [SAMPLE_SESSION],
+      };
+      const out = captureJson(report);
+      expect(out.sessions[0].extended).toBeUndefined();
+    });
+
+    test("extended with only reasoningTokens (no contextWindow) serializes correctly", () => {
+      const partialExtended: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        source: "otel",
+        extended: { reasoningTokens: 75 },
+      };
+      const report: Report = {
+        ...EMPTY_REPORT,
+        source: "otel",
+        costAvailable: true,
+        sessions: [partialExtended],
+      };
+      const out = captureJson(report);
+      expect(out.sessions[0].extended.reasoningTokens).toBe(75);
+      expect(out.sessions[0].extended.contextWindow).toBeUndefined();
+    });
+  });
+
   describe("JSON output ends with newline", () => {
     test("output string ends with newline character", () => {
       const raw = captureOutput(EMPTY_REPORT);

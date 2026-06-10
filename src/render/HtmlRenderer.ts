@@ -18,7 +18,7 @@
  */
 
 import * as fs from "fs";
-import { Report, ParsedSession, InProgressSession, TokenCounts, ChronicleTip } from "../types";
+import { Report, ParsedSession, InProgressSession, TokenCounts, ChronicleTip, NormalizedSession } from "../types";
 import { tokenPartition, totalTokens, hasTokenData } from "../tokens";
 import { Renderer } from "./Renderer";
 
@@ -473,7 +473,26 @@ function buildChronicleBox(
 </div>`;
 }
 
-function buildSessionCard(session: ParsedSession): string {
+// ---------------------------------------------------------------------------
+// Credits by model list (OTel-only)
+// ---------------------------------------------------------------------------
+
+function buildCreditsByModel(models: ModelEntry[], modelCosts: Record<string, number>): string {
+  if (models.length === 0) return `<p class="muted-note">No model data</p>`;
+  let html = `<div class="credits-list">`;
+  for (const m of models) {
+    const cost = modelCosts[m.modelName] ?? 0;
+    html += `
+  <div class="credit-row">
+    <span class="credit-model-name">${esc(m.modelName)}</span>
+    <span class="credit-value">${cost.toFixed(2)} cr</span>
+  </div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
+function buildSessionCard(session: NormalizedSession): string {
   const dateStr = toLocalDateTime(session.startTime);
   const modelEntries: ModelEntry[] = Object.entries(session.models).map(
     ([modelName, tokens]) => ({ modelName, tokens })
@@ -499,6 +518,7 @@ function buildSessionCard(session: ParsedSession): string {
     <div class="session-summary-chips">
       ${session.apiDurationMs !== undefined ? `<span class="chip chip-duration" title="Cumulative model API time (compute only — excludes idle / user think time)">${esc(fmtDuration(session.apiDurationMs))} API</span>` : ""}
       <span class="chip chip-tokens">${fmtNum(totalTokensForCard)} tokens</span>
+      ${session.totalCost !== undefined ? `<span class="chip chip-credits" title="Estimated AI credits from OpenTelemetry billing data">${session.totalCost.toFixed(2)} credits</span>` : ""}
     </div>
   </div>
   <div class="session-path">${esc(session.eventsPath)}</div>
@@ -518,6 +538,11 @@ function buildSessionCard(session: ParsedSession): string {
         <h3 class="chart-title">Cached Input %</h3>
         ${buildCachePills(modelEntries)}
       </div>
+      ${session.modelCosts !== undefined ? `
+      <div class="chart-section">
+        <h3 class="chart-title">Credits by Model</h3>
+        ${buildCreditsByModel(modelEntries, session.modelCosts)}
+      </div>` : ""}
     </div>
   </div>
   ` : `<p class="muted-note">No model data</p>`}
@@ -530,6 +555,20 @@ function buildSessionCard(session: ParsedSession): string {
     <span class="token-total-item"><span class="token-dot" style="background:${TOKEN_COLORS.output}"></span>Output: ${fmtNum(totalOutput)}</span>
   </div>
   ` : ""}
+
+  ${session.extended?.contextWindow ? (() => {
+    const cw = session.extended!.contextWindow!;
+    const pct = clamp01(cw.utilizationRatio) * 100;
+    const isHigh = pct >= 80;
+    return `
+  <div class="ctx-window-section">
+    <h3 class="chart-title">Context Window</h3>
+    <div class="ctx-window-wrap">
+      <div class="ctx-window-fill${isHigh ? " ctx-window-high" : ""}" style="width:${pct.toFixed(1)}%" title="${fmtNum(cw.usedTokens)} / ${fmtNum(cw.limitTokens)} tokens used"></div>
+    </div>
+    <div class="ctx-window-label">${fmtNum(cw.usedTokens)} / ${fmtNum(cw.limitTokens)} tokens &middot; ${pct.toFixed(0)}% used</div>
+  </div>`;
+  })() : ""}
 </article>`;
 }
 
@@ -1188,6 +1227,73 @@ button.filter-badge:hover { background: var(--border); color: var(--text-primary
 .chart-tooltip .tip-total { font-weight: 600; }
 
 .token-bar-row.has-tip { cursor: pointer; }
+
+/* Source provenance badge */
+.source-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 20px;
+  padding: 3px 10px;
+  white-space: nowrap;
+  border: 1px solid;
+}
+.source-badge--otel {
+  background: rgba(88,166,255,.12);
+  color: var(--accent-blue);
+  border-color: rgba(88,166,255,.25);
+}
+.source-badge--logs {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+
+/* AI credits chip (OTel sessions) */
+.chip-credits { background: rgba(63,185,80,.12); color: var(--accent-green); border: 1px solid rgba(63,185,80,.25); }
+
+/* Credits by model list */
+.credits-list { display: flex; flex-direction: column; gap: 7px; }
+.credit-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.credit-model-name {
+  font-size: 11px;
+  font-family: 'SF Mono','Consolas',monospace;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.credit-value {
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-green);
+  white-space: nowrap;
+}
+
+/* Context-window utilization bar */
+.ctx-window-section { margin-top: 16px; }
+.ctx-window-wrap {
+  height: 8px;
+  background: var(--bg-elevated);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.ctx-window-fill {
+  height: 100%;
+  background: var(--accent-blue);
+  border-radius: 4px;
+  min-width: 2px;
+}
+.ctx-window-high { background: var(--accent-amber); }
+.ctx-window-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
 `.trim();
 
 // ---------------------------------------------------------------------------
@@ -1638,17 +1744,19 @@ const JS = `
 // ---------------------------------------------------------------------------
 
 function buildHtml(report: Report, generatedAt: string, generatedAtIso: string): string {
-  const { sessions, inProgressSessions, filterDescription, reportDate } = report;
+  const { sessions, inProgressSessions, filterDescription, reportDate, source, costAvailable } = report;
 
   const completedCount = sessions.length;
   const inProgressCount = inProgressSessions.length;
   const totalSessions = completedCount + inProgressCount;
 
   let grandTotalTokens = 0;
+  let grandTotalCredits = 0;
   for (const session of sessions) {
     for (const tokens of Object.values(session.models)) {
       grandTotalTokens += totalTokens(tokens);
     }
+    if (session.totalCost !== undefined) grandTotalCredits += session.totalCost;
   }
 
   const statCards = `
@@ -1663,6 +1771,12 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
     <div class="stat-value" id="stat-sessions-value">${totalSessions}</div>
     <div class="stat-sub" id="stat-sessions-sub">${completedCount} completed${inProgressCount > 0 ? `, ${inProgressCount} in progress` : ""}</div>
   </div>
+  ${costAvailable ? `
+  <div class="stat-card">
+    <div class="stat-label">Total Credits</div>
+    <div class="stat-value accent-green">${grandTotalCredits.toFixed(2)}</div>
+    <div class="stat-sub">AI billing credits</div>
+  </div>` : ""}
   <div class="stat-card">
     <div class="stat-label">Date Filter</div>
     <div class="stat-value" style="font-size:16px;" id="stat-filter-value">${esc(filterDescription)}</div>
@@ -1794,6 +1908,10 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
           <p class="range-error" id="range-error" hidden></p>
         </div>
       </div>
+      ${source === "otel"
+        ? `<span class="source-badge source-badge--otel" title="Data source: OpenTelemetry — includes server-side billing credits">OpenTelemetry</span>`
+        : `<span class="source-badge source-badge--logs" title="Data source: event logs (historical) — cost data unavailable. Run &#x27;tscope otel enable&#x27; to use OpenTelemetry.">event logs</span>`
+      }
       <span style="font-size:12px;color:var(--text-muted)">Generated ${esc(generatedAt)}</span>
       <a class="gh-link" href="${REPO_URL}" target="_blank" rel="noopener noreferrer" aria-label="View tscope on GitHub" title="View tscope on GitHub">
         <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" fill="currentColor"><path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>

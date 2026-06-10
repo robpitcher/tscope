@@ -1,6 +1,8 @@
 /**
  * Tests for TextRenderer — verifies plain-text output, summary counts, and
  * the silent exclusion of sessions with no billable token activity.
+ * Updated for Phase 3: source provenance footer, cost display, reasoning tokens,
+ * and context-window extended metrics.
  */
 
 import { TextRenderer } from "../render/TextRenderer";
@@ -17,6 +19,12 @@ const EMPTY_REPORT: Report = {
   filterDescription: "today",
   source: "logs",
   costAvailable: false,
+};
+
+const OTEL_EMPTY_REPORT: Report = {
+  ...EMPTY_REPORT,
+  source: "otel",
+  costAvailable: true,
 };
 
 const SAMPLE_SESSION: NormalizedSession = {
@@ -42,6 +50,35 @@ const SAMPLE_SESSION: NormalizedSession = {
   chronicleTips: [],
   inProgress: false,
   source: "logs",
+};
+
+/** OTel session with cost and extended metrics. */
+const OTEL_SESSION: NormalizedSession = {
+  sessionId: "otel-00000000-aaaa-bbbb-cccc-dddddddddddd",
+  eventsPath: "/home/user/.copilot/tscope/otel.jsonl",
+  startTime: "2026-06-10T15:00:00.000Z",
+  models: {
+    "claude-sonnet-4-5": {
+      inputTokens: 2000,
+      outputTokens: 800,
+      cacheReadTokens: 1200,
+      cacheWriteTokens: 200,
+      reasoningTokens: 150,
+    },
+  },
+  chronicleTips: [],
+  inProgress: false,
+  source: "otel",
+  totalCost: 2.34,
+  modelCosts: { "claude-sonnet-4-5": 2.34 },
+  extended: {
+    reasoningTokens: 150,
+    contextWindow: {
+      usedTokens: 12500,
+      limitTokens: 128000,
+      utilizationRatio: 0.0977,
+    },
+  },
 };
 
 const SECOND_SESSION: NormalizedSession = {
@@ -326,6 +363,117 @@ describe("TextRenderer", () => {
       expect(out).toContain(`SESSION: ${SAMPLE_SESSION.sessionId}`);
       expect(out).toContain("TOTALS");
       expect(out).toContain(`Path:    ${SAMPLE_SESSION.eventsPath}`);
+    });
+  });
+
+  describe("source provenance footer", () => {
+    test("logs report footer says 'Source: event logs (historical)'", () => {
+      const out = captureText({ ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] });
+      expect(out).toContain("Source: event logs (historical)");
+    });
+
+    test("otel report footer says 'Source: OpenTelemetry'", () => {
+      const out = captureText({ ...OTEL_EMPTY_REPORT, sessions: [OTEL_SESSION] });
+      expect(out).toContain("Source: OpenTelemetry");
+    });
+
+    test("logs footer includes cost unavailable note", () => {
+      const out = captureText({ ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] });
+      expect(out).toContain("cost data unavailable");
+    });
+
+    test("otel footer does not include cost unavailable note", () => {
+      const out = captureText({ ...OTEL_EMPTY_REPORT, sessions: [OTEL_SESSION] });
+      expect(out).not.toContain("cost data unavailable");
+    });
+
+    test("source footer appears even on empty reports (no sessions)", () => {
+      const out = captureText(EMPTY_REPORT);
+      expect(out).toContain("Source: event logs (historical)");
+    });
+
+    test("source footer appears after SUMMARY for non-empty report", () => {
+      const out = captureText({ ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] });
+      const summaryIdx = out.indexOf("SUMMARY:");
+      const sourceIdx = out.indexOf("Source:");
+      expect(summaryIdx).toBeGreaterThan(-1);
+      expect(sourceIdx).toBeGreaterThan(summaryIdx);
+    });
+  });
+
+  describe("cost display", () => {
+    test("shows cost line for OTel sessions with totalCost", () => {
+      const out = captureText({ ...OTEL_EMPTY_REPORT, sessions: [OTEL_SESSION] });
+      expect(out).toContain("Cost:");
+      expect(out).toContain("2.34");
+      expect(out).toContain("credits");
+    });
+
+    test("does not show cost line for logs sessions (no totalCost)", () => {
+      const out = captureText({ ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] });
+      expect(out).not.toContain("Cost:");
+    });
+
+    test("cost value is formatted to 2 decimal places", () => {
+      const session: NormalizedSession = { ...OTEL_SESSION, totalCost: 1.5 };
+      const out = captureText({ ...OTEL_EMPTY_REPORT, sessions: [session] });
+      expect(out).toContain("1.50");
+    });
+  });
+
+  describe("extended metrics — reasoning tokens", () => {
+    test("shows Reasoning row in model block when tokens.reasoningTokens > 0", () => {
+      const out = captureText({ ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] });
+      // claude-sonnet-4-5 has reasoningTokens: 50
+      expect(out).toContain("Reasoning:");
+      expect(out).toContain("50");
+    });
+
+    test("does not show Reasoning row when all models have zero reasoningTokens", () => {
+      const noReasoningSession: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        models: {
+          "claude-haiku-4-5": {
+            inputTokens: 300,
+            outputTokens: 100,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            reasoningTokens: 0,
+          },
+        },
+      };
+      const out = captureText({ ...EMPTY_REPORT, sessions: [noReasoningSession] });
+      expect(out).not.toContain("Reasoning:");
+    });
+
+    test("shows Reasoning in TOTALS block when any model has reasoning tokens", () => {
+      const out = captureText({ ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] });
+      // Totals section should also show reasoning (50 from sonnet-4-5 only)
+      const totalsIdx = out.indexOf("TOTALS");
+      const reasoningIdx = out.indexOf("Reasoning:", totalsIdx);
+      expect(totalsIdx).toBeGreaterThan(-1);
+      expect(reasoningIdx).toBeGreaterThan(totalsIdx);
+    });
+  });
+
+  describe("extended metrics — context window", () => {
+    test("shows Context line when session.extended.contextWindow is set", () => {
+      const out = captureText({ ...OTEL_EMPTY_REPORT, sessions: [OTEL_SESSION] });
+      expect(out).toContain("Context:");
+      expect(out).toContain("12,500");
+      expect(out).toContain("128,000");
+      expect(out).toContain("% used");
+    });
+
+    test("does not show Context line when extended.contextWindow is absent", () => {
+      const noCtx: NormalizedSession = { ...OTEL_SESSION, extended: { reasoningTokens: 50 } };
+      const out = captureText({ ...OTEL_EMPTY_REPORT, sessions: [noCtx] });
+      expect(out).not.toContain("Context:");
+    });
+
+    test("does not show Context line for logs sessions", () => {
+      const out = captureText({ ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] });
+      expect(out).not.toContain("Context:");
     });
   });
 });

@@ -814,4 +814,221 @@ describe("HtmlRenderer", () => {
       expect(html).toContain("clearSelection");
     });
   });
+
+  describe("source provenance badge", () => {
+    const OTEL_SESSION: NormalizedSession = {
+      ...SAMPLE_SESSION,
+      source: "otel",
+      totalCost: 2.34,
+      modelCosts: { "claude-sonnet-4-5": 1.5, "claude-haiku-4-5": 0.84 },
+    };
+
+    test("shows 'OpenTelemetry' badge in header for OTel reports", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION] },
+        "html-test-source-otel-badge.html"
+      );
+      expect(html).toContain("OpenTelemetry");
+      expect(html).toContain("source-badge--otel");
+    });
+
+    test("shows 'event logs' badge in header for logs reports", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-source-logs-badge.html"
+      );
+      expect(html).toContain("event logs");
+      expect(html).toContain("source-badge--logs");
+    });
+
+    test("logs badge does not use the otel styling class", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-source-logs-no-otel-class.html"
+      );
+      // CSS definition is present, but no element should carry the class
+      expect(html).not.toMatch(/class="[^"]*source-badge--otel/);
+    });
+
+    test("otel badge does not use the logs styling class", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION] },
+        "html-test-source-otel-no-logs-class.html"
+      );
+      // CSS definition is present, but no element should carry the class
+      expect(html).not.toMatch(/class="[^"]*source-badge--logs/);
+    });
+
+    test("logs source badge tooltip mentions cost unavailable", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-source-logs-tooltip.html"
+      );
+      // The title attribute on the badge communicates cost unavailability.
+      expect(html).toMatch(/source-badge--logs[^>]*title=/);
+      expect(html).toContain("cost data unavailable");
+    });
+
+    test("source badge CSS classes are defined in the style block", () => {
+      const html = renderToString(EMPTY_REPORT, "html-test-source-css.html");
+      expect(html).toContain(".source-badge--otel");
+      expect(html).toContain(".source-badge--logs");
+    });
+  });
+
+  describe("cost display (OTel reports)", () => {
+    const OTEL_SESSION: NormalizedSession = {
+      ...SAMPLE_SESSION,
+      source: "otel",
+      totalCost: 2.34,
+      modelCosts: { "claude-sonnet-4-5": 1.5, "claude-haiku-4-5": 0.84 },
+    };
+
+    test("shows credits chip in session card header for OTel session with totalCost", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION] },
+        "html-test-credits-chip.html"
+      );
+      expect(html).toContain("chip-credits");
+      expect(html).toContain("2.34 credits");
+    });
+
+    test("does not show credits chip for logs sessions", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-no-credits-chip.html"
+      );
+      // CSS defines .chip-credits, but no element should have that class for logs
+      expect(html).not.toMatch(/class="[^"]*chip-credits/);
+    });
+
+    test("shows 'Total Credits' stat card in summary strip for OTel report", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION] },
+        "html-test-credits-stat-card.html"
+      );
+      expect(html).toContain("Total Credits");
+      expect(html).toContain("AI billing credits");
+    });
+
+    test("does not show 'Total Credits' stat card for logs report", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-no-credits-stat.html"
+      );
+      expect(html).not.toContain("Total Credits");
+      expect(html).not.toContain("AI billing credits");
+    });
+
+    test("shows Credits by Model section when modelCosts is present", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION] },
+        "html-test-credits-by-model.html"
+      );
+      expect(html).toContain("Credits by Model");
+      expect(html).toContain("credits-list");
+    });
+
+    test("does not show Credits by Model for logs sessions (no modelCosts)", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-no-credits-by-model.html"
+      );
+      expect(html).not.toContain("Credits by Model");
+    });
+
+    test("chip-credits CSS class is defined in the style block", () => {
+      const html = renderToString(EMPTY_REPORT, "html-test-credits-css.html");
+      expect(html).toContain(".chip-credits");
+    });
+  });
+
+  describe("extended metrics — context window utilization bar", () => {
+    const OTEL_SESSION_WITH_CTX: NormalizedSession = {
+      ...SAMPLE_SESSION,
+      source: "otel",
+      totalCost: 1.0,
+      extended: {
+        contextWindow: {
+          usedTokens: 12500,
+          limitTokens: 128000,
+          utilizationRatio: 0.0977,
+        },
+      },
+    };
+
+    test("renders context window bar section when extended.contextWindow is present", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION_WITH_CTX] },
+        "html-test-ctx-window-bar.html"
+      );
+      expect(html).toContain("Context Window");
+      expect(html).toContain("ctx-window-wrap");
+      expect(html).toContain("ctx-window-fill");
+    });
+
+    test("context window label shows used/limit token counts", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION_WITH_CTX] },
+        "html-test-ctx-window-label.html"
+      );
+      expect(html).toContain("ctx-window-label");
+      expect(html).toContain("12,500");
+      expect(html).toContain("128,000");
+      expect(html).toContain("% used");
+    });
+
+    test("context window fill width reflects utilization ratio", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION_WITH_CTX] },
+        "html-test-ctx-window-width.html"
+      );
+      // 9.77% utilization
+      expect(html).toMatch(/ctx-window-fill[^>]*style="width:9\.\d+%"/);
+    });
+
+    test("high-utilization bar (>=80%) uses ctx-window-high class", () => {
+      const highCtxSession: NormalizedSession = {
+        ...OTEL_SESSION_WITH_CTX,
+        extended: {
+          contextWindow: {
+            usedTokens: 108000,
+            limitTokens: 128000,
+            utilizationRatio: 0.844,
+          },
+        },
+      };
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [highCtxSession] },
+        "html-test-ctx-window-high.html"
+      );
+      expect(html).toContain("ctx-window-high");
+    });
+
+    test("low-utilization bar does not use ctx-window-high class", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION_WITH_CTX] },
+        "html-test-ctx-window-low.html"
+      );
+      // CSS defines .ctx-window-high, but the element should not carry it at low utilization
+      expect(html).not.toMatch(/class="[^"]*ctx-window-high/);
+    });
+
+    test("does not render context window section when extended is absent", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-no-ctx-window.html"
+      );
+      // "Context Window" heading only appears inside the rendered section element
+      expect(html).not.toContain("Context Window");
+      // No ctx-window element (CSS class exists but no element with it)
+      expect(html).not.toMatch(/class="[^"]*ctx-window-wrap/);
+    });
+
+    test("context window CSS classes are defined in the style block", () => {
+      const html = renderToString(EMPTY_REPORT, "html-test-ctx-css.html");
+      expect(html).toContain(".ctx-window-wrap");
+      expect(html).toContain(".ctx-window-fill");
+    });
+  });
 });
