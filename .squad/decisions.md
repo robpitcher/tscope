@@ -220,7 +220,7 @@ This is an additive channel, not a replacement. Both paths can coexist.
 
 ## OTel-Primary Pivot — Tank Feasibility (2026-06-10)
 
-**Status:** Proposed (pending user approval)
+**Status:** RATIFIED — Implementation Complete
 
 **Author:** Tank (Backend / Data Engineer)  
 **Date:** 2026-06-10
@@ -258,7 +258,7 @@ Server-side billing (`github.copilot.nano_aiu`), per-request latency, streaming 
 
 ## Decision: OTel-Primary Architecture — tscope Pivot (2026-06-10)
 
-**Status:** Proposed (pending user approval)
+**Status:** RATIFIED — Implementation Complete
 
 **Author:** Trinity (Lead/Architect)  
 **Date:** 2026-06-10
@@ -273,28 +273,227 @@ tscope introduces a DataSource abstraction: both an OTel reader and the existing
 
 A `DataSource` interface produces `NormalizedSession[]` from either OTel or events.jsonl. The normalized model extends the current `ParsedSession` with: source provenance tag, optional extended metrics (latency, request count, tool calls, errors), and coverage metadata. Both sources produce the same shape; renderers never know which source was used.
 
-**D-OTel-2: Source Selection Default**
+**D-OTel-2: Source Selection Default (USER OVERRIDE)**
 
-Default is `auto`: use OTel data when `~/.copilot/tscope/otel.jsonl` exists and has entries in the requested date range; fall back to events.jsonl otherwise. Per-session, not all-or-nothing — if OTel covers 5 of 8 sessions and logs cover the other 3, both contribute. De-duplication by session ID (OTel wins on conflict).
+User decision (2026-06-10T20:35:00Z): ONE source per run, never merged. Default is `auto`: use OTel data when `~/.copilot/tscope/otel.jsonl` exists; fall back to events.jsonl otherwise. No per-session merging — all sessions come from the same source. De-duplication removed.
 
 **D-OTel-3: CLI Argument Redesign**
 
-New flag: `--source otel|logs|auto` (default: auto). Existing date filters unchanged. `--verbose` added for source-provenance annotations. The `otel` subcommand retained. No flags removed (alpha, but no gratuitous breaks).
+New flag: `--source otel|logs|auto` (default: auto). Existing date filters unchanged. The `otel` subcommand retained. No flags removed (alpha, but no gratuitous breaks).
 
 **D-OTel-4: Schema Bump to v5**
 
-JSON schema bumps to `tscope/report/v5`. Adds: `source` field per session, `coverage` object at report level, optional `extended` metrics block per session. v4 consumers break on schema string but field additions are additive.
+JSON schema bumps to `tscope/report/v5`. Adds: `source` and `costAvailable` at report level, `source` + optional `modelCosts`/`totalCost`/`extended` per session. v4 consumers break on schema string but field additions are additive.
 
 **D-OTel-5: Extended Metrics — Optional Block**
 
-OTel-sourced sessions MAY include an `extended` object with latency, request counts, tool call counts, error counts, model routing info. These appear in HTML dashboard's detail view and JSON but not in the default text renderer. Core view remains token+cost.
+OTel-sourced sessions include an `extended` object with reasoning tokens + context-window utilization (v1). Deferred for later: server latency, finish reasons, and global stats. These appear in HTML dashboard and JSON but not in the default text renderer. Core view remains token+cost.
 
-### Pending User Decisions (5 Open Forks)
+### User Decisions Resolved
 
-1. **Cost re-introduction:** Should tscope re-introduce per-token cost estimates from `github.copilot.nano_aiu` (OTel) or remain token-only until GitHub publishes a pricing API?
-2. **File rotation:** Should tscope implement size/age-based rotation for `otel.jsonl`?
-3. **Bonus signals in v1:** Include latency, tool call counts, and other extended metrics in v1, or defer to v2?
-4. **JSON v5 bump:** Ship v5 schema immediately, or stay on v4 for backward compat with external consumers?
-5. **CLI surface changes:** Accept `--source` flag and `--verbose` for alpha, or hold for v1.0?
+1. **Cost re-introduction:** YES — use `github.copilot.nano_aiu` (÷ 1e9) from OTel. Logs-only sessions show "cost unavailable".
+2. **File rotation:** Deferred — tracking issue #7.
+3. **Bonus signals in v1:** Reasoning tokens + context-window utilization only. Latency/tool-calls deferred.
+4. **JSON v5 bump:** YES — ship v5 immediately (additive, no breaking changes beyond schema string).
+5. **CLI surface changes:** YES — `--source` flag accepted. `--verbose` deferred.
 
-**Implementation status:** Not started; 5-phase plan ready (Trinity review gates at phases 2, 4).
+**Implementation status:** COMPLETE (5 phases, 395 tests passing, 0 bugs).
+
+---
+
+## RATIFIED Decision: OTel-Primary Pivot User Approval (2026-06-10T20:35:00Z)
+
+**Status:** RATIFIED — Implementation COMPLETE
+
+**By:** robpitcher (via Copilot / Squad coordinator)
+
+### User Approval
+
+1. **Direction APPROVED:** OTel becomes the primary data source; existing `events.jsonl` parser is retained as the historical/fallback source.
+
+2. **NO MERGING (architecture improvement):** OTel and log-parser data are mutually exclusive per run — never combined in a single report.
+   - `--source auto` (default): use OTel if available; otherwise fall back to log parser with stderr notice.
+   - HTML and JSON output must indicate which source generated it.
+
+3. **Cost:** Show authoritative OTel cost (`github.copilot.nano_aiu` ÷ 1e9). Logs-only sessions marked **"cost unavailable"**.
+
+4. **v1 bonus signals:** reasoning tokens + context-window utilization (headroom). Deferred: server latency, finish reasons, and global stats.
+
+5. **File rotation:** Deferred. Tracking issue filed: **#7**.
+
+6. **JSON schema:** Bump `tscope/report/v4` → `tscope/report/v5` (adds `source`/`costAvailable` + optional `extended` metrics).
+
+---
+
+## IMPLEMENTATION COMPLETE: DataSource Layer (2026-06-10)
+
+**Status:** RATIFIED — Approved by Trinity, Implemented by Tank
+
+**Branch:** `otel`
+
+### What Was Built
+
+#### New Types (`src/types.ts`)
+- `DataSourceKind` = `"otel" | "logs"`
+- `NormalizedSession extends ParsedSession` — adds `source`, optional `modelCosts`, `totalCost`, `extended`
+- `ExtendedMetrics` — `{ reasoningTokens?: number; contextWindow?: { usedTokens, limitTokens, utilizationRatio } }`
+- `DataSource` interface — `loadSessions(predicate?): Promise<NormalizedSession[]>`
+- `Report` — adds `source: DataSourceKind`, `costAvailable: boolean`
+
+#### New Modules
+- **`src/sources/otelSource.ts` — OtelDataSource**
+  - Reads `~/.copilot/tscope/otel.jsonl` line by line
+  - Processes only `span` records where `name.startsWith("chat ")`
+  - Groups by `gen_ai.conversation.id`; accumulates tokens, cost, reasoning, context window
+  - All sessions have `source: "otel"` with `modelCosts`/`totalCost` populated
+
+- **`src/sources/logsSource.ts` — LogsDataSource**
+  - Wraps `discoverSessions()` + `parseEventsFile()` from existing parser
+  - `loadAll(predicate?)` method; supports date filtering
+  - All sessions have `source: "logs"`, no `modelCosts`/`totalCost`/`extended`
+
+#### Source Selection (`src/index.ts`)
+- Flag: `--source auto|otel|logs` (default: `auto`)
+- Auto mode: `isOtelAvailable()` → use OTel; else → logs + stderr notice
+- Mutual exclusion: One source per run, no merging
+
+#### JSON Schema v5 (`src/render/JsonRenderer.ts`)
+- Top-level: `source`, `costAvailable`
+- Per-session: `source`, `totalCost?`, `modelCosts?`
+- All v4 fields preserved — changes additive
+
+### Key Invariants
+
+- No source merging: one source selected per run
+- `report.costAvailable === true` iff `report.source === "otel"`
+- Logs sessions: `modelCosts === totalCost === extended === undefined`
+- OTel parsing: `chat ` prefix filter, `nano_aiu ÷ 1e9`, corrupt-line tolerance
+
+### Validation
+
+✅ `npm run build` clean  
+✅ `npm run lint` clean  
+✅ 262 pre-Phase 4 tests pass  
+✅ Trinity review gate APPROVED
+
+---
+
+## IMPLEMENTATION COMPLETE: Renderer Provenance + Extended Metrics (2026-06-10)
+
+**Status:** COMPLETE — Approved by Trinity, Implemented by Switch
+
+**Branch:** `otel`
+
+### What Was Rendered
+
+#### Source Provenance
+- **TextRenderer:** `Source: OpenTelemetry` or `Source: event logs (historical) — cost data unavailable`
+- **HtmlRenderer:** Blue `.source-badge--otel` or muted `.source-badge--logs`
+- **JsonRenderer:** Top-level `source` + `costAvailable` (Tank); per-session `extended` serialized (Switch)
+
+#### Cost Display
+- **TextRenderer:** Per-session `Cost: X.XX credits` when `session.totalCost !== undefined`
+- **HtmlRenderer:** Green `.chip-credits` per session card (OTel only); "Total Credits" stat card; "Credits by Model" chart
+- **JsonRenderer:** `totalCost`/`modelCosts` and new `extended` fields
+
+#### Extended Metrics
+- **TextRenderer:** `Reasoning: X` row in model block when `tokens.reasoningTokens > 0`; `Context: X,XXX / X,XXX tokens (X% used)` in TOTALS
+- **HtmlRenderer:** CSS fill bar per session when `extended.contextWindow` present; ≥80% utilization adds `.ctx-window-high` (amber)
+- **JsonRenderer:** `session.extended` fully serialized (v5 schema)
+
+### Validation
+
+✅ All v5 schema fields present and correct  
+✅ Logs sessions: no phantom `extended` or cost fields  
+✅ Context-window fill clamped at [0, 1]
+
+---
+
+## IMPLEMENTATION COMPLETE: Edge-Case & Reconciliation Tests (2026-06-10)
+
+**Status:** COMPLETE — CLEAN, Zero Bugs Found  
+**Branch:** `otel`  
+**Author:** Apoc (Tester / Quality Engineer)
+
+### Test Coverage
+
+| Suite | Tests Added | Total |
+|---|---|---|
+| `otel-source-edge.test.ts` | 36 | 36 |
+| `logs-source.test.ts` | 29 | 29 |
+| `source-selection.test.ts` | 17 | 17 |
+| `renderer-edge-cases.test.ts` | 17 | 17 |
+| **Subtotal new** | **87** | |
+| Existing (pre-Phase 4) | — | 302 |
+| **Grand total** | | **389** |
+
+All tests pass. `npm run build` and `npm run lint` clean.
+
+### Reconciliation Verdicts
+
+| Invariant | Result |
+|---|---|
+| `OtelDataSource.totalCost === sum(modelCosts)` | ✅ Exact |
+| Per-model tokens = sum of per-span values | ✅ Exact |
+| `report.costAvailable === (report.source === "otel")` | ✅ End-to-end |
+| Logs sessions: `modelCosts === totalCost === extended === undefined` | ✅ Confirmed |
+| Context window fill: `width ∈ [0, 100%]` | ✅ Clamped |
+| Credits chip: always 2 decimal places | ✅ Confirmed |
+| Auto fallback stderr notice: exactly 1 occurrence | ✅ Confirmed |
+
+**BUGS FOUND: NONE** — Implementation is solid.
+
+---
+
+## IMPLEMENTATION COMPLETE: Documentation & Wrap-up (2026-06-10)
+
+**Status:** COMPLETE  
+**Branch:** `otel`  
+**Author:** Tank (Backend / Data Engineer)
+
+### Code Cleanups
+
+1. **Empty-result OTel hint (`src/index.ts`):** When OTel source is active but finds no sessions for date range, prints advisory hint to stderr (exits 0 — advisory, not error).
+2. **`logsSource.ts` re-export cleanup:** Removed `hasTokenData` pass-through; all callers use direct import from `tokens.ts`.
+
+### Documentation Updates
+
+| File | Changes |
+|---|---|
+| `README.md` | Added `Data Sources` section; added `--source` row to parameters table; updated JSON schema to v5 |
+| `docs/usage.md` | New `Data Source` section: three modes, auto-fallback notice, empty-range hint, cost-per-source table |
+| `docs/json-output.md` | Full v5 schema with OTel + logs examples; top-level and per-session field tables; v4 → v5 migration note |
+| `docs/how-it-works.md` | Full rewrite: two-source architecture, one-source-per-run rule, OTel span filtering, field mapping |
+| `docs/html-dashboard.md` | Source badge, per-session credit chips, Credits by Model chart, Total Credits card, context-window bar |
+
+### Changeset
+
+File: `.changeset/otel-primary-pivot.md`  
+**Bump:** minor (pre-1.0 feature + additive schema)
+
+**Summary:** OTel-primary pivot — new `--source` flag, OTel default with log-parser fallback, per-session/per-model cost via `nano_aiu`, reasoning + context-window metrics, HTML provenance, JSON schema v5.
+
+### Validation
+
+✅ `npm run build` clean  
+✅ `npm run lint` clean  
+✅ **395 tests pass** (389 pre-wrap-up + 6 new hint tests)
+
+### New Tests Added (6)
+
+- Empty-result hint: fires when `--source otel` finds no sessions
+- Hint mentions `--all` when a non-all filter active
+- No hint when `--all` already in use
+- Exit 0 even when OTel finds no sessions (advisory)
+- No hint when `--source logs` finds no sessions
+- Auto mode prints hint when OTel active but no sessions in range
+
+### Implementation Complete
+
+**Merged into decisions by:** Scribe (2026-06-10)
+
+All five phases complete and ratified:
+- Phase 1+2: DataSource layer (Tank) — APPROVED by Trinity
+- Phase 3: Renderer provenance + extended display (Switch) — COMPLETE
+- Phase 4: Edge-case + reconciliation tests (Apoc) — CLEAN, no bugs
+- Phase 5: Wrap-up documentation + changeset (Tank) — COMPLETE

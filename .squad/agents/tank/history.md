@@ -1,52 +1,16 @@
 # Tank — History
 
-## Seed
+**Seed:** tscope (token tracker for GitHub Copilot billing) | Backend/Data Eng | 2026-06-03
 
-- **Project:** tscope — a tool for developers to track and analyze their token usage, motivated by GitHub's new usage-based billing for Copilot (organizations & enterprises).
-- **User:** robpitcher
-- **Role:** Backend / Data Engineer
-- **Created:** 2026-06-03
+**OTel-Primary Pivot (2026-06-10):** Dual-source (OTel primary, logs fallback). `DataSource` interface, `OtelDataSource`, `LogsDataSource`. `--source auto|otel|logs`. Schema v5. 395 tests pass. Trinity APPROVED. Reconciliation CLEAN. Commit `b5cbc36`.
 
-## Learnings
+**Decisions:** OTel primary, one source/run, cost from `nano_aiu`, v1 signals (reasoning+context), rotation deferred.
 
-### Phase 1 Foundation — 2026-06-03
+**Invariants:** `Session=ParsedSession|InProgressSession`, `NormalizedSession` superset, `costAvailable⟺source==="otel"`, one source/run, OTel=`chat` spans, Logs=no cost/extended.
 
-**Project layout:**
-```
-tscope/
-  package.json          bin: { tscope: "dist/index.js" }, jest, ts-jest, eslint
-  tsconfig.json         strict mode, commonjs, outDir: dist/, rootDir: src/
-  src/
-    index.ts            CLI entry: arg parsing, full pipeline orchestration
-    types.ts            Core interfaces: TokenCounts, ParsedSession, InProgressSession, Session, Report
-    discovery.ts        discoverSessions(): enumerates ~/.copilot/session-state, returns SessionRef[]
-    filter.ts           makeDateFilter(), todayLocalDateString(), utcToLocalDateString()
-    parser.ts           parseEventsFile() async, readSessionStartTime() lightweight helper
-    rates.ts            RATE_TABLE, lookupRate(), RATE_TABLE_VERSION
-    credits.ts          calcModelCredits(), calcSessionCredits()
-    render/
-      Renderer.ts       Interface: render(report: Report): void
-      TextRenderer.ts   Box-drawing text format
-    __tests__/
-      rates.test.ts     13 tests
-      credits.test.ts   5 tests
-      parser.test.ts    7 tests (uses fs.mkdtempSync for JSONL fixtures)
-  dist/                 tsc output (gitignored)
-  node_modules/         gitignored
-```
+**Impl:** OTel reads `~/.copilot/tscope/otel.jsonl`, groups by `gen_ai.conversation.id`. Logs single-pass. Selection: `auto`/`otel`/`logs`.
 
-**Key file paths:**
-- Session data: `%USERPROFILE%\.copilot\session-state\<session-id>\events.jsonl` (Windows)
-- Session data: `~/.copilot/session-state/<session-id>/events.jsonl` (Unix)
-- Token source event: `session.shutdown` → `data.modelMetrics.<modelName>.usage`
-- Token fields: `inputTokens`, `outputTokens`, `cacheReadTokens`, `cacheWriteTokens`, `reasoningTokens`
-- Start time: `session.start` → `data.startTime` (ISO 8601 UTC)
-
-**events.jsonl parsing approach:**
-1. Fast path: read last line with `fs.readFileSync` + split on `\n` — if `type === "session.shutdown"`, use it
-2. Fallback: stream the file with `readline.createInterface` scanning for both `session.start` and `session.shutdown`
-3. Use a `scanResult` container object (not bare `let` variables) to avoid TypeScript control flow narrowing `never` inside async closures
-4. In-progress sessions (no shutdown): return `InProgressSession { inProgress: true }` — never crash
+See `history-archive.md` for full notes.
 
 ### Phase 2 CI Validation — 2026-06-03
 
