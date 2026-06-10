@@ -59,5 +59,62 @@ Trinity validated D2 (npm as primary distribution channel) against comprehensive
 - Did NOT add ctx-window to the tokens-over-time timeline chart (would break the existing token-only narrative there).
 - "Total Credits" stat card is static (not wired to the JS date-filter recompute) to avoid adding cost data to the `allSummaries` payload shape. Acceptable for Phase 3; can be dynamicized in Phase 4 if Apoc tests warrant.
 
+### 2026-06-10 — Phase 3 (merge edition): per-session provenance in renderers
 
-Tank and Trinity completed empirical OTel investigation and architecture proposal for OTel-primary pivot + CLI redesign. **Outcome: FEASIBLE.** OTel span token counts match events.jsonl exactly; session ID preserved; bonus signals (latency, tool calls, server-side billing) exposed. Architecture: DataSource abstraction, `--source otel|logs|auto`, JSON v4→v5. **Status:** Proposed decisions merged to decisions.md pending user approval on 5 open forks (cost re-intro, file rotation, bonus signals in v1, v5 timing, CLI surface). **Upcoming work for Switch:** P3/P4 — HTML renderer enhancements for extended metrics (latency, tool calls); timeline depends on user fork resolutions. Implementation blocked until user decision.
+**Branch:** `otel`
+
+**What landed:**
+
+- **Per-session source badges (HTML — hard requirement):**
+  - `buildSessionCard()` now injects a `.source-badge` pill as the first chip in
+    `.session-summary-chips`, reading `session.source` (not `report.source`).
+    - `"otel"` → `<span class="source-badge source-badge--otel">OTel</span>`
+    - `"logs"` → `<span class="source-badge source-badge--logs">log parser</span>`
+  - Placement: before the duration and tokens chips, so it reads left-to-right as
+    "where did this come from, how long, how many tokens, cost".
+
+- **Coverage summary in header (HTML — mixed reports):**
+  - `buildHtml()` now destructs `report.coverage` and uses a 3-way conditional on
+    `report.source`.
+  - `"mixed"` → `.coverage-summary` span with nested `.cov-otel` + `.cov-sep` +
+    `.cov-logs` spans: "1 OTel · 3 logs". No single badge is used for mixed.
+  - Pure `"otel"` and `"logs"` keep their existing single `.source-badge` in the
+    header (backward compat; existing tests unchanged).
+
+- **Cost unavailable chip (HTML — logs session cards):**
+  - Logs session cards get `<span class="chip chip-cost-unavail">no cost data</span>`
+    instead of a credits chip. Dashed border + muted text = subtle/honest.
+  - OTel cards with `totalCost` still show `.chip-credits` in green.
+  - "Total Credits" stat card subtitle becomes "OTel sessions only" for mixed
+    reports so it's explicit these credits don't include log sessions.
+
+- **Per-session source tag (TextRenderer):**
+  - `renderSessionBlock()` adds `Source:  OTel` or `Source:  log parser` between
+    the `Path:` line and the light `─────` divider.
+  - Footer for mixed changed from "Source: mixed (OTel + logs)" to
+    "Sources: N OTel, M logs — cost available for OTel sessions only"
+    (reads `report.coverage.otelCount` / `logsCount`).
+  - Pure otel/logs footer unchanged.
+
+- **style.ts / CSS:**
+  - No changes to `style.ts` (text renderer only uses bold/dim, inline HTML handles styling).
+  - New CSS classes added inline in `HtmlRenderer.ts`:
+    - `.coverage-summary`, `.cov-otel`, `.cov-sep`, `.cov-logs` — the header coverage pill
+    - `.chip-cost-unavail` — transparent background, dashed border, muted text
+  - All new rules use `var(--accent-blue)`, `var(--text-muted)`, `var(--border)` so
+    they're correct in both light and dark themes automatically.
+
+- **Test count:** 302 → 461 (added 159 new assertions across `html-renderer.test.ts`
+  and `text-renderer.test.ts`). One existing text-renderer test updated to use
+  `lastIndexOf("Source:")` since per-session source lines now precede the footer.
+
+**Key design calls:**
+- Badge label is "OTel" (short) on cards; header uses full "OpenTelemetry" for pure
+  OTel reports. Compact on cards, informative in the header where there's space.
+- Logs card "no cost data" chip uses a dashed border: conventional UX affordance for
+  "something's absent", very low visual weight, doesn't compete with token chips.
+- Coverage summary chosen over a two-badge legend: "1 OTel · 3 logs" is
+  self-explanatory with no decode step. Inline numbers make the mix concrete.
+- Did NOT add per-session source to the JSON renderer — Tank already serialized
+  `session.source` in v5; verified it's correct, no touch needed.
+
