@@ -226,6 +226,72 @@ describe("source-selection integration (subprocess)", () => {
   });
 
   // ---------------------------------------------------------------------------
+  // empty-result OTel hint
+  // ---------------------------------------------------------------------------
+
+  describe("empty-result OTel hint", () => {
+    // The span written by writeValidOtelSpan has startTime [1748908800, 0]
+    // (= 2025-06-03 UTC). A date of 2026-01-01 never matches it.
+    const FUTURE_DATE = "2026-01-01";
+    const OTEL_HINT = "Hint:";
+    const OTEL_HINT_ENABLE = "otel enable";
+
+    test("prints hint when --source otel finds no sessions for the date filter", () => {
+      const otelDir = path.join(tmpHome, ".copilot", "tscope");
+      writeValidOtelSpan(otelDir);
+      const { stderr } = runCli(["--source", "otel", "--date", FUTURE_DATE], tmpHome);
+      expect(stderr).toContain(OTEL_HINT);
+      expect(stderr).toContain(OTEL_HINT_ENABLE);
+    });
+
+    test("hint mentions --all when non-all filter is active", () => {
+      const otelDir = path.join(tmpHome, ".copilot", "tscope");
+      writeValidOtelSpan(otelDir);
+      const { stderr } = runCli(["--source", "otel", "--date", FUTURE_DATE], tmpHome);
+      expect(stderr).toContain("--all");
+    });
+
+    test("hint does NOT mention --all when --all is already active", () => {
+      // With --all there are sessions (span matches), so no hint fires.
+      // This test verifies the --all path where OTel has no sessions at all by
+      // writing an otel.jsonl that isOtelAvailable() passes but yields 0 sessions.
+      const otelDir = path.join(tmpHome, ".copilot", "tscope");
+      fs.mkdirSync(otelDir, { recursive: true });
+      // Write a non-span line so the file is non-empty (passes isOtelAvailable)
+      // but produces zero sessions.
+      fs.writeFileSync(
+        path.join(otelDir, "otel.jsonl"),
+        JSON.stringify({ type: "metric", name: "gen_ai.client.token.usage" }) + "\n",
+        "utf8"
+      );
+      const { stderr } = runCli(["--source", "otel", "--all"], tmpHome);
+      expect(stderr).toContain(OTEL_HINT);
+      expect(stderr).not.toContain("--all"); // --all is already in use; don't suggest it
+    });
+
+    test("exits 0 even when OTel finds no sessions (hint is advisory)", () => {
+      const otelDir = path.join(tmpHome, ".copilot", "tscope");
+      writeValidOtelSpan(otelDir);
+      const { status } = runCli(["--source", "otel", "--date", FUTURE_DATE], tmpHome);
+      expect(status).toBe(0);
+    });
+
+    test("no hint printed when --source logs finds no sessions", () => {
+      // logs source should never print the OTel hint
+      const { stderr } = runCli(["--source", "logs", "--date", FUTURE_DATE], tmpHome);
+      expect(stderr).not.toContain(OTEL_HINT);
+    });
+
+    test("auto mode prints hint when OTel is active but no sessions in range", () => {
+      const otelDir = path.join(tmpHome, ".copilot", "tscope");
+      writeValidOtelSpan(otelDir);
+      // auto selects OTel (file is present); specific date has no sessions → hint
+      const { stderr } = runCli(["--date", FUTURE_DATE], tmpHome);
+      expect(stderr).toContain(OTEL_HINT);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // --source <invalid>
   // ---------------------------------------------------------------------------
 

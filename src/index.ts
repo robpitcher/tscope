@@ -401,6 +401,19 @@ async function main(): Promise<void> {
     inProgressSessions = inProgress;
   }
 
+  // --- Empty-result OTel hint ---
+  // When OTel is the active source but no sessions matched the date range,
+  // remind the user that OTel coverage is forward-only from enablement.
+  if (chosenSource === "otel" && completedSessions.length === 0) {
+    const extra = args.filterMode !== "all"
+      ? " Use --source logs for historical data, or --all to see all available OTel sessions."
+      : " Use --source logs for historical data.";
+    process.stderr.write(
+      `Hint: No OTel sessions found for this date range.` +
+      ` OTel only captures sessions since 'tscope otel enable' was run.${extra}\n`
+    );
+  }
+
   // --- Apply --max (post-load recency slice) ---
   let finalCompleted: NormalizedSession[] = completedSessions;
   let finalInProgress: InProgressSession[] = inProgressSessions;

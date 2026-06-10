@@ -15,6 +15,60 @@ tscope --help       # Show usage and options
 tscope --version    # Show version
 ```
 
+## Data Source
+
+tscope reads from one of two local data sources per run. Use `--source` to control which one is used:
+
+```bash
+tscope --source auto   # Default: OTel if available, log parser fallback with notice
+tscope --source otel   # Force OTel; exits with error if otel.jsonl is absent
+tscope --source logs   # Force the events.jsonl log parser (pre-OTel behavior)
+```
+
+### Three modes
+
+| Mode | Behavior |
+|---|---|
+| `auto` | Checks `~/.copilot/tscope/otel.jsonl`. If present and non-empty, uses OTel. Otherwise falls back to the log parser and prints a notice to stderr. |
+| `otel` | Forces OTel. Exits with a non-zero code and a helpful message if `otel.jsonl` is absent or empty. |
+| `logs` | Forces the `events.jsonl` log parser. Works exactly as tscope did before OTel support. |
+
+### Auto-fallback notice
+
+When `auto` selects the log parser (OTel not configured), tscope prints to stderr:
+
+```
+No OpenTelemetry data found — falling back to log-file parsing.
+Run 'tscope otel enable' to use OTel.
+```
+
+This message is printed once per run and only in `auto` mode. It is not printed when `--source logs` is explicit.
+
+### Empty-range hint
+
+When the OTel source is active (via `auto` or `--source otel`) but no sessions match the requested date range, tscope prints a hint to stderr, e.g.:
+
+```
+Hint: No OTel sessions found for this date range. OTel only captures sessions since
+'tscope otel enable' was run. Use --source logs for historical data, or --all to see all
+available OTel sessions.
+```
+
+The process exits with code 0 — the hint is advisory, not an error.
+
+### Cost availability per source
+
+| Source | Cost shown |
+|---|---|
+| OTel | Server-side AI credits per session and per model (from `github.copilot.nano_aiu`). |
+| Log parser | Cost unavailable — the events.jsonl format does not include billing data. |
+
+### Interaction with date filters
+
+The `--source` flag composes freely with all date filters (`--date`, `--range`, `--lastdays`, `--all`). The date filter is applied **after** the source is loaded — the source determines *where* sessions come from; the filter determines *which* sessions are included.
+
+OTel coverage is forward-only from the moment you run `tscope otel enable --apply`. Sessions that started before OTel was enabled are only available via the log parser (`--source logs`).
+
 ## Date Filtering
 
 ```bash

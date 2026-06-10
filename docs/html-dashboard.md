@@ -16,13 +16,18 @@ tscope --html report.html   # Generate dashboard at the specified path and open 
 
 ## Features
 
+- **Source badge** — a small pill in the report header identifies the data source: **OpenTelemetry** (blue) or **event logs** (muted). The event-logs badge includes a tooltip explaining that cost data is unavailable and how to enable OTel.
 - **Total Tokens** summary stat card
+- **Total Credits** stat card — OTel sessions only; shows the sum of AI credits across all sessions in the report. Absent when the source is the log parser.
 - **Tokens Over Time** chart (one bar per session, chronological; hover a bar for the token-type breakdown)
+- **Credits by Model** chart — OTel sessions only; shows AI credit totals grouped by model name across all sessions in the report
 - **Chronicle Insights** box — if any session ran `/chronicle tips` or `/chronicle cost-tips`, the most recent set of recommendations is parsed and shown in its own box, below the *Tokens Over Time* chart and above the session list (see below)
 - Per-session cards with:
+  - **Credit chip** (green, OTel only) — shows `X.XX credits` for the session's total cost; absent for log-parser sessions
   - **Token Usage by Model** — stacked bar chart (fresh input / cacheRead / cacheWrite / output)
   - **Tokens by Model** — horizontal bars (total tokens per model; hover for the token-type breakdown)
   - **Cache Efficiency** — % cache hit rate per model
+  - **Context Window** bar (OTel only, when utilization data is present) — a horizontal fill bar showing the most recently observed context usage vs. the model's limit. The bar turns amber (`.ctx-window-high`) when utilization reaches ≥ 80%. The fill is clamped to [0, 100%] so anomalous OTel data never overflows the bar.
 
 The HTML file is fully self-contained (no external dependencies, works offline). The only outbound links point to the project repository.
 

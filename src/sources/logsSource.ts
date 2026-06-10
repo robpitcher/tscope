@@ -18,7 +18,6 @@ import {
 import { discoverSessions, getSessionStateDir } from "../discovery";
 import { parseEventsFile, readSessionStartOrFirstEventTime } from "../parser";
 import { utcToLocalDateString } from "../filter";
-import { hasTokenData } from "../tokens";
 
 const FILTER_CONCURRENCY = 16;
 
@@ -168,5 +167,3 @@ export class LogsDataSource implements DataSource {
     return { completed, inProgress };
   }
 }
-
-export { hasTokenData };
