@@ -168,3 +168,28 @@ Tank delivered GitHub Actions CI workflow. All PRs now gated by lint + build + t
 **Key dependency:** Tank's parallel investigation of what otel.jsonl actually contains. The design is resilient — if OTel lacks cache-read/cache-write, we fall back gracefully. If it lacks session IDs, the join strategy changes (to timestamp correlation instead of ID match).
 
 **Decision note:** `.squad/decisions/inbox/trinity-otel-primary-architecture.md`
+
+### 2026-06-10 — DataSource Layer Review (Phase 1+2 Gate)
+
+**Verdict: APPROVED**
+
+Reviewed Tank's data-source layer on `otel` branch (262 tests passing, build+lint clean). The implementation is correct and architecturally sound.
+
+**What was verified:**
+
+1. **No-merge invariant holds:** One source per run. `chosenSource` is set exactly once in `main()` and flows through to `Report.source`. No merge/dedup path exists.
+2. **Auto-fallback + notification correct:** auto uses OTel when available → logs with stderr notice otherwise. `--source otel` exits 1 with actionable guidance when unavailable. `--source logs` preserves pre-pivot behavior exactly (uses `loadAll` single-pass method).
+3. **Interface is minimal and correct:** `DataSource` = one required method (`loadSessions`), one optional (`loadInProgressSessions`). `NormalizedSession extends ParsedSession` — strict superset, existing renderers unchanged. Cost fields (`modelCosts?`, `totalCost?`) optional only.
+4. **OTel parsing correct:** Filters `chat ` prefix only (excludes `invoke_agent`), groups by `gen_ai.conversation.id`, `nano_aiu ÷ 1e9` for credits, tolerates corrupt JSON (silent skip), uses earliest span startTime for session date.
+5. **Cost invariant holds:** `costAvailable: chosenSource === "otel"` (line 424 of index.ts). Logs sessions carry no fabricated cost.
+6. **Schema v5 additive:** All v4 fields preserved. New fields: `source`, `costAvailable` (top-level), `source`/`totalCost`/`modelCosts` (per-session).
+7. **No scope creep:** Implementation stays within the ratified decisions. Simplification from D-OTel-2's per-session merge to single-source-per-run is a valid architectural improvement — simpler, more predictable, avoids dedup complexity.
+
+**Non-blocking follow-ups (nice-to-have, not gating):**
+
+- **Empty-result UX:** In auto mode, if OTel is selected but returns 0 sessions for the requested date range (because OTel was enabled recently), the user sees an empty report without explanation. A future pass could emit a hint: "No OTel sessions found for this date — try --source logs for historical data." Low priority.
+- **Re-export smell:** `logsSource.ts` line 172 re-exports `hasTokenData` from tokens — this isn't the logs source's responsibility. Trivial cleanup, zero impact.
+
+**Learnings for the team:**
+- The concurrent date filtering in logsSource.ts (16-way worker pool) is safe because Node.js is single-threaded and `nextIndex++` happens synchronously between awaits — correct cooperative concurrency pattern.
+- OTel session start time is the earliest span startTime (no session.start event exists in OTel), so sessions started with pre-span idle time might bucket to a slightly later date than the logs source would. Acceptable tradeoff documented in otelSource.ts comments.
