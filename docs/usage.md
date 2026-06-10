@@ -17,21 +17,21 @@ tscope --version    # Show version
 
 ## Data Source
 
-tscope reads from one of two local data sources per run. Use `--source` to control which one is used:
+tscope now merges data sources intelligently. Use `--source` to control the behavior:
 
 ```bash
-tscope --source auto   # Default: OTel if available, log parser fallback with notice
-tscope --source otel   # Force OTel; exits with error if otel.jsonl is absent
-tscope --source logs   # Force the events.jsonl log parser (pre-OTel behavior)
+tscope --source auto   # Default: merge OTel + logs; OTel wins overlap; shows cost for OTel sessions
+tscope --source otel   # Force OTel only; exits with error if otel.jsonl is absent
+tscope --source logs   # Force log-parser only (pre-merge behavior)
 ```
 
 ### Three modes
 
 | Mode | Behavior |
 |---|---|
-| `auto` | Checks `~/.copilot/tscope/otel.jsonl`. If present and non-empty, uses OTel. Otherwise falls back to the log parser and prints a notice to stderr. |
-| `otel` | Forces OTel. Exits with a non-zero code and a helpful message if `otel.jsonl` is absent or empty. |
-| `logs` | Forces the `events.jsonl` log parser. Works exactly as tscope did before OTel support. |
+| `auto` | Loads both OTel (`~/.copilot/tscope/otel.jsonl`) and log-parser sessions (`~/.copilot/session-state/`), then merges them. Sessions that appear in both sources are deduplicated — the OTel record is retained (authoritative), logs duplicate dropped. OTel spans cover recent activity; logs provide historical context. If OTel is not available (file missing/empty), falls back to logs-only and prints the notice below. |
+| `otel` | Loads OTel only. Exits with a non-zero code and a helpful message if `otel.jsonl` is absent or empty. |
+| `logs` | Loads log-parser sessions only. Works exactly as tscope did before OTel support. |
 
 ### Auto-fallback notice
 
@@ -60,8 +60,9 @@ The process exits with code 0 — the hint is advisory, not an error.
 
 | Source | Cost shown |
 |---|---|
-| OTel | Server-side AI credits per session and per model (from `github.copilot.nano_aiu`). |
-| Log parser | Cost unavailable — the events.jsonl format does not include billing data. |
+| OTel (merged report or pure OTel) | Server-side AI credits per session and per model (from `github.copilot.nano_aiu`). |
+| Log parser (merged report) | Cost unavailable — the events.jsonl format does not include billing data. Per-session source badges identify which sessions have cost data. |
+| Log parser (pure logs) | Cost unavailable — the events.jsonl format does not include billing data. |
 
 ### Interaction with date filters
 

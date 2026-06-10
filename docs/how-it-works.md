@@ -1,10 +1,10 @@
 # How It Works
 
-tscope reads from one of two local data sources (selected per run via `--source`):
+tscope reads from local data sources and intelligently merges them. The behavior depends on the `--source` flag (default: `auto`).
 
 ## Data Sources
 
-### OTel (default)
+### OTel (primary)
 
 When [OTel is configured](installation.md), tscope reads from the shared export file:
 
@@ -32,11 +32,22 @@ When OTel is not configured (or `--source logs` is explicit), tscope scans:
 
 Each session directory contains an `events.jsonl` with event records including a `session.shutdown` event that holds per-model token metrics.
 
-## Source Selection — No Merging
+## Source Selection — Smart Merging
 
-**One source is used per run; sources are never mixed.** In `auto` mode (default), tscope checks whether `~/.copilot/tscope/otel.jsonl` exists and is non-empty. If so, OTel is used for the entire run; otherwise the log parser is used and a fallback notice is printed to stderr.
+In `auto` mode (default, recommended), tscope **merges** OTel and log-parser sessions into a single report. Here's how:
 
-Use `--source otel` or `--source logs` to override explicitly.
+1. Load OTel sessions from `~/.copilot/tscope/otel.jsonl` (if present and non-empty).
+2. Load log-parser sessions from `~/.copilot/session-state/`.
+3. Merge: deduplicate by session ID. When a session appears in both sources, the **OTel record is authoritative** — the logs duplicate is dropped (no double-counting). Logs provide historical context; OTel provides recent, authoritative data with cost metrics.
+
+If OTel is unavailable (file missing/empty), `auto` falls back gracefully to logs-only and prints:
+
+```
+No OpenTelemetry data found — falling back to log-file parsing.
+Run 'tscope otel enable' to use OTel.
+```
+
+**Single-source overrides:** Use `--source otel` or `--source logs` to skip merging and read only one source.
 
 ## OTel Token Extraction
 

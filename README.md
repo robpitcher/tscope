@@ -35,14 +35,15 @@ The `--html` dashboard follows your system's light/dark theme:
 
 ## Data Sources
 
-tscope reads from one of two local sources per run (no merging):
+tscope reads from local sources with intelligent merging in default mode:
 
-| Source | Flag | Data | Cost |
-|---|---|---|---|
-| **OTel** (default) | `--source auto` or `--source otel` | `~/.copilot/tscope/otel.jsonl` — recorded from the moment you run `tscope otel enable` | ✅ Server-side credits per session/model |
-| **Log parser** | `--source logs` | `~/.copilot/session-state/<id>/events.jsonl` | ❌ Unavailable |
+| Mode | Behavior | Cost |
+|---|---|---|
+| **`--source auto`** (default) | Reads OTel (`~/.copilot/tscope/otel.jsonl`) and log-parser sessions (`~/.copilot/session-state/`) into a **merged report**. Sessions present in both are deduplicated — OTel records are authoritative (no double-counting). Cost data shown for OTel sessions; logs-only sessions show "unavailable". | ✅ For OTel / ❌ For logs |
+| **`--source otel`** | Reads only OTel data; exits with a helpful error if the file is absent or empty. | ✅ Server-side credits per session/model |
+| **`--source logs`** | Reads only the log-parser sessions (pre-OTel behavior). | ❌ Unavailable |
 
-In **auto** mode (default), tscope uses OTel if the file exists, then falls back to the log parser with a notice:
+When OTel is not configured, `auto` falls back gracefully and prints a notice:
 
 ```
 No OpenTelemetry data found — falling back to log-file parsing.
@@ -72,7 +73,7 @@ Requires **Node.js 18+**.
 | `--lastdays` | `N` (positive integer) | Show sessions from the last `N` days (today plus the previous `N − 1`). | No |
 | `--max` | `N` (positive integer) | After date filtering, keep only the `N` most recent sessions (ordered by start time, newest first). | No |
 | `--range` | `START END` (two `YYYY-MM-DD` values) | Show sessions in the given local-date range, inclusive. | No |
-| `--source` | `auto` \| `otel` \| `logs` | Data source. `auto` (default): use OTel when available, fall back to log parser with a notice. `otel`: force OTel; exits with error if unavailable. `logs`: force the events.jsonl log parser. | No |
+| `--source` | `auto` \| `otel` \| `logs` | Data source. `auto` (default): merges OTel and log-parser sessions into one report (OTel authoritative on overlap); shows cost for OTel sessions, "unavailable" for logs-only. `otel`: OTel only; exits with error if unavailable. `logs`: log parser only. | No |
 | `--version`, `-v` | _(none)_ | Print the installed version and exit. | No |
 
 With no flags, `tscope` reports today's sessions in formatted text. Date filters (`--date`, `--range`, `--lastdays`, `--all`) are mutually exclusive. See [Usage](docs/usage.md) for full details.

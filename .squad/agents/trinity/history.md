@@ -193,3 +193,22 @@ Reviewed Tank's data-source layer on `otel` branch (262 tests passing, build+lin
 **Learnings for the team:**
 - The concurrent date filtering in logsSource.ts (16-way worker pool) is safe because Node.js is single-threaded and `nextIndex++` happens synchronously between awaits — correct cooperative concurrency pattern.
 - OTel session start time is the earliest span startTime (no session.start event exists in OTel), so sessions started with pre-span idle time might bucket to a slightly later date than the logs source would. Acceptable tradeoff documented in otelSource.ts comments.
+
+### 2026-06-10 — Merge Rule Review (Data Layer Gate)
+
+**Verdict: APPROVED**
+
+Reviewed Tank's merge implementation (commit adce689) on `otel` branch (437 tests passing, build+lint clean). The reversal from "no merge" to "OTel-authoritative merge" is correct.
+
+**What was verified:**
+
+1. **Dedup correctness:** `mergeSessions()` in `src/sources/merge.ts` builds a `Set<string>` of OTel session IDs and drops any logs session whose `sessionId` is in that set. The join key is the same identity on both sides: OTel uses `gen_ai.conversation.id` (otelSource.ts:145), logs uses the session-state directory name (discovery.ts:58). Both are the Copilot CLI session UUID. OTel record wins completely — no summing/combining.
+2. **Merge integrity:** The same `predicate` (built once in `main()`) is passed to both `otelSource.loadSessions(predicate)` and `logsSource.loadAll(predicate)` (index.ts:396, 400). `--max` applied post-merge via `selectMostRecentSessions` (source-agnostic recency sort). Coverage computed on the final sliced set, not the raw merged set. No cost leakage — logs sessions never carry `modelCosts`/`totalCost` (logsSource.ts lines 99, 163 spread only ParsedSession fields plus `source: "logs"`).
+3. **Provenance model:** `computeReportSource()` returns "mixed" iff both counts > 0, "otel" for pure OTel, "logs" otherwise (including empty). `computeSourceCoverage()` counts are loop-accurate. `costCoverage` is correct: "all" for pure OTel, "partial" for mixed, "none" for pure logs/empty. Per-session `source` set at parse time by each data source — reliable for renderers.
+4. **Single-source modes intact:** `--source otel` and `--source logs` paths in index.ts are untouched — no merge call, no coverage computation happens (coverage is computed at the bottom on whatever `finalCompleted` is). Correct.
+5. **Schema v5 in place:** No v6 bump. `SCHEMA_VERSION = "tscope/report/v5"` (JsonRenderer.ts:17). New fields (`source`, `costAvailable`, `coverage`) are additive. All v4 fields preserved.
+6. **Scope:** No creep. Changes strictly implement the reversal decision.
+
+**Non-blocking observations (not gating):**
+- When `--max` is used with mixed sources, the coverage counts reflect the sliced subset (correct), but there's no test for this specific scenario yet — Tank flagged it in the handoff doc. Low risk since the code path is trivially correct (compute coverage AFTER slice).
+- The `otelActiveInAutoMode` hint (index.ts:432) checks the pre-max merged set for emptiness, which is the right check (if sessions existed but --max cut them, the hint shouldn't fire).
