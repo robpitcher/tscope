@@ -942,3 +942,62 @@ Updated all user-facing documentation to reflect the new **merge-based** `--sour
 #### Handoff Notes
 
 All documentation now aligns with Tank's merge implementation (merging-pivot turn) and Switch's HTML rendering (per-session badges, coverage summary). The alpha-software tone is preserved; tscope is still local-only (reads OTel from `~/.copilot/tscope/otel.jsonl`).
+
+---
+
+### 2026-06-11: trinity-issue6-disposition.md — Issue #6 Disposition & Closure
+
+**Date:** 2026-06-11T09:14:02-07:00  
+**Author:** Trinity (Lead/Architect)  
+**Status:** DECISION  
+**Scope:** Issue triage, scope control, architecture coherence
+
+#### Context
+
+Issue #6 ("Add Estimated AI Credits metric from totalNanoAiu") proposed deriving credits from the log parser's `events.jsonl → session.shutdown.data.totalNanoAiu`. PR #8 (otel branch) independently implemented credits from OTel's `github.copilot.nano_aiu ÷ 1e9`. Both read the same underlying nano-AIU quantity from different exports.
+
+#### Key Facts
+
+1. **Same metric, different pipe:** OTel `nano_aiu` and logs `totalNanoAiu` are the same number. PR #8 already ships the authoritative version from OTel.
+2. **Schema collision:** Both #6 and #8 claim `tscope/report/v5`. #8 already shipped v5 with `source`, `coverage`, `costAvailable`, per-session `totalCost`/`modelCosts`.
+3. **Ratified policy (3×):** "Logs-only sessions show 'cost unavailable'" — documented lines 294, 320, 523 of decisions.md. This was a deliberate design choice, not an oversight.
+4. **#8 already covers:** Types, parser infra, all three renderers, HTML stat card, chart, per-session cost chips, CSV column, coverage model.
+
+#### Decisions
+
+**1. Close #6 as superseded**
+
+~85% of #6 is now delivered by PR #8. The remaining ~15% (log-parser credit derivation) directly contradicts the ratified "OTel-only cost" policy.
+
+**Action:** Close #6 with a comment explaining it was superseded by the OTel work in PR #8.
+
+**2. Do NOT include any #6 remnant work in PR #8**
+
+Reasons:
+- **Scope creep:** #8 is already a large, approved PR with 395+ tests. Adding log-parser credits balloons scope.
+- **Policy violation:** The team explicitly decided logs sessions show "cost unavailable" — three separate ratifications.
+- **Architecture clarity:** "OTel = authoritative cost; logs = historical tokens only" is a clean, honest seam. Muddying it with "estimated" log-derived credits introduces a two-tier accuracy model that confuses users.
+- **Ship what's done:** #8 is complete and green. Don't re-open its scope.
+
+**3. Future: if historical cost demand emerges, file a NEW focused issue**
+
+If users want cost for pre-OTel sessions, a future issue should:
+- Be titled "Backfill estimated credits for pre-OTel sessions (from logs totalNanoAiu)"
+- Be clearly labeled "estimated" vs OTel's "authoritative"
+- Require a deliberate policy reversal (update the "cost unavailable for logs" decision)
+- Be scoped as an additive, opt-in feature (e.g., `--estimate-historical-cost` flag)
+- Not touch schema again (v5 already has the fields; just populate them conditionally)
+
+This is NOT urgent. Most users' historical sessions are recent enough that OTel will quickly cover them once enabled. The "cost unavailable" state is temporary and self-resolving.
+
+#### Rationale
+
+The "cost unavailable" policy isn't arbitrary — it reflects that log-parser `totalNanoAiu` has never been verified against actual billing (it matches OTel, but OTel is the billing-adjacent export). Surfacing "estimated" numbers without validation against the billing CSV creates a false confidence problem. Better to show nothing than show a number users might mistake for their bill.
+
+#### Proposed #6 Close Comment
+
+> Closing as superseded by the OTel work in PR #8.
+>
+> PR #8 implements AI credits/cost from OTel (`github.copilot.nano_aiu ÷ 1e9`) with full renderer support (text, JSON, HTML stat card, chart, CSV). The underlying metric is identical to what #6 proposed from `events.jsonl`.
+>
+> The team's ratified architecture decision is that log-only sessions show "cost unavailable" (OTel is the authoritative cost source). If there's future demand for estimated historical credits from log data, we'll file a focused follow-up issue.

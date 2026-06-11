@@ -68,12 +68,18 @@ See `history-archive.md` for full notes.
 
 **PR #8 updated (2026-06-11):** Added "## OTel setup commands" section to PR description to reflect these new subcommands, preserving all existing merge-pivot content. All 530 tests still pass.
 
-**Known stale doc (in-scope flag for later):** `src/index.ts` lines ~62/64 may still reference "(preview only; re-run with --apply to write)" after the confirmation-prompt removal.
+**Help-text accuracy fix (2026-06-11, commit 57ae650):** Removed stale `--apply` flag references from CLI help for `otel enable` and `otel disable` (src/index.ts lines 62, 64). Updated to "(previews, then prompts for confirmation)" to match current behavior. All 530 tests pass. Patch changeset `.changeset/help-text-otel-confirm-*.md` created.
 
 ---
 
 ## Session 2026-06-11T16:13:52Z — PR #8 Description Update (via Scribe)
 
 Tank background agent completed PR #8 body update: added "## OTel setup commands" section documenting new `tscope otel status|enable|disable` config commands with Y/N confirmation flow; --apply flag removed. Preserved all prior merge-pivot content. Flagged stale CLI help text in src/index.ts (lines ~62/64) for manual review.
+
+## Session 2026-06-11T16:20:56Z — Help Text Accuracy Fix
+
+Fixed stale CLI help text for `tscope otel enable` and `tscope otel disable` commands (src/index.ts lines 62, 64). Updated from "(previews, then prompts for confirmation with --apply)" to "(previews, then prompts for confirmation)" to match current behavior (--apply flag was removed in prior commit). Build, lint, 530 tests all pass. Committed on `otel` branch as 57ae650 with patch changeset `.changeset/help-text-otel-confirm-20260611-091504.md`.
+
+---
 
 ## Learnings — 2026-06-03 Merge Pivot (ARCHIVE)
