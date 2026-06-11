@@ -478,6 +478,39 @@ describe("TextRenderer", () => {
       const out = captureText({ ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] });
       expect(out).not.toContain("Context:");
     });
+
+    test("clamps utilizationRatio > 1 to 100% (OTel anomaly: used > limit)", () => {
+      const overflowSession: NormalizedSession = {
+        ...OTEL_SESSION,
+        extended: {
+          contextWindow: {
+            usedTokens: 150_000,
+            limitTokens: 128_000,
+            utilizationRatio: 150_000 / 128_000, // ~1.172
+          },
+        },
+      };
+      const out = captureText({ ...OTEL_EMPTY_REPORT, sessions: [overflowSession] });
+      // Extract the rendered percentage value and confirm it is exactly 100.
+      const match = out.match(/Context:\s+[\d,]+ \/ [\d,]+ tokens \((\d+)% used\)/);
+      expect(match).not.toBeNull();
+      expect(Number(match![1])).toBe(100);
+    });
+
+    test("clamps utilizationRatio < 0 to 0% (OTel anomaly: negative)", () => {
+      const negativeSession: NormalizedSession = {
+        ...OTEL_SESSION,
+        extended: {
+          contextWindow: {
+            usedTokens: -500,
+            limitTokens: 128_000,
+            utilizationRatio: -0.004,
+          },
+        },
+      };
+      const out = captureText({ ...OTEL_EMPTY_REPORT, sessions: [negativeSession] });
+      expect(out).toContain("0% used");
+    });
   });
 
   describe("per-session source tag", () => {

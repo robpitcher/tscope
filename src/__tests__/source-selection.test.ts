@@ -320,6 +320,16 @@ describe("source-selection integration (subprocess)", () => {
       expect(status).toBe(0);
     });
 
+    test("JSON report.source is 'otel' even when --source otel yields no matching sessions", () => {
+      // Regression: computeReportSource({otelCount:0, logsCount:0}) returns "logs",
+      // but with an explicit --source otel the report provenance must stay "otel".
+      const otelDir = path.join(tmpHome, ".copilot", "tscope");
+      writeValidOtelSpan(otelDir);
+      const { stdout } = runCli(["--source", "otel", "--date", FUTURE_DATE, "--json"], tmpHome);
+      const report = JSON.parse(stdout);
+      expect(report.source).toBe("otel");
+    });
+
     test("no hint printed when --source logs finds no sessions", () => {
       // logs source should never print the OTel hint
       const { stderr } = runCli(["--source", "logs", "--date", FUTURE_DATE], tmpHome);

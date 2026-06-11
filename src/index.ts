@@ -451,7 +451,16 @@ async function main(): Promise<void> {
   const filterDescription = buildFilterDescription(args);
 
   const coverage = computeSourceCoverage(finalCompleted);
-  const reportSource = computeReportSource(coverage);
+  let reportSource = computeReportSource(coverage);
+
+  // Preserve explicit single-source intent in report provenance even when the
+  // result set is empty. computeReportSource falls back to "logs" when both
+  // counts are 0, but that's misleading when the user explicitly selected
+  // --source otel (the footer would say "event logs (historical)" despite an
+  // OTel hint on stderr).
+  if (finalCompleted.length === 0 && args.sourceMode === "otel") {
+    reportSource = "otel";
+  }
 
   const report: Report = {
     sessions: finalCompleted,

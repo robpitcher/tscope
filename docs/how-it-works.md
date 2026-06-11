@@ -75,7 +75,7 @@ Each session's `events.jsonl` contains a `session.shutdown` event with per-model
 
 Because cache read/write are already part of input, the non-double-counted session total is **`input + output`** (reported as **Total (I/O)**).
 
-> A `reasoningTokens` field is also parsed from the session events and surfaced in the JSON output for completeness, but it is **not** displayed in the text or HTML reports for log-parser sessions.
+> A `reasoningTokens` field is also parsed from the session events and surfaced in the JSON output. The text report shows a **Reasoning** row whenever `reasoningTokens > 0`, regardless of source (OTel or log parser). The HTML report does not surface reasoning tokens.
 
 ## Resumed Sessions
 

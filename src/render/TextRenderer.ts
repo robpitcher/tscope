@@ -138,7 +138,7 @@ function renderSessionBlock(session: NormalizedSession, styled: boolean): string
   }
   if (session.extended?.contextWindow) {
     const cw = session.extended.contextWindow;
-    const pct = (cw.utilizationRatio * 100).toFixed(0);
+    const pct = (Math.max(0, Math.min(1, cw.utilizationRatio)) * 100).toFixed(0);
     const usedStr = fmt(cw.usedTokens).padStart(12);
     lines.push(`    ${"Context:".padEnd(14)}${usedStr} / ${fmt(cw.limitTokens)} tokens (${pct}% used)`);
   }

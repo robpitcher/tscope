@@ -71,7 +71,7 @@ interface SessionAccumulator {
   models: Record<string, TokenCounts>;
   modelCosts: Record<string, number>;
   earliestStartTimeMs: number;
-  contextWindowSamples: Array<{ used: number; limit: number }>;
+  lastContextWindowSample: { used: number; limit: number } | null;
 }
 
 /** Convert OTel [unixSeconds, nanoseconds] timestamp to milliseconds. */
@@ -153,7 +153,7 @@ export class OtelDataSource implements DataSource {
             models: {},
             modelCosts: {},
             earliestStartTimeMs: Infinity,
-            contextWindowSamples: [],
+            lastContextWindowSample: null,
           };
           sessionMap.set(conversationId, acc);
         }
@@ -188,14 +188,16 @@ export class OtelDataSource implements DataSource {
           acc.modelCosts[model] = (acc.modelCosts[model] ?? 0) + nanoAiu / 1e9;
         }
 
-        // Context window utilization from span events (bonus signal)
+        // Context window utilization from span events (bonus signal).
+        // Keep only the most recent sample — earlier samples are stale and
+        // retaining all of them wastes memory for large otel.jsonl files.
         if (Array.isArray(span.events)) {
           for (const evt of span.events) {
             const ea = evt.attributes ?? {};
             const used = ea["event.github.copilot.current_tokens"];
             const limit = ea["token_limit"];
             if (typeof used === "number" && typeof limit === "number" && limit > 0) {
-              acc.contextWindowSamples.push({ used, limit });
+              acc.lastContextWindowSample = { used, limit };
             }
           }
         }
@@ -229,9 +231,8 @@ export class OtelDataSource implements DataSource {
       if (totalReasoning > 0) {
         extended.reasoningTokens = totalReasoning;
       }
-      if (acc.contextWindowSamples.length > 0) {
-        // Use the last observed sample as representative of the most recent context state
-        const sample = acc.contextWindowSamples[acc.contextWindowSamples.length - 1];
+      if (acc.lastContextWindowSample !== null) {
+        const sample = acc.lastContextWindowSample;
         extended.contextWindow = {
           usedTokens: sample.used,
           limitTokens: sample.limit,
