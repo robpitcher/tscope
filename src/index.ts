@@ -59,9 +59,9 @@ OPTIONS
 SUBCOMMANDS
   otel status         Show whether Copilot OTel export is configured
   otel enable         Add OTel file-export config to your shell profile
-                      (preview only; re-run with --apply to write)
+                      (previews, then prompts for confirmation)
   otel disable        Remove OTel file-export config from your shell profile
-                      (preview only; re-run with --apply to write)
+                      (previews, then prompts for confirmation)
 
 DESCRIPTION
   With no arguments, tscope discovers all Copilot CLI sessions from today
