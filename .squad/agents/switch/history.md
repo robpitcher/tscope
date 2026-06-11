@@ -118,3 +118,15 @@ Trinity validated D2 (npm as primary distribution channel) against comprehensive
 - Did NOT add per-session source to the JSON renderer — Tank already serialized
   `session.source` in v5; verified it's correct, no touch needed.
 
+### 2026-06-11 — Tank's PR #8 Review Fixes Complete
+
+**Branch:** `otel` | **Commit:** 3b82f00
+
+Tank resolved all 4 open Copilot review comments (PR #8). Key fixes relevant to renderers:
+
+1. **TextRenderer clamping:** Context-window utilization % now clamped to [0,1] to match HtmlRenderer behavior and prevent out-of-bounds fills in CSS.
+2. **OtelDataSource memory:** Replaced `contextWindowSamples[]` array with single `lastContextWindowSample` (O(1) memory instead of O(n)).
+3. **Docs clarification:** docs/how-it-works.md updated re: reasoning tokens in text output.
+4. **Provenance fix:** src/index.ts now respects explicit `--source otel` on empty results (no misleading "logs" label).
+
+**Validation:** 533 tests passing (+3 new edge cases), lint/build clean.
