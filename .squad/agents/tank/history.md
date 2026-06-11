@@ -57,4 +57,23 @@ See `history-archive.md` for full notes.
 - `docs/html-dashboard.md` — Per-session badges, coverage summary, cost unavailable chip
 - `.changeset/otel-primary-pivot.md` — Changeset now describes merge model (was: old no-merge behavior)
 
+## Learnings — 2026-06-11 OTel Setup Commands
+
+**New `tscope otel` subcommand group** (commits after primary pivot):
+- `tscope otel status` — check whether OTel export is configured
+- `tscope otel enable` — adds `COPILOT_OTEL_FILE_EXPORTER_PATH` to shell profile (powershell/bash/zsh/fish) inside a tscope-managed block
+- `tscope otel disable` — surgically removes the managed block
+- **Confirmation flow:** all mutating commands (`enable`/`disable`) preview the change first, then prompt for interactive Y/N confirmation. `--apply` flag REMOVED.
+- Implementation: new `src/otel.ts` (~370 lines), wiring in `src/index.ts`, docs updated (`how-it-works.md`, `usage.md`), changeset `.changeset/otel-confirm-prompt.md` (minor bump)
+
+**PR #8 updated (2026-06-11):** Added "## OTel setup commands" section to PR description to reflect these new subcommands, preserving all existing merge-pivot content. All 530 tests still pass.
+
+**Known stale doc (in-scope flag for later):** `src/index.ts` lines ~62/64 may still reference "(preview only; re-run with --apply to write)" after the confirmation-prompt removal.
+
+---
+
+## Session 2026-06-11T16:13:52Z — PR #8 Description Update (via Scribe)
+
+Tank background agent completed PR #8 body update: added "## OTel setup commands" section documenting new `tscope otel status|enable|disable` config commands with Y/N confirmation flow; --apply flag removed. Preserved all prior merge-pivot content. Flagged stale CLI help text in src/index.ts (lines ~62/64) for manual review.
+
 ## Learnings — 2026-06-03 Merge Pivot (ARCHIVE)
