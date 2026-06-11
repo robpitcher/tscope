@@ -68,7 +68,7 @@ The process exits with code 0 — the hint is advisory, not an error.
 
 The `--source` flag composes freely with all date filters (`--date`, `--range`, `--lastdays`, `--all`). The date filter is applied **after** the source is loaded — the source determines *where* sessions come from; the filter determines *which* sessions are included.
 
-OTel coverage is forward-only from the moment you run `tscope otel enable --apply`. Sessions that started before OTel was enabled are only available via the log parser (`--source logs`).
+OTel coverage is forward-only from the moment you run `tscope otel enable`. Sessions that started before OTel was enabled are only available via the log parser (`--source logs`).
 
 ## Date Filtering
 

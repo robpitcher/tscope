@@ -339,7 +339,7 @@ async function main(): Promise<void> {
   // Subcommand routing: `tscope otel <status|enable|disable>` exits early.
   const rawArgs = process.argv.slice(2);
   if (rawArgs[0] === "otel") {
-    process.exit(runOtel(rawArgs.slice(1)));
+    process.exit(await runOtel(rawArgs.slice(1)));
   }
 
   const args = parseArgs(process.argv);
@@ -370,7 +370,7 @@ async function main(): Promise<void> {
       process.stderr.write(
         `Error: --source otel specified but no OTel data found at:\n` +
         `  ${getOtelExportPath()}\n\n` +
-        `Run 'tscope otel enable --apply' to enable OTel collection, then start a new Copilot session.\n`
+        `Run 'tscope otel enable' to enable OTel collection, then start a new Copilot session.\n`
       );
       process.exit(1);
     }

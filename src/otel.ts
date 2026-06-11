@@ -8,13 +8,29 @@
  * persist that single variable into the user's shell startup file inside a
  * clearly delimited "managed block" that `disable` can remove surgically.
  *
- * All mutating commands preview by default and only write with `--apply`.
+ * All mutating commands preview the change, then ask for a Y/N confirmation
+ * before writing. Anything other than "y"/"yes" cancels.
  */
 
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import * as readline from "readline";
 import { execFileSync } from "child_process";
+
+/** Function that asks the user a yes/no question; resolves true only on yes. */
+export type Confirm = (question: string) => Promise<boolean>;
+
+/** Default confirm: reads a single line from stdin, true only for y/yes. */
+function defaultConfirm(question: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(/^y(es)?$/i.test(answer.trim()));
+    });
+  });
+}
 
 /** The one env var that enables Copilot CLI's OTel file exporter. */
 export const OTEL_ENV_VAR = "COPILOT_OTEL_FILE_EXPORTER_PATH";
@@ -37,7 +53,7 @@ export function getOtelExportPath(homeDir: string = os.homedir()): string {
   return path.join(homeDir, ".copilot", "tscope", "otel.jsonl");
 }
 
-/** Directory that holds the telemetry file; created on `enable --apply`. */
+/** Directory that holds the telemetry file; created on `enable`. */
 export function getOtelExportDir(homeDir: string = os.homedir()): string {
   return path.join(homeDir, ".copilot", "tscope");
 }
@@ -227,8 +243,8 @@ export function otelStatus(): number {
   return 0;
 }
 
-/** `tscope otel enable [--apply]` — add the managed block. */
-export function otelEnable(apply: boolean): number {
+/** `tscope otel enable` — preview, confirm, then add the managed block. */
+export async function otelEnable(confirm: Confirm = defaultConfirm): Promise<number> {
   const { shell, profilePath } = resolveProfileTarget();
   const block = renderBlock(shell);
   const content = readProfile(profilePath);
@@ -244,21 +260,20 @@ export function otelEnable(apply: boolean): number {
     return 0;
   }
 
-  if (!apply) {
-    out("tscope otel enable — PREVIEW (no changes written)");
+  out("tscope otel enable");
+  out();
+  out(`Shell profile:  ${profilePath}`);
+  out(`Export file:    ${getOtelExportPath()}`);
+  out();
+  out(hasBlock(content) ? "The managed block will be UPDATED to:" : "The following managed block will be ADDED:");
+  out();
+  out(indent(block));
+  out();
+
+  const confirmed = await confirm("Apply this change? [y/N] ");
+  if (!confirmed) {
     out();
-    out(`Shell profile:  ${profilePath}`);
-    out(`Export file:    ${getOtelExportPath()}`);
-    out();
-    out(hasBlock(content) ? "The managed block will be UPDATED to:" : "The following managed block will be ADDED:");
-    out();
-    out(indent(block));
-    out();
-    out("Re-run with --apply to write it:");
-    out("  tscope otel enable --apply");
-    out();
-    out("After applying, open a new terminal so new copilot sessions pick");
-    out("up the change.");
+    out("Cancelled. No changes written.");
     return 0;
   }
 
@@ -271,6 +286,7 @@ export function otelEnable(apply: boolean): number {
     return 1;
   }
 
+  out();
   out("tscope otel enable — applied");
   out();
   out(`Wrote managed block to:`);
@@ -283,8 +299,8 @@ export function otelEnable(apply: boolean): number {
   return 0;
 }
 
-/** `tscope otel disable [--apply]` — remove the managed block. */
-export function otelDisable(apply: boolean): number {
+/** `tscope otel disable` — preview, confirm, then remove the managed block. */
+export async function otelDisable(confirm: Confirm = defaultConfirm): Promise<number> {
   const { profilePath } = resolveProfileTarget();
   const content = readProfile(profilePath);
 
@@ -298,15 +314,17 @@ export function otelDisable(apply: boolean): number {
     return 0;
   }
 
-  if (!apply) {
-    out("tscope otel disable — PREVIEW (no changes written)");
+  out("tscope otel disable");
+  out();
+  out(`Shell profile:  ${profilePath}`);
+  out();
+  out("The tscope-managed block will be REMOVED.");
+  out();
+
+  const confirmed = await confirm("Remove it? [y/N] ");
+  if (!confirmed) {
     out();
-    out(`Shell profile:  ${profilePath}`);
-    out();
-    out("The tscope-managed block will be REMOVED.");
-    out();
-    out("Re-run with --apply to remove it:");
-    out("  tscope otel disable --apply");
+    out("Cancelled. No changes written.");
     return 0;
   }
 
@@ -317,6 +335,7 @@ export function otelDisable(apply: boolean): number {
     return 1;
   }
 
+  out();
   out("tscope otel disable — applied");
   out();
   out(`Removed the managed block from:`);
@@ -334,10 +353,10 @@ tscope otel — configure GitHub Copilot CLI OpenTelemetry export
 
 USAGE
   tscope otel status            Show whether OTel export is configured
-  tscope otel enable [--apply]  Add the OTel file-export config to your shell
-                                profile (preview only without --apply)
-  tscope otel disable [--apply] Remove the OTel file-export config from your
-                                shell profile (preview only without --apply)
+  tscope otel enable            Add the OTel file-export config to your shell
+                                profile (asks for confirmation)
+  tscope otel disable           Remove the OTel file-export config from your
+                                shell profile (asks for confirmation)
 
 NOTES
   Sets ${OTEL_ENV_VAR} in your shell startup file. This
@@ -348,19 +367,18 @@ NOTES
 
 /**
  * Entry point for the `otel` subcommand. `subArgs` are the tokens after
- * `otel` (e.g. ["enable", "--apply"]). Returns a process exit code.
+ * `otel` (e.g. ["enable"]). Returns a process exit code.
  */
-export function runOtel(subArgs: string[]): number {
+export async function runOtel(subArgs: string[]): Promise<number> {
   const sub = subArgs[0];
-  const apply = subArgs.includes("--apply");
 
   switch (sub) {
     case "status":
       return otelStatus();
     case "enable":
-      return otelEnable(apply);
+      return otelEnable();
     case "disable":
-      return otelDisable(apply);
+      return otelDisable();
     case undefined:
     case "--help":
     case "-h":

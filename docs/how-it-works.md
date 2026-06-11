@@ -20,7 +20,7 @@ This file is written by the Copilot CLI's OpenTelemetry exporter in real time â€
 
 Sessions are identified by the `gen_ai.conversation.id` attribute, which is the same UUID as the session-state directory name. tscope groups `chat` spans by this ID to build per-session token and cost totals.
 
-**OTel coverage is forward-only.** Sessions that started before `tscope otel enable --apply` was run have no OTel data; use `--source logs` to see them.
+**OTel coverage is forward-only.** Sessions that started before `tscope otel enable` was run have no OTel data; use `--source logs` to see them.
 
 ### Log parser (historical / fallback)
 
