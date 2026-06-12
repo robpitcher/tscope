@@ -9,7 +9,7 @@ import * as path from "path";
 import { HtmlRenderer } from "../render/HtmlRenderer";
 import {
   Report,
-  ParsedSession,
+  NormalizedSession,
   InProgressSession,
 } from "../types";
 
@@ -22,9 +22,12 @@ const EMPTY_REPORT: Report = {
   inProgressSessions: [],
   reportDate: "2026-06-02",
   filterDescription: "today",
+  source: "logs",
+  costAvailable: false,
+  coverage: { otelCount: 0, logsCount: 0, costCoverage: "none" },
 };
 
-const SAMPLE_SESSION: ParsedSession = {
+const SAMPLE_SESSION: NormalizedSession = {
   sessionId: "abc-00000000-1111-2222-3333-444444444444",
   eventsPath: "/home/user/.copilot/session-state/abc/events.jsonl",
   startTime: "2026-06-02T20:00:00.000Z",
@@ -46,6 +49,7 @@ const SAMPLE_SESSION: ParsedSession = {
   },
   chronicleTips: [],
   inProgress: false,
+  source: "logs",
 };
 
 const SAMPLE_IN_PROGRESS: InProgressSession = {
@@ -209,7 +213,7 @@ describe("HtmlRenderer", () => {
   describe("HTML-escapes dangerous strings", () => {
     test("escapes <script> in model name", () => {
       const maliciousModel = "<script>alert('xss')</script>";
-      const evilSession: ParsedSession = {
+      const evilSession: NormalizedSession = {
         ...SAMPLE_SESSION,
         models: {
           [maliciousModel]: {
@@ -230,7 +234,7 @@ describe("HtmlRenderer", () => {
     });
 
     test("escapes <img onerror> in session path", () => {
-      const evil: ParsedSession = {
+      const evil: NormalizedSession = {
         ...SAMPLE_SESSION,
         eventsPath: `"><img src=x onerror=alert(1)>`,
       };
@@ -286,7 +290,7 @@ describe("HtmlRenderer", () => {
 
   describe("multiple sessions", () => {
     test("renders multiple completed sessions", () => {
-      const session2: ParsedSession = {
+      const session2: NormalizedSession = {
         ...SAMPLE_SESSION,
         sessionId: "def-11111111-2222-3333-4444-555555555555",
         startTime: "2026-06-02T22:00:00.000Z",
@@ -374,7 +378,7 @@ describe("HtmlRenderer", () => {
       variant: "tips" | "cost-tips" = "cost-tips",
       timestamp = "2026-06-02T23:00:00.000Z",
       sessionId = SAMPLE_SESSION.sessionId
-    ): ParsedSession => ({
+    ): NormalizedSession => ({
       ...SAMPLE_SESSION,
       sessionId,
       chronicleTips: [{ variant, timestamp, markdown }],
@@ -611,7 +615,7 @@ describe("HtmlRenderer", () => {
     });
 
     test("renders the API time chip on the session card when duration is known", () => {
-      const sessionWithDuration: ParsedSession = {
+      const sessionWithDuration: NormalizedSession = {
         ...SAMPLE_SESSION,
         apiDurationMs: 4669,
       };
@@ -709,7 +713,7 @@ describe("HtmlRenderer", () => {
     });
 
     test("payload escapes < so it cannot break out of the script tag", () => {
-      const evil: ParsedSession = {
+      const evil: NormalizedSession = {
         ...SAMPLE_SESSION,
         sessionId: "a</script><b",
       };
@@ -726,16 +730,17 @@ describe("HtmlRenderer", () => {
   });
 
   describe("zero-token completed sessions are silently excluded", () => {
-    const EMPTY_MODELS_SESSION: ParsedSession = {
+    const EMPTY_MODELS_SESSION: NormalizedSession = {
       sessionId: "zero-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
       eventsPath: "/home/user/.copilot/session-state/zero/events.jsonl",
       startTime: "2026-06-02T19:00:00.000Z",
       models: {},
       chronicleTips: [],
       inProgress: false,
+      source: "logs",
     };
 
-    const ALL_ZERO_SESSION: ParsedSession = {
+    const ALL_ZERO_SESSION: NormalizedSession = {
       sessionId: "zzz-11111111-2222-3333-4444-555555555555",
       eventsPath: "/home/user/.copilot/session-state/zzz/events.jsonl",
       startTime: "2026-06-02T19:30:00.000Z",
@@ -750,6 +755,7 @@ describe("HtmlRenderer", () => {
       },
       chronicleTips: [],
       inProgress: false,
+      source: "logs",
     };
 
     function extractPayload(html: string): { sessions: Array<{ id: string }> } {
@@ -807,6 +813,467 @@ describe("HtmlRenderer", () => {
       expect(html).toContain("classList.add('session-card--selected')");
       // And clears it when the user clicks outside the selected card.
       expect(html).toContain("clearSelection");
+    });
+  });
+
+  describe("source provenance badge", () => {
+    const OTEL_SESSION: NormalizedSession = {
+      ...SAMPLE_SESSION,
+      source: "otel",
+      totalCost: 2.34,
+      modelCosts: { "claude-sonnet-4-5": 1.5, "claude-haiku-4-5": 0.84 },
+    };
+
+    test("shows 'OpenTelemetry' badge in header for OTel reports", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION] },
+        "html-test-source-otel-badge.html"
+      );
+      expect(html).toContain("OpenTelemetry");
+      expect(html).toContain("source-badge--otel");
+    });
+
+    test("shows 'event logs' badge in header for logs reports", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-source-logs-badge.html"
+      );
+      expect(html).toContain("event logs");
+      expect(html).toContain("source-badge--logs");
+    });
+
+    test("logs badge does not use the otel styling class", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-source-logs-no-otel-class.html"
+      );
+      // CSS definition is present, but no element should carry the class
+      expect(html).not.toMatch(/class="[^"]*source-badge--otel/);
+    });
+
+    test("otel badge does not use the logs styling class", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION] },
+        "html-test-source-otel-no-logs-class.html"
+      );
+      // CSS definition is present, but no element should carry the class
+      expect(html).not.toMatch(/class="[^"]*source-badge--logs/);
+    });
+
+    test("logs source badge tooltip mentions cost unavailable", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-source-logs-tooltip.html"
+      );
+      // The title attribute on the badge communicates cost unavailability.
+      expect(html).toMatch(/source-badge--logs[^>]*title=/);
+      expect(html).toContain("cost data unavailable");
+    });
+
+    test("source badge CSS classes are defined in the style block", () => {
+      const html = renderToString(EMPTY_REPORT, "html-test-source-css.html");
+      expect(html).toContain(".source-badge--otel");
+      expect(html).toContain(".source-badge--logs");
+    });
+  });
+
+  describe("per-session source badge on session cards", () => {
+    const OTEL_SESSION: NormalizedSession = {
+      ...SAMPLE_SESSION,
+      sessionId: "otel-per-card-0000-1111-2222-333344445555",
+      source: "otel",
+      totalCost: 1.5,
+      modelCosts: { "claude-sonnet-4-5": 1.5 },
+    };
+
+    test("each OTel session card carries source-badge--otel and 'OTel' label", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", sessions: [OTEL_SESSION] },
+        "html-test-per-session-otel-badge.html"
+      );
+      // Find the article element, not the SVG timeline bar (which also carries data-session-id)
+      const cardStart = html.indexOf(`class="session-card" data-session-id="${OTEL_SESSION.sessionId}"`);
+      expect(cardStart).toBeGreaterThan(-1);
+      const cardChips = html.slice(cardStart, cardStart + 800);
+      expect(cardChips).toContain("source-badge--otel");
+      expect(cardChips).toContain(">OTel<");
+    });
+
+    test("each logs session card carries source-badge--logs and 'log parser' label", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-per-session-logs-badge.html"
+      );
+      const cardStart = html.indexOf(`class="session-card" data-session-id="${SAMPLE_SESSION.sessionId}"`);
+      expect(cardStart).toBeGreaterThan(-1);
+      const cardChips = html.slice(cardStart, cardStart + 800);
+      expect(cardChips).toContain("source-badge--logs");
+      expect(cardChips).toContain("log parser");
+    });
+
+    test("in a mixed report, each card shows its own badge independent of report.source", () => {
+      const logsSession: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        sessionId: "logs-per-card-aaaa-bbbb-cccc-ddddeeeeffff",
+        source: "logs",
+      };
+      const mixedReport: Report = {
+        ...EMPTY_REPORT,
+        source: "mixed",
+        costAvailable: true,
+        coverage: { otelCount: 1, logsCount: 1, costCoverage: "partial" },
+        sessions: [OTEL_SESSION, logsSession],
+      };
+      const html = renderToString(mixedReport, "html-test-mixed-per-session-badges.html");
+
+      const otelCardIdx = html.indexOf(`class="session-card" data-session-id="${OTEL_SESSION.sessionId}"`);
+      const logsCardIdx = html.indexOf(`class="session-card" data-session-id="${logsSession.sessionId}"`);
+      expect(otelCardIdx).toBeGreaterThan(-1);
+      expect(logsCardIdx).toBeGreaterThan(-1);
+
+      const otelChips = html.slice(otelCardIdx, otelCardIdx + 800);
+      expect(otelChips).toContain("source-badge--otel");
+      expect(otelChips).not.toContain("source-badge--logs");
+
+      const logsChips = html.slice(logsCardIdx, logsCardIdx + 800);
+      expect(logsChips).toContain("source-badge--logs");
+      expect(logsChips).not.toContain("source-badge--otel");
+    });
+
+    test("per-session badge appears before the tokens chip in the chips row", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-badge-before-tokens.html"
+      );
+      const cardStart = html.indexOf(`class="session-card" data-session-id="${SAMPLE_SESSION.sessionId}"`);
+      const chipsHtml = html.slice(cardStart, cardStart + 800);
+      const badgeIdx = chipsHtml.indexOf("source-badge--logs");
+      const tokensIdx = chipsHtml.indexOf("chip-tokens");
+      expect(badgeIdx).toBeGreaterThan(-1);
+      expect(tokensIdx).toBeGreaterThan(-1);
+      expect(badgeIdx).toBeLessThan(tokensIdx);
+    });
+  });
+
+  describe("mixed report coverage summary in header", () => {
+    const OTEL_SESSION: NormalizedSession = {
+      ...SAMPLE_SESSION,
+      sessionId: "otel-cov-hdr-0000-1111-2222-333344445555",
+      source: "otel",
+      totalCost: 1.5,
+      modelCosts: { "claude-sonnet-4-5": 1.5 },
+    };
+    const LOGS_SESSION: NormalizedSession = {
+      ...SAMPLE_SESSION,
+      sessionId: "logs-cov-hdr-aaaa-bbbb-cccc-ddddeeeeffff",
+      source: "logs",
+    };
+
+    test("mixed report shows coverage-summary element in header", () => {
+      const html = renderToString(
+        {
+          ...EMPTY_REPORT,
+          source: "mixed",
+          costAvailable: true,
+          coverage: { otelCount: 1, logsCount: 1, costCoverage: "partial" },
+          sessions: [OTEL_SESSION, LOGS_SESSION],
+        },
+        "html-test-mixed-coverage-header.html"
+      );
+      expect(html).toContain("coverage-summary");
+    });
+
+    test("mixed coverage summary shows N OTel and M logs counts", () => {
+      const html = renderToString(
+        {
+          ...EMPTY_REPORT,
+          source: "mixed",
+          costAvailable: true,
+          coverage: { otelCount: 4, logsCount: 7, costCoverage: "partial" },
+          sessions: [OTEL_SESSION],
+        },
+        "html-test-mixed-coverage-counts.html"
+      );
+      expect(html).toContain("4 OTel");
+      expect(html).toContain("7 logs");
+    });
+
+    test("mixed report does not show single source-badge--otel or source-badge--logs in header", () => {
+      const html = renderToString(
+        {
+          ...EMPTY_REPORT,
+          source: "mixed",
+          costAvailable: true,
+          coverage: { otelCount: 1, logsCount: 1, costCoverage: "partial" },
+          sessions: [OTEL_SESSION],
+        },
+        "html-test-mixed-no-single-badge.html"
+      );
+      // The header area uses coverage-summary, not a single source-badge
+      const headerArea = html.slice(html.indexOf('<header'), html.indexOf('</header>'));
+      expect(headerArea).not.toContain("source-badge--otel");
+      expect(headerArea).not.toContain("source-badge--logs");
+      expect(headerArea).toContain("coverage-summary");
+    });
+
+    test("coverage summary CSS class is defined in the style block", () => {
+      const html = renderToString(EMPTY_REPORT, "html-test-coverage-css.html");
+      expect(html).toContain(".coverage-summary");
+      expect(html).toContain(".cov-otel");
+      expect(html).toContain(".cov-logs");
+    });
+  });
+
+  describe("cost unavailable chip on logs session cards", () => {
+    test("logs session card shows chip-cost-unavail chip", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-cost-unavail-chip.html"
+      );
+      expect(html).toContain("chip-cost-unavail");
+      expect(html).toContain("no cost data");
+    });
+
+    test("OTel session with totalCost does not show chip-cost-unavail", () => {
+      const otelSession: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        source: "otel",
+        totalCost: 2.34,
+        modelCosts: { "claude-sonnet-4-5": 2.34 },
+      };
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [otelSession] },
+        "html-test-no-cost-unavail-otel.html"
+      );
+      expect(html).not.toMatch(/class="[^"]*chip-cost-unavail/);
+    });
+
+    test("chip-cost-unavail CSS class is defined in the style block", () => {
+      const html = renderToString(EMPTY_REPORT, "html-test-cost-unavail-css.html");
+      expect(html).toContain(".chip-cost-unavail");
+    });
+
+    test("in a mixed report, logs card shows cost-unavail and OTel card shows credits chip", () => {
+      const otelSession: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        sessionId: "otel-cost-mix-0000-aaaa-bbbb-ccccddddeeee",
+        source: "otel",
+        totalCost: 1.5,
+        modelCosts: { "claude-sonnet-4-5": 1.5 },
+      };
+      const logsSession: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        sessionId: "logs-cost-mix-1111-aaaa-bbbb-ccccddddeeee",
+        source: "logs",
+      };
+      const mixedReport: Report = {
+        ...EMPTY_REPORT,
+        source: "mixed",
+        costAvailable: true,
+        coverage: { otelCount: 1, logsCount: 1, costCoverage: "partial" },
+        sessions: [otelSession, logsSession],
+      };
+      const html = renderToString(mixedReport, "html-test-mixed-cost-chips.html");
+
+      const otelCardIdx = html.indexOf(`class="session-card" data-session-id="${otelSession.sessionId}"`);
+      const logsCardIdx = html.indexOf(`class="session-card" data-session-id="${logsSession.sessionId}"`);
+
+      const otelChips = html.slice(otelCardIdx, otelCardIdx + 800);
+      expect(otelChips).toContain("chip-credits");
+      expect(otelChips).not.toContain("chip-cost-unavail");
+
+      const logsChips = html.slice(logsCardIdx, logsCardIdx + 800);
+      expect(logsChips).toContain("chip-cost-unavail");
+      expect(logsChips).not.toContain("chip-credits");
+    });
+  });
+
+  describe("Total Credits stat card subtitle in mixed reports", () => {
+    const OTEL_SESSION: NormalizedSession = {
+      ...SAMPLE_SESSION,
+      source: "otel",
+      totalCost: 3.14,
+      modelCosts: { "claude-sonnet-4-5": 3.14 },
+    };
+
+    test("pure OTel report still shows 'AI billing credits' subtitle", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION] },
+        "html-test-otel-credits-subtitle.html"
+      );
+      expect(html).toContain("AI billing credits");
+      expect(html).not.toContain("OTel sessions only");
+    });
+
+    test("mixed report shows 'OTel sessions only' subtitle on Total Credits card", () => {
+      const html = renderToString(
+        {
+          ...EMPTY_REPORT,
+          source: "mixed",
+          costAvailable: true,
+          coverage: { otelCount: 1, logsCount: 2, costCoverage: "partial" },
+          sessions: [OTEL_SESSION],
+        },
+        "html-test-mixed-credits-subtitle.html"
+      );
+      expect(html).toContain("OTel sessions only");
+      expect(html).not.toContain("AI billing credits");
+    });
+  });
+
+  describe("cost display (OTel reports)", () => {
+    const OTEL_SESSION: NormalizedSession = {
+      ...SAMPLE_SESSION,
+      source: "otel",
+      totalCost: 2.34,
+      modelCosts: { "claude-sonnet-4-5": 1.5, "claude-haiku-4-5": 0.84 },
+    };
+
+    test("shows credits chip in session card header for OTel session with totalCost", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION] },
+        "html-test-credits-chip.html"
+      );
+      expect(html).toContain("chip-credits");
+      expect(html).toContain("2.34 credits");
+    });
+
+    test("does not show credits chip for logs sessions", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-no-credits-chip.html"
+      );
+      // CSS defines .chip-credits, but no element should have that class for logs
+      expect(html).not.toMatch(/class="[^"]*chip-credits/);
+    });
+
+    test("shows 'Total Credits' stat card in summary strip for OTel report", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION] },
+        "html-test-credits-stat-card.html"
+      );
+      expect(html).toContain("Total Credits");
+      expect(html).toContain("AI billing credits");
+    });
+
+    test("does not show 'Total Credits' stat card for logs report", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-no-credits-stat.html"
+      );
+      expect(html).not.toContain("Total Credits");
+      expect(html).not.toContain("AI billing credits");
+    });
+
+    test("shows Credits by Model section when modelCosts is present", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION] },
+        "html-test-credits-by-model.html"
+      );
+      expect(html).toContain("Credits by Model");
+      expect(html).toContain("credits-list");
+    });
+
+    test("does not show Credits by Model for logs sessions (no modelCosts)", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-no-credits-by-model.html"
+      );
+      expect(html).not.toContain("Credits by Model");
+    });
+
+    test("chip-credits CSS class is defined in the style block", () => {
+      const html = renderToString(EMPTY_REPORT, "html-test-credits-css.html");
+      expect(html).toContain(".chip-credits");
+    });
+  });
+
+  describe("extended metrics — context window utilization bar", () => {
+    const OTEL_SESSION_WITH_CTX: NormalizedSession = {
+      ...SAMPLE_SESSION,
+      source: "otel",
+      totalCost: 1.0,
+      extended: {
+        contextWindow: {
+          usedTokens: 12500,
+          limitTokens: 128000,
+          utilizationRatio: 0.0977,
+        },
+      },
+    };
+
+    test("renders context window bar section when extended.contextWindow is present", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION_WITH_CTX] },
+        "html-test-ctx-window-bar.html"
+      );
+      expect(html).toContain("Context Window");
+      expect(html).toContain("ctx-window-wrap");
+      expect(html).toContain("ctx-window-fill");
+    });
+
+    test("context window label shows used/limit token counts", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION_WITH_CTX] },
+        "html-test-ctx-window-label.html"
+      );
+      expect(html).toContain("ctx-window-label");
+      expect(html).toContain("12,500");
+      expect(html).toContain("128,000");
+      expect(html).toContain("% used");
+    });
+
+    test("context window fill width reflects utilization ratio", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION_WITH_CTX] },
+        "html-test-ctx-window-width.html"
+      );
+      // 9.77% utilization
+      expect(html).toMatch(/ctx-window-fill[^>]*style="width:9\.\d+%"/);
+    });
+
+    test("high-utilization bar (>=80%) uses ctx-window-high class", () => {
+      const highCtxSession: NormalizedSession = {
+        ...OTEL_SESSION_WITH_CTX,
+        extended: {
+          contextWindow: {
+            usedTokens: 108000,
+            limitTokens: 128000,
+            utilizationRatio: 0.844,
+          },
+        },
+      };
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [highCtxSession] },
+        "html-test-ctx-window-high.html"
+      );
+      expect(html).toContain("ctx-window-high");
+    });
+
+    test("low-utilization bar does not use ctx-window-high class", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION_WITH_CTX] },
+        "html-test-ctx-window-low.html"
+      );
+      // CSS defines .ctx-window-high, but the element should not carry it at low utilization
+      expect(html).not.toMatch(/class="[^"]*ctx-window-high/);
+    });
+
+    test("does not render context window section when extended is absent", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-no-ctx-window.html"
+      );
+      // "Context Window" heading only appears inside the rendered section element
+      expect(html).not.toContain("Context Window");
+      // No ctx-window element (CSS class exists but no element with it)
+      expect(html).not.toMatch(/class="[^"]*ctx-window-wrap/);
+    });
+
+    test("context window CSS classes are defined in the style block", () => {
+      const html = renderToString(EMPTY_REPORT, "html-test-ctx-css.html");
+      expect(html).toContain(".ctx-window-wrap");
+      expect(html).toContain(".ctx-window-fill");
     });
   });
 });

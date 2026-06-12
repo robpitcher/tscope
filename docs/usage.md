@@ -15,6 +15,61 @@ tscope --help       # Show usage and options
 tscope --version    # Show version
 ```
 
+## Data Source
+
+tscope now merges data sources intelligently. Use `--source` to control the behavior:
+
+```bash
+tscope --source auto   # Default: merge OTel + logs; OTel wins overlap; shows cost for OTel sessions
+tscope --source otel   # Force OTel only; exits with error if otel.jsonl is absent
+tscope --source logs   # Force log-parser only (pre-merge behavior)
+```
+
+### Three modes
+
+| Mode | Behavior |
+|---|---|
+| `auto` | Loads both OTel (`~/.copilot/tscope/otel.jsonl`) and log-parser sessions (`~/.copilot/session-state/`), then merges them. Sessions that appear in both sources are deduplicated — the OTel record is retained (authoritative), logs duplicate dropped. OTel spans cover recent activity; logs provide historical context. If OTel is not available (file missing/empty), falls back to logs-only and prints the notice below. |
+| `otel` | Loads OTel only. Exits with a non-zero code and a helpful message if `otel.jsonl` is absent or empty. |
+| `logs` | Loads log-parser sessions only. Works exactly as tscope did before OTel support. |
+
+### Auto-fallback notice
+
+When `auto` selects the log parser (OTel not configured), tscope prints to stderr:
+
+```
+No OpenTelemetry data found — falling back to log-file parsing.
+Run 'tscope otel enable' to use OTel.
+```
+
+This message is printed once per run and only in `auto` mode. It is not printed when `--source logs` is explicit.
+
+### Empty-range hint
+
+When the OTel source is active (via `auto` or `--source otel`) but no sessions match the requested date range, tscope prints a hint to stderr, e.g.:
+
+```
+Hint: No OTel sessions found for this date range. OTel only captures sessions since
+'tscope otel enable' was run. Use --source logs for historical data, or --all to see all
+available OTel sessions.
+```
+
+The process exits with code 0 — the hint is advisory, not an error.
+
+### Cost availability per source
+
+| Source | Cost shown |
+|---|---|
+| OTel (merged report or pure OTel) | Server-side AI credits per session and per model (from `github.copilot.nano_aiu`). |
+| Log parser (merged report) | Cost unavailable — the events.jsonl format does not include billing data. Per-session source badges identify which sessions have cost data. |
+| Log parser (pure logs) | Cost unavailable — the events.jsonl format does not include billing data. |
+
+### Interaction with date filters
+
+The `--source` flag composes freely with all date filters (`--date`, `--range`, `--lastdays`, `--all`). The date filter is applied **after** the source is loaded — the source determines *where* sessions come from; the filter determines *which* sessions are included.
+
+OTel coverage is forward-only from the moment you run `tscope otel enable`. Sessions that started before OTel was enabled are only available via the log parser (`--source logs`).
+
 ## Date Filtering
 
 ```bash

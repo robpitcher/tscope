@@ -1,160 +1,115 @@
 # Tank — History
 
-## Seed
+**Seed:** tscope (token tracker for GitHub Copilot billing) | Backend/Data Eng | 2026-06-03
 
-- **Project:** tscope — a tool for developers to track and analyze their token usage, motivated by GitHub's new usage-based billing for Copilot (organizations & enterprises).
-- **User:** robpitcher
-- **Role:** Backend / Data Engineer
-- **Created:** 2026-06-03
+**OTel-Primary Pivot (2026-06-10):** Dual-source (OTel primary, logs fallback). `DataSource` interface, `OtelDataSource`, `LogsDataSource`. `--source auto|otel|logs`. Schema v5. 395 tests pass. Trinity APPROVED. Reconciliation CLEAN. Commit `b5cbc36`.
 
-## Learnings
+**Decisions:** OTel primary, one source/run, cost from `nano_aiu`, v1 signals (reasoning+context), rotation deferred.
 
-### Phase 1 Foundation — 2026-06-03
+~~**Invariants:** `costAvailable⟺source==="otel"`, one source/run~~  
+**SUPERSEDED** by merge pivot below.
 
-**Project layout:**
-```
-tscope/
-  package.json          bin: { tscope: "dist/index.js" }, jest, ts-jest, eslint
-  tsconfig.json         strict mode, commonjs, outDir: dist/, rootDir: src/
-  src/
-    index.ts            CLI entry: arg parsing, full pipeline orchestration
-    types.ts            Core interfaces: TokenCounts, ParsedSession, InProgressSession, Session, Report
-    discovery.ts        discoverSessions(): enumerates ~/.copilot/session-state, returns SessionRef[]
-    filter.ts           makeDateFilter(), todayLocalDateString(), utcToLocalDateString()
-    parser.ts           parseEventsFile() async, readSessionStartTime() lightweight helper
-    rates.ts            RATE_TABLE, lookupRate(), RATE_TABLE_VERSION
-    credits.ts          calcModelCredits(), calcSessionCredits()
-    render/
-      Renderer.ts       Interface: render(report: Report): void
-      TextRenderer.ts   Box-drawing text format
-    __tests__/
-      rates.test.ts     13 tests
-      credits.test.ts   5 tests
-      parser.test.ts    7 tests (uses fs.mkdtempSync for JSONL fixtures)
-  dist/                 tsc output (gitignored)
-  node_modules/         gitignored
-```
+**Impl:** OTel reads `~/.copilot/tscope/otel.jsonl`, groups by `gen_ai.conversation.id`. Logs single-pass. Selection: `auto`/`otel`/`logs`.
+
+See `history-archive.md` for full notes.
+
+## Learnings — 2026-06-10 Merge Pivot
+
+**Decision reversal (coordinator-merge-reversal.md):** `--source auto` now MERGES OTel + logs into a unified `NormalizedSession[]`. OTel wins on overlap (same `sessionId`). `--source otel` and `--source logs` remain single-source.
+
+**New types in `src/types.ts`:**
+- `ReportSourceKind = "otel" | "logs" | "mixed"` — report-level source (per-session still uses `DataSourceKind = "otel" | "logs"`)
+- `SourceCoverage { otelCount, logsCount, costCoverage: "all"|"partial"|"none" }` — coverage summary
+- `Report.source` → `ReportSourceKind` (was `DataSourceKind`)
+- `Report.coverage: SourceCoverage` — NEW required field
+- `Report.costAvailable: boolean` — kept; semantics: `coverage.otelCount > 0`
+
+**New module `src/sources/merge.ts`:**
+- `mergeSessions(otel, logs)` — dedup, OTel wins
+- `computeSourceCoverage(sessions)` — counts per source + costCoverage
+- `computeReportSource(coverage)` — "otel"|"logs"|"mixed"
+
+**`src/index.ts` auto mode:**
+- Loads BOTH OTel and logs under the same predicate
+- Calls `mergeSessions` + `computeSourceCoverage` + `computeReportSource`
+- Hint: only fires for `--source otel` (explicit) or `auto`+OTel+0-total; hint text differs per case
+- `costAvailable = coverage.otelCount > 0`
+
+**`src/render/JsonRenderer.ts`:** `coverage` field added to top-level output (after `costAvailable`).
+
+**`src/render/TextRenderer.ts`:** handles `source === "mixed"` → "mixed (OTel + logs)" label (minimal; full UI is Switch's phase).
+
+**HTML (switch-merge-provenance.md, Switch delivered):**
+- Per-session source badge on EVERY card (first chip in `.session-summary-chips`)
+- Coverage summary in header for mixed reports: "N OTel · M logs" with explanation
+- Cost unavailable chip on logs cards (transparent, dashed border)
+- Total Credits stat: "OTel sessions only" subtitle for mixed reports
+
+**Schema:** v5 in-place, no v6 bump. New top-level fields: `source` (can be `"mixed"`), `coverage` object.
+
+**Test count:** 395 → 437+ (all passing). New suites: `merge.test.ts` (42 tests). Coverage tests in `json-renderer.test.ts` and `source-selection.test.ts`.
+
+**Docs updated (this turn):**
+- `README.md` — Data Sources table: `auto` now merges; OTel authoritative on overlap
+- `docs/usage.md` — Merge flow, per-session cost badges, source interaction with date filters
+- `docs/json-output.md` — Coverage object spec; mixed report example; v5 migration notes (new `source`, `coverage`)
+- `docs/how-it-works.md` — Merge rule: dedup by sessionId, OTel wins, logs provide history
+- `docs/html-dashboard.md` — Per-session badges, coverage summary, cost unavailable chip
+- `.changeset/otel-primary-pivot.md` — Changeset now describes merge model (was: old no-merge behavior)
+
+## Learnings — 2026-06-11 OTel Setup Commands
+
+**New `tscope otel` subcommand group** (commits after primary pivot):
+- `tscope otel status` — check whether OTel export is configured
+- `tscope otel enable` — adds `COPILOT_OTEL_FILE_EXPORTER_PATH` to shell profile (powershell/bash/zsh/fish) inside a tscope-managed block
+- `tscope otel disable` — surgically removes the managed block
+- **Confirmation flow:** all mutating commands (`enable`/`disable`) preview the change first, then prompt for interactive Y/N confirmation. `--apply` flag REMOVED.
+- Implementation: new `src/otel.ts` (~370 lines), wiring in `src/index.ts`, docs updated (`how-it-works.md`, `usage.md`), changeset `.changeset/otel-confirm-prompt.md` (minor bump)
+
+**PR #8 updated (2026-06-11):** Added "## OTel setup commands" section to PR description to reflect these new subcommands, preserving all existing merge-pivot content. All 530 tests still pass.
+
+**Help-text accuracy fix (2026-06-11, commit 57ae650):** Removed stale `--apply` flag references from CLI help for `otel enable` and `otel disable` (src/index.ts lines 62, 64). Updated to "(previews, then prompts for confirmation)" to match current behavior. All 530 tests pass. Patch changeset `.changeset/help-text-otel-confirm-*.md` created.
+
+---
+
+## Session 2026-06-11T16:13:52Z — PR #8 Description Update (via Scribe)
+
+Tank background agent completed PR #8 body update: added "## OTel setup commands" section documenting new `tscope otel status|enable|disable` config commands with Y/N confirmation flow; --apply flag removed. Preserved all prior merge-pivot content. Flagged stale CLI help text in src/index.ts (lines ~62/64) for manual review.
+
+## Session 2026-06-11T16:20:56Z — Help Text Accuracy Fix
+
+Fixed stale CLI help text for `tscope otel enable` and `tscope otel disable` commands (src/index.ts lines 62, 64). Updated from "(previews, then prompts for confirmation with --apply)" to "(previews, then prompts for confirmation)" to match current behavior (--apply flag was removed in prior commit). Build, lint, 530 tests all pass. Committed on `otel` branch as 57ae650 with patch changeset `.changeset/help-text-otel-confirm-20260611-091504.md`.
+
+---
+
+## Learnings — 2026-06-11 PR #8 Review Fixes (commit 3b82f00)
+
+**Decision: report.source provenance under empty --source otel result set.**
+When `--source otel` is used and a date filter returns 0 sessions, `computeReportSource({otelCount:0, logsCount:0})` falls back to `"logs"`. This was misleading: the footer said "event logs (historical)" while stderr showed an OTel hint. Fix: in `src/index.ts`, after coverage computation, a guard overrides `reportSource = "otel"` when `finalCompleted.length === 0 && args.sourceMode === "otel"`. The `computeReportSource` pure function is unchanged — its empty-set fallback remains `"logs"`, which is correct for `auto` mode. `costAvailable` stays false (no actual sessions = no cost data, accurate). Test in `source-selection.test.ts`.
+
+**Decision: context-window clamping — text vs HTML vs JSON.**
+- `HtmlRenderer`: clamps via `clamp01()` (already present)
+- `TextRenderer`: now clamps with `Math.max(0, Math.min(1, cw.utilizationRatio))` — matches HTML exactly
+- `JsonRenderer`: raw `utilizationRatio` passed through unchanged — JSON is a data format, downstream consumers should interpret as-is
+Tests added in `text-renderer.test.ts` for overflow (>1) and negative (<0) ratios.
+
+**Decision: contextWindowSamples memory fix.**
+Replaced the `contextWindowSamples: Array<...>` accumulator with `lastContextWindowSample: { used, limit } | null` in `SessionAccumulator`. Behaviour identical (last sample was always used); O(spans) allocation per session removed. No test changes needed — existing "uses last sample" and "later span overwrites" tests still pass.
+
+**Decision: docs/how-it-works.md reasoning-tokens note.**
+Updated to reflect that text output shows Reasoning row for ALL sources (OTel + logs) when >0. HTML omits reasoning tokens. The old note was wrong on both axes.
 
 **Key file paths:**
-- Session data: `%USERPROFILE%\.copilot\session-state\<session-id>\events.jsonl` (Windows)
-- Session data: `~/.copilot/session-state/<session-id>/events.jsonl` (Unix)
-- Token source event: `session.shutdown` → `data.modelMetrics.<modelName>.usage`
-- Token fields: `inputTokens`, `outputTokens`, `cacheReadTokens`, `cacheWriteTokens`, `reasoningTokens`
-- Start time: `session.start` → `data.startTime` (ISO 8601 UTC)
+- `src/index.ts` — provenance override at the `computeReportSource` call site (lines ~453+)
+- `src/render/TextRenderer.ts` — context window clamping at line ~141
+- `src/sources/otelSource.ts` — `SessionAccumulator.lastContextWindowSample` (was `contextWindowSamples`)
+- `src/__tests__/source-selection.test.ts` — new test "JSON report.source is 'otel' even when..."
+- `src/__tests__/text-renderer.test.ts` — two new clamping tests in "extended metrics — context window"
+- `docs/how-it-works.md` — reasoning-tokens note line 78
+- `.changeset/pr8-review-fixes-20260611.md` — patch changeset
 
-**events.jsonl parsing approach:**
-1. Fast path: read last line with `fs.readFileSync` + split on `\n` — if `type === "session.shutdown"`, use it
-2. Fallback: stream the file with `readline.createInterface` scanning for both `session.start` and `session.shutdown`
-3. Use a `scanResult` container object (not bare `let` variables) to avoid TypeScript control flow narrowing `never` inside async closures
-4. In-progress sessions (no shutdown): return `InProgressSession { inProgress: true }` — never crash
+**Build/test/lint:** 533 tests pass (3 new), tsc clean, eslint clean. Commit 3b82f00, pushed to `otel`.
 
-### Phase 2 CI Validation — 2026-06-03
+---
 
-Tank delivered GitHub Actions CI workflow (`.github/workflows/ci.yml`) with lint+build+test gates on every PR and manual dispatch. Node matrix 18/20/22. All team members' work now flows through this pipeline for validation.
-
-**Rate table location:** `src/rates.ts` — hardcoded TypeScript object, versioned with `RATE_TABLE_VERSION`. Add new models here when GitHub releases them.
-
-**Credit formula:** `credits = (input*iRate + cacheRead*crRate + cacheWrite*cwRate + output*oRate) / 1e6 * 100`
-
-**How to build and run:**
-```bash
-npm install
-npm run build      # tsc → dist/
-npm test           # jest → 20 tests
-node dist/index.js --help
-node dist/index.js --version
-node dist/index.js   # today's sessions
-npm i -g .         # global install → tscope command
-```
-
-**TypeScript gotcha:** Assigning to `let` variables inside async readline callbacks causes TypeScript strict control flow to narrow them to `never` after the `await`. Fix: use a mutable container object (`scanResult: { ... }`) so TypeScript can track the property type correctly.
-
-**Architecture seams implemented:**
-- `SessionPredicate` type in `discovery.ts` — pass filter predicates for date-range (#12)
-- `Renderer` interface in `src/render/Renderer.ts` — swap in HtmlRenderer/JsonRenderer (#13, #14)
-- `makeDateFilter(localDate)` factory — phase 1 passes `todayLocalDateString()`; phase 2 passes `--date` arg
-
-### Phase 2 — Issues #12 and #13 — 2026-06-03
-
-**JSON Output Renderer (#13):**
-- `src/render/JsonRenderer.ts` — implements `Renderer` interface; outputs `JSON.stringify(output, null, 2) + "\n"` to stdout
-- Schema identifier: `"tscope/report/v1"` — bump string when shape changes breaking
-- Warnings (unknown model rates) written by `calcSessionCredits()` to stderr; stdout is never polluted
-- Registered in `src/render/index.ts` under key `'json'`
-- CLI flag: `--json` passed to `createRenderer('json')` in `src/index.ts`
-- JSON top-level shape:
-  ```
-  { schema, generatedAt(ISO UTC), filter{description,reportDate},
-    summary{sessionCount,completedCount,inProgressCount,totalEstimatedCredits,hasUnknownRates},
-    sessions[{sessionId,path,startTime(ISO|null),localDateTime(YYYY-MM-DD HH:MM|null),
-              inProgress,models[{modelName,usage{input,output,cacheRead,cacheWrite,reasoning},
-              estimatedCredits(number|null),unknownRate}],
-              totals{input,output,cacheRead,cacheWrite,reasoning,estimatedCredits,hasUnknownRates}}] }
-  ```
-- `estimatedCredits` is `null` (not `undefined`) in JSON for unknown-rate models
-
-**Date Range Filtering (#12):**
-- `isValidDateString(s)` in `src/filter.ts` — regex format check + `new Date(y,m-1,d)` round-trip validation
-- `makeRangeDateFilter(start, end)` in `src/filter.ts` — async predicate, string comparison of `YYYY-MM-DD` (lexicographic sort = date sort for zero-padded ISO dates)
-- Extracted `resolveSessionLocalDate(ref)` private helper to DRY up `makeDateFilter` and `makeRangeDateFilter`
-- CLI flags: `--date YYYY-MM-DD`, `--range START END`, `--all` in `src/index.ts`
-- Validation: malformed dates and start > end exit 1 with clear message to stderr
-- `filterDescription` added to `Report` type; TextRenderer uses it for "No sessions found for {X}."
-- Flags compose: `--all --json`, `--range START END --json`
-
-**New files:**
-- `src/render/JsonRenderer.ts`
-- `src/__tests__/filter-range.test.ts` (17 tests: isValidDateString + makeRangeDateFilter + boundary conditions)
-- `src/__tests__/json-renderer.test.ts` (30 tests: schema fields, model shape, unknown rates, in-progress, ordering)
-
-**Test count:** 87 → 134 (all passing). Build: `npm run build` clean, strict mode.
-
-**PR #22:** `squad/phase2-json-daterange` → main
-
-### Issue #24 — Remove Pricing / Pivot to Pure Token Analytics — 2026-06-02
-
-**What changed:**
-- **Deleted:** `src/rates.ts`, `src/credits.ts`, `src/__tests__/rates.test.ts`, `src/__tests__/credits.test.ts`
-- **Updated types.ts:** Removed `ModelCredits`, `SessionCredits` interfaces; simplified `Report.sessions` to `ParsedSession[]`; removed `totalCredits` and `hasUnknownRates` from `Report`
-- **Updated src/index.ts:** Removed `calcSessionCredits` import and pipeline; bumped VERSION to `0.3.0`
-- **Updated TextRenderer.ts:** Removed credits line and per-model credit lines; added `Premium: N requests` when `> 0`; simplified footer to session count only
-- **Updated JsonRenderer.ts:** Bumped schema to `tscope/report/v2`; removed `estimatedCredits`, `unknownRate`, `hasUnknownRates`, `totalEstimatedCredits`; added `premiumRequests` per session; `summary.totalTokens` replaces credit total
-- **Updated HtmlRenderer.ts:** Replaced `buildCreditsBars()` with `buildTokensByModelBars()`, replaced `buildCreditsTimelineChart()` with `buildTokensTimelineChart()`; updated stat cards; removed credit chips
-- **Updated tests:** 134 → 123 tests (credits.test.ts + rates.test.ts removed = -29 tests; new token-focused assertions added); all 123 passing
-- **Updated README.md:** Removed AI credit estimation sections; reframed as pure token analyzer; documented JSON schema v2
-
-**Learnings:**
-- PowerShell here-strings (`@"..."@`) corrupt TypeScript template literals with backticks. Use Python scripts (via `create` + `powershell python script.py`) to write TS files with template literals.
-- `Report` type is the central hub — changing it requires coordinated updates to all three renderers and all tests simultaneously. One branch = clean atomic change.
-- `totalPremiumRequests` is a raw Copilot value (not computed pricing) — retained in all renderers as-is.
-- JSON schema v2 is a clean break from v1; the `schema` field guards downstream consumers.
-
-**PR:** `squad/24-remove-pricing` → main (Closes #24)
-
-### CI Workflow — 2026-06-03
-
-**Workflow file:** `.github/workflows/ci.yml`
-
-**Triggers:** `pull_request` (any branch) + `workflow_dispatch` (manual from Actions tab)
-
-**Job shape:** Single job `test` on `ubuntu-latest`, timeout 10 min, matrix across Node [18.x, 20.x, 22.x].
-
-**Steps per matrix node:** checkout → setup-node (w/ npm cache) → `npm ci --no-fund --no-audit` → lint → build → test.
-
-**Concurrency:** `group: ci-${{ github.workflow }}-${{ github.ref }}` with `cancel-in-progress: true` — newer pushes to the same PR branch cancel stale runs.
-
-**Conventions to carry forward:**
-- Pin actions to major-version tags (`@v4`), not `@main` or full SHAs — matches squad-* workflow convention in this repo
-- `actions/setup-node@v4` with `cache: 'npm'` handles npm caching automatically via `package-lock.json`; no manual cache step needed
-- `npm ci --no-fund --no-audit` for clean, deterministic install logs in CI
-- 10-minute job timeout is generous for the current suite; tighten if suite grows significantly
-- Matrix strategy on Node versions catches version-specific regressions at low cost (parallel runners)
-
-### 2026-06-03 — Repository URL Migration (Trinity Lead)
-
-Trinity completed migration of canonical repository URL from `devjoy-pub/tscope` to `robpitcher/tscope`. All in-repo references updated including critical `src/render/HtmlRenderer.ts` REPO_URL constant that drives HTML report links. Build clean, 236 tests passing. See `.squad/decisions/decisions.md` for full scope.
-
-### 2026-06-04 — Distribution Model Analysis Complete (Trinity Lead)
-
-Trinity validated D2 (npm as primary distribution channel) against comprehensive analysis of Copilot CLI plugin model and gh CLI extensions. **Outcome: D2 confirmed, no amendment.** Copilot plugins are wrong architectural fit for standalone binary. gh-tscope extension viable as secondary channel post-v1.0 if reach expansion justifies cross-platform binary pipeline. Decision merged to decisions.md. Future horizon noted: add gh-tscope extension + precompiled binaries (win/mac/linux, amd64/arm64) post-v1.0, conditional on market demand.
-
+## Learnings — 2026-06-03 Merge Pivot (ARCHIVE)

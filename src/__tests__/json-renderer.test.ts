@@ -1,12 +1,10 @@
 /**
  * Tests for JsonRenderer — verifies JSON shape, field types, and edge cases.
- * Schema: tscope/report/v4 (totalTokens = input+output; cache is part of input)
+ * Schema: tscope/report/v5 (adds source provenance + costAvailable; v4 fields intact)
  */
 
 import { JsonRenderer } from "../render/JsonRenderer";
-import { Report, ParsedSession, InProgressSession } from "../types";
-
-/** Capture stdout output from a renderer call */
+import { Report, NormalizedSession, InProgressSession } from "../types";
 function captureOutput(report: Report): string {
   const chunks: string[] = [];
   jest.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
@@ -29,9 +27,12 @@ const EMPTY_REPORT: Report = {
   inProgressSessions: [],
   reportDate: "2026-06-02",
   filterDescription: "today",
+  source: "logs",
+  costAvailable: false,
+  coverage: { otelCount: 0, logsCount: 0, costCoverage: "none" },
 };
 
-const SAMPLE_SESSION: ParsedSession = {
+const SAMPLE_SESSION: NormalizedSession = {
   sessionId: "abc-00000000-1111-2222-3333-444444444444",
   eventsPath: "/home/user/.copilot/session-state/abc/events.jsonl",
   startTime: "2026-06-02T20:00:00.000Z",
@@ -53,6 +54,7 @@ const SAMPLE_SESSION: ParsedSession = {
   },
   chronicleTips: [],
   inProgress: false,
+  source: "logs",
 };
 
 const SAMPLE_IN_PROGRESS: InProgressSession = {
@@ -79,11 +81,110 @@ describe("JsonRenderer", () => {
   });
 
   describe("top-level schema fields", () => {
-    test("includes schema field with v4 value", () => {
+    test("includes schema field with v5 value", () => {
       const out = captureJson(EMPTY_REPORT);
-      expect(out.schema).toBe("tscope/report/v4");
+      expect(out.schema).toBe("tscope/report/v5");
     });
 
+    test("includes source field matching report.source", () => {
+      const out = captureJson(EMPTY_REPORT);
+      expect(out.source).toBe("logs");
+    });
+
+    test("includes costAvailable field matching report.costAvailable", () => {
+      const out = captureJson(EMPTY_REPORT);
+      expect(out.costAvailable).toBe(false);
+    });
+
+    test("source is 'otel' when report.source is otel", () => {
+      const report: Report = { ...EMPTY_REPORT, source: "otel", costAvailable: true };
+      const out = captureJson(report);
+      expect(out.source).toBe("otel");
+      expect(out.costAvailable).toBe(true);
+    });
+
+    test("source is 'mixed' when report.source is mixed", () => {
+      const report: Report = {
+        ...EMPTY_REPORT,
+        source: "mixed",
+        costAvailable: true,
+        coverage: { otelCount: 2, logsCount: 3, costCoverage: "partial" },
+      };
+      const out = captureJson(report);
+      expect(out.source).toBe("mixed");
+    });
+  });
+
+  describe("coverage field", () => {
+    test("coverage field is present in output", () => {
+      const out = captureJson(EMPTY_REPORT);
+      expect(out.coverage).toBeDefined();
+    });
+
+    test("coverage has otelCount, logsCount, costCoverage fields", () => {
+      const out = captureJson(EMPTY_REPORT);
+      expect(typeof out.coverage.otelCount).toBe("number");
+      expect(typeof out.coverage.logsCount).toBe("number");
+      expect(typeof out.coverage.costCoverage).toBe("string");
+    });
+
+    test("empty logs report has coverage {otelCount:0, logsCount:0, costCoverage:'none'}", () => {
+      const out = captureJson(EMPTY_REPORT);
+      expect(out.coverage.otelCount).toBe(0);
+      expect(out.coverage.logsCount).toBe(0);
+      expect(out.coverage.costCoverage).toBe("none");
+    });
+
+    test("otel-only coverage: costCoverage is 'all'", () => {
+      const otelSession: NormalizedSession = { ...SAMPLE_SESSION, source: "otel" };
+      const report: Report = {
+        ...EMPTY_REPORT,
+        source: "otel",
+        costAvailable: true,
+        coverage: { otelCount: 1, logsCount: 0, costCoverage: "all" },
+        sessions: [otelSession],
+      };
+      const out = captureJson(report);
+      expect(out.coverage.otelCount).toBe(1);
+      expect(out.coverage.logsCount).toBe(0);
+      expect(out.coverage.costCoverage).toBe("all");
+    });
+
+    test("mixed coverage: costCoverage is 'partial'", () => {
+      const otelSession: NormalizedSession = { ...SAMPLE_SESSION, source: "otel" };
+      const logsSession: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        sessionId: "logs-session-id",
+        source: "logs",
+      };
+      const report: Report = {
+        ...EMPTY_REPORT,
+        source: "mixed",
+        costAvailable: true,
+        coverage: { otelCount: 1, logsCount: 1, costCoverage: "partial" },
+        sessions: [otelSession, logsSession],
+      };
+      const out = captureJson(report);
+      expect(out.coverage.otelCount).toBe(1);
+      expect(out.coverage.logsCount).toBe(1);
+      expect(out.coverage.costCoverage).toBe("partial");
+      expect(out.source).toBe("mixed");
+    });
+
+    test("logs-only coverage: costCoverage is 'none', otelCount is 0", () => {
+      const report: Report = {
+        ...EMPTY_REPORT,
+        coverage: { otelCount: 0, logsCount: 2, costCoverage: "none" },
+        sessions: [SAMPLE_SESSION, { ...SAMPLE_SESSION, sessionId: "s2" }],
+      };
+      const out = captureJson(report);
+      expect(out.coverage.otelCount).toBe(0);
+      expect(out.coverage.logsCount).toBe(2);
+      expect(out.coverage.costCoverage).toBe("none");
+    });
+  });
+
+  describe("top-level schema fields (continued)", () => {
     test("includes generatedAt as ISO 8601 UTC string", () => {
       const out = captureJson(EMPTY_REPORT);
       expect(typeof out.generatedAt).toBe("string");
@@ -306,6 +407,85 @@ describe("JsonRenderer", () => {
     });
   });
 
+  describe("extended metrics serialization", () => {
+    const OTEL_SESSION: NormalizedSession = {
+      ...SAMPLE_SESSION,
+      source: "otel",
+      totalCost: 2.34,
+      modelCosts: { "claude-sonnet-4-5": 2.34 },
+      extended: {
+        reasoningTokens: 150,
+        contextWindow: {
+          usedTokens: 12500,
+          limitTokens: 128000,
+          utilizationRatio: 0.0977,
+        },
+      },
+    };
+
+    test("extended field is included in serialized session when present", () => {
+      const report: Report = {
+        ...EMPTY_REPORT,
+        source: "otel",
+        costAvailable: true,
+        sessions: [OTEL_SESSION],
+      };
+      const out = captureJson(report);
+      expect(out.sessions[0].extended).toBeDefined();
+    });
+
+    test("extended.reasoningTokens is serialized correctly", () => {
+      const report: Report = {
+        ...EMPTY_REPORT,
+        source: "otel",
+        costAvailable: true,
+        sessions: [OTEL_SESSION],
+      };
+      const out = captureJson(report);
+      expect(out.sessions[0].extended.reasoningTokens).toBe(150);
+    });
+
+    test("extended.contextWindow is serialized correctly", () => {
+      const report: Report = {
+        ...EMPTY_REPORT,
+        source: "otel",
+        costAvailable: true,
+        sessions: [OTEL_SESSION],
+      };
+      const out = captureJson(report);
+      const cw = out.sessions[0].extended.contextWindow;
+      expect(cw.usedTokens).toBe(12500);
+      expect(cw.limitTokens).toBe(128000);
+      expect(cw.utilizationRatio).toBeCloseTo(0.0977);
+    });
+
+    test("extended field is absent when session has no extended data (logs)", () => {
+      const report: Report = {
+        ...EMPTY_REPORT,
+        sessions: [SAMPLE_SESSION],
+      };
+      const out = captureJson(report);
+      expect(out.sessions[0].extended).toBeUndefined();
+    });
+
+    test("extended with only reasoningTokens (no contextWindow) serializes correctly", () => {
+      const partialExtended: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        source: "otel",
+        extended: { reasoningTokens: 75 },
+      };
+      const report: Report = {
+        ...EMPTY_REPORT,
+        source: "otel",
+        costAvailable: true,
+        sessions: [partialExtended],
+      };
+      const out = captureJson(report);
+      expect(out.sessions[0].extended.reasoningTokens).toBe(75);
+      expect(out.sessions[0].extended.contextWindow).toBeUndefined();
+    });
+  });
+
   describe("JSON output ends with newline", () => {
     test("output string ends with newline character", () => {
       const raw = captureOutput(EMPTY_REPORT);
@@ -328,13 +508,14 @@ describe("JsonRenderer", () => {
 
   describe("sessions with no token data are silently excluded", () => {
     test("completed session with empty models map is excluded", () => {
-      const emptyModelsSession: ParsedSession = {
+      const emptyModelsSession: NormalizedSession = {
         sessionId: "empty-models",
         eventsPath: "/some/path",
         startTime: "2026-06-02T20:00:00.000Z",
         models: {},
         chronicleTips: [],
         inProgress: false,
+        source: "logs",
       };
       const report: Report = {
         ...EMPTY_REPORT,
@@ -348,7 +529,7 @@ describe("JsonRenderer", () => {
     });
 
     test("completed session with all-zero token counts is excluded", () => {
-      const zeroSession: ParsedSession = {
+      const zeroSession: NormalizedSession = {
         sessionId: "all-zero",
         eventsPath: "/some/path",
         startTime: "2026-06-02T20:00:00.000Z",
@@ -363,6 +544,7 @@ describe("JsonRenderer", () => {
         },
         chronicleTips: [],
         inProgress: false,
+        source: "logs",
       };
       const report: Report = {
         ...EMPTY_REPORT,
@@ -374,13 +556,14 @@ describe("JsonRenderer", () => {
     });
 
     test("mixed report drops empty session but keeps session with real data", () => {
-      const emptyModelsSession: ParsedSession = {
+      const emptyModelsSession: NormalizedSession = {
         sessionId: "empty-models",
         eventsPath: "/some/path",
         startTime: "2026-06-02T20:00:00.000Z",
         models: {},
         chronicleTips: [],
         inProgress: false,
+        source: "logs",
       };
       const report: Report = {
         ...EMPTY_REPORT,

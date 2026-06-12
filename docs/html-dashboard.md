@@ -16,13 +16,21 @@ tscope --html report.html   # Generate dashboard at the specified path and open 
 
 ## Features
 
+- **Coverage summary** — for merged reports (default `--source auto`), shows "N OTel · M logs" and explains cost availability. For single-source reports, shows a source badge (blue for OTel, muted for logs).
+- **Per-session source badge** — every session card displays its own source badge ("OTel" or "log parser") so you always know which sessions have authoritative cost data.
 - **Total Tokens** summary stat card
+- **Total Credits** stat card — shows the sum of AI credits across OTel sessions only. For mixed reports, the subtitle notes "OTel sessions only". Absent for pure logs-only reports.
 - **Tokens Over Time** chart (one bar per session, chronological; hover a bar for the token-type breakdown)
+- **Credits by Model** chart — OTel sessions only; shows AI credit totals grouped by model name
 - **Chronicle Insights** box — if any session ran `/chronicle tips` or `/chronicle cost-tips`, the most recent set of recommendations is parsed and shown in its own box, below the *Tokens Over Time* chart and above the session list (see below)
 - Per-session cards with:
+  - **Source badge** — "OTel" (blue) or "log parser" (muted) so you know provenance at a glance
+  - **Credit chip** (green, OTel only) — shows `X.XX credits` for the session's total cost
+  - **Cost unavailable chip** (logs only) — transparent badge saying "no cost data" to indicate logs do not include billing data
   - **Token Usage by Model** — stacked bar chart (fresh input / cacheRead / cacheWrite / output)
   - **Tokens by Model** — horizontal bars (total tokens per model; hover for the token-type breakdown)
   - **Cache Efficiency** — % cache hit rate per model
+  - **Context Window** bar (OTel only, when utilization data is present) — a horizontal fill bar showing the most recently observed context usage vs. the model's limit. The bar turns amber (`.ctx-window-high`) when utilization reaches ≥ 80%. The fill is clamped to [0, 100%] so anomalous OTel data never overflows the bar.
 
 The HTML file is fully self-contained (no external dependencies, works offline). The only outbound links point to the project repository.
 
