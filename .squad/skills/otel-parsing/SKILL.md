@@ -137,7 +137,7 @@ Note: OTel `startTime` on the first `invoke_agent` span is ~10s later than `even
    c. Accumulate TokenCounts using addTokenCounts() from tokens.ts
    d. Track minimum startTime per conversation → session start time
    e. Accumulate github.copilot.nano_aiu for server-side credit total (optional)
-   f. Extract contextWindow signals from span events (bonus)
+   f. Overwrite lastContextWindowSample with the latest window event from span events
 6. For each session bucket (conversation ID):
    a. Build NormalizedSession { sessionId: conversationId, models, startTime, source:"otel", ... }
    b. Use tokens.hasTokenData() to filter zero-token sessions
@@ -147,6 +147,8 @@ Note: OTel `startTime` on the first `invoke_agent` span is ~10s later than `even
 **Multi-session interleaving:** All sessions share one file. Group by `gen_ai.conversation.id`. Never assume sequential session boundaries.
 
 **Date filtering:** Convert earliest span's `[unixSeconds, ns]` → ISO 8601 → `utcToLocalDateString()` → apply `SessionDatePredicate` (synchronous string comparison). The async file I/O happens in the source, not the predicate.
+
+**Context window accumulator pattern:** Use a single `lastContextWindowSample: { used, limit } | null` field per session (not an array). Only the last sample is meaningful; retaining all samples wastes memory for large files. Assign on every new sample — the last write wins. See `src/sources/otelSource.ts` `SessionAccumulator`.
 
 **Module location:** `src/sources/otelSource.ts` — exports `OtelDataSource` class and `isOtelAvailable()` helper.
 

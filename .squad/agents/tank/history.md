@@ -82,4 +82,34 @@ Fixed stale CLI help text for `tscope otel enable` and `tscope otel disable` com
 
 ---
 
+## Learnings — 2026-06-11 PR #8 Review Fixes (commit 3b82f00)
+
+**Decision: report.source provenance under empty --source otel result set.**
+When `--source otel` is used and a date filter returns 0 sessions, `computeReportSource({otelCount:0, logsCount:0})` falls back to `"logs"`. This was misleading: the footer said "event logs (historical)" while stderr showed an OTel hint. Fix: in `src/index.ts`, after coverage computation, a guard overrides `reportSource = "otel"` when `finalCompleted.length === 0 && args.sourceMode === "otel"`. The `computeReportSource` pure function is unchanged — its empty-set fallback remains `"logs"`, which is correct for `auto` mode. `costAvailable` stays false (no actual sessions = no cost data, accurate). Test in `source-selection.test.ts`.
+
+**Decision: context-window clamping — text vs HTML vs JSON.**
+- `HtmlRenderer`: clamps via `clamp01()` (already present)
+- `TextRenderer`: now clamps with `Math.max(0, Math.min(1, cw.utilizationRatio))` — matches HTML exactly
+- `JsonRenderer`: raw `utilizationRatio` passed through unchanged — JSON is a data format, downstream consumers should interpret as-is
+Tests added in `text-renderer.test.ts` for overflow (>1) and negative (<0) ratios.
+
+**Decision: contextWindowSamples memory fix.**
+Replaced the `contextWindowSamples: Array<...>` accumulator with `lastContextWindowSample: { used, limit } | null` in `SessionAccumulator`. Behaviour identical (last sample was always used); O(spans) allocation per session removed. No test changes needed — existing "uses last sample" and "later span overwrites" tests still pass.
+
+**Decision: docs/how-it-works.md reasoning-tokens note.**
+Updated to reflect that text output shows Reasoning row for ALL sources (OTel + logs) when >0. HTML omits reasoning tokens. The old note was wrong on both axes.
+
+**Key file paths:**
+- `src/index.ts` — provenance override at the `computeReportSource` call site (lines ~453+)
+- `src/render/TextRenderer.ts` — context window clamping at line ~141
+- `src/sources/otelSource.ts` — `SessionAccumulator.lastContextWindowSample` (was `contextWindowSamples`)
+- `src/__tests__/source-selection.test.ts` — new test "JSON report.source is 'otel' even when..."
+- `src/__tests__/text-renderer.test.ts` — two new clamping tests in "extended metrics — context window"
+- `docs/how-it-works.md` — reasoning-tokens note line 78
+- `.changeset/pr8-review-fixes-20260611.md` — patch changeset
+
+**Build/test/lint:** 533 tests pass (3 new), tsc clean, eslint clean. Commit 3b82f00, pushed to `otel`.
+
+---
+
 ## Learnings — 2026-06-03 Merge Pivot (ARCHIVE)
