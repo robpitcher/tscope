@@ -174,3 +174,13 @@ Tank resolved all 4 open Copilot review comments (PR #8). Key fixes relevant to 
 - Date: 2026-06-13T01:28:12.982-04:00
 - Rationale: Fixed-width sidebar with `flex-direction: column` ensures uniform control width (100%); toggle button improves UX; traditional vertical filter scanning pattern
 - Outcome: Collapsible sidebar implementation complete, CSS uniform pill sizing achieved
+- [2026-06-13T01:42:27.433-04:00] Reverted sidebar layout in favor of top-horizontal filters row for better visual hierarchy. Moved Export CSV to header and pulled generated timestamp into its own row for clarity.
+
+### 2026-06-13T05:49:09Z — Header Reorganization Task Spawned
+
+**Status:** Background task active
+
+- **Task:** Revert collapsible sidebar to a horizontal row and update header layout based on user feedback
+- **Expected outcome:** Remove OTel/logs pill, move 'Export CSV' to header, move timestamp below header, reorganize filters into horizontal row
+- **Rationale:** Further refinement of filter UI to improve visual hierarchy and usability
+- Agent: switch (background mode)
