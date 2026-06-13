@@ -64,7 +64,13 @@
 - 2026-06-13: **Template-literal raw-newline gotcha.** In TypeScript, `'\n'` inside a backtick template literal resolves to a real LF byte (0x0A) in the string value. When that value is emitted inside `<script>…</script>` as a single-quoted JS string, the raw LF is a SyntaxError — ECMAScript string literals cannot contain literal line terminators. Same applies to `'\r'` (CR) and `'\r\n'` (CRLF). Fix: double-escape to `'\\n'`, `'\\r'`, `'\\r\\n'` so the emitted JS has the proper escape-sequence form. Convention: match the pattern already used for `\\t` and `\\r` in the CSV injection regex. The critical second consequence: ALL IIFEs share a single `<script>` block, so a SyntaxError anywhere in the JS constant kills ALL client-side behaviour (sort, CSV, theme toggle, tooltips).
 - 2026-06-13: Sort dropdown implementation complete. Three options: session date (newest first), token count (highest first), AI credits consumed (highest first). DOM reordering preserves card structure; no rebuilds. In-progress cards integrate naturally (date sort), or float to bottom (token/credit sorts). All tests pass (83 total), lint clean, build passes. Global tscope reinstalled and verified.
 
-### 2026-06-13 — Standardize Dashboard Filters (Current)
+### 2026-06-13 — Toolbar Right-Align & Icon-Only Theme Toggle (Completed)
+
+- **Toolbar:** Changed `.report-toolbar` from `justify-content: space-between` to `justify-content: flex-end` so the Sort group and CSV button float to the right edge of the stat cards container.
+- **Theme toggle:** Replaced elongated pill (text "Dark"/"Light" with icon) with a 32×32 round icon-only button (`border-radius: 50%`). Button shows ☾ when in light mode (click to go dark) and ☀ when in dark mode (click to go light). `aria-label` and `title` update dynamically to "Switch to dark/light theme" for accessibility.
+- Build, lint, and all 85 html-renderer tests pass.
+
+
 
 **Orchestration Log:** 2026-06-13T02-41-13Z-switch.md
 
