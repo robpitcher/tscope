@@ -150,3 +150,6 @@ Tank resolved all 4 open Copilot review comments (PR #8). Key fixes relevant to 
 4. **Provenance fix:** src/index.ts now respects explicit `--source otel` on empty results (no misleading "logs" label).
 
 **Validation:** 533 tests passing (+3 new edge cases), lint/build clean.
+
+## Learnings
+- (2026-06-13T00:52:07.174-04:00) Redesigned the filter bar to be cleaner and simpler based on user feedback. The 'Source' and 'Models' native multi-selects were replaced with custom floating dropdown menus containing checkboxes and 'All' toggles. Numeric filters (Tokens, Credits, API Time) were simplified into 'Gemini style' inline minimal inputs instead of separate <select> operators, hardcoding to '≥' (minimum threshold) as it covers the vast majority of use cases while dramatically reducing visual noise in the HtmlRenderer.ts dashboard.
