@@ -2,7 +2,7 @@
 
 ## Basic Usage
 
-Show today's sessions:
+Show the 10 most recent sessions:
 
 ```bash
 tscope
@@ -76,7 +76,7 @@ OTel coverage is forward-only from the moment you run `tscope otel enable`. Sess
 tscope --date 2026-06-02              # Sessions for a specific date
 tscope --range 2026-06-01 2026-06-02  # Sessions in a date range (YYYY-MM-DD, inclusive)
 tscope --lastdays 7                   # Sessions from the last 7 days (today + previous 6)
-tscope --all                          # All sessions (no date filter)
+tscope --all                          # All sessions (no date filter or default cap)
 ```
 
 ## Limiting Result Size
@@ -92,13 +92,14 @@ tscope --all --max 25                 # 25 most recent sessions overall
 
 `N` must be a positive integer. When fewer than `N` sessions match the filter,
 the report includes them all. `--max` composes with every date filter
-(`--date`, `--range`, `--lastdays`, `--all`, or the default "today").
+(`--date`, `--range`, `--lastdays`, `--all`) and, by itself, returns the N
+most recent sessions across all history.
 
 ### How a session's date is determined
 
 Sessions are bucketed by their **start date** — the timestamp of the `session.start` event (or, for sessions without one, the timestamp of the first recorded event), converted to your local timezone. A session is only counted on the day it *started*.
 
-This means if you **continue a session from a previous day**, it stays under the day it started and will **not** appear in today's report — even though you worked on it today. Use `--all`, or `--date`/`--range` for the original start day, to see it. Bucketing by start date keeps each session's token totals attributed to a single day (token metrics are cumulative for the whole session, so counting a multi-day session on every active day would double-count usage).
+This means if you **continue a session from a previous day**, it stays under the day it started. Use `--date`/`--range` for the original start day, or rely on the default recent-session view, to see it. Bucketing by start date keeps each session's token totals attributed to a single day (token metrics are cumulative for the whole session, so counting a multi-day session on every active day would double-count usage).
 
 ## Output Formats
 
