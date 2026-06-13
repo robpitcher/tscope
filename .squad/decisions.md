@@ -893,3 +893,25 @@ changes do not trigger screenshot regeneration, keeping the workflow fast.
 | `.github/workflows/update-docs.md` | Added step 6 (Screenshot Regeneration); bumped `timeout-minutes` 15→25; updated `description` |
 | `scripts/screenshot-dashboard.mjs` | New — synthetic Report + HtmlRenderer invocation |
 | `.squad/agents/switch/history.md` | Learnings appended |
+
+---
+
+## Decision: Responsive Collapsible Sidebar for Filters
+
+**Date:** 2026-06-13T01:28:12.982-04:00  
+**Agent:** Switch  
+**Status:** Accepted
+
+### Context
+
+The HTML dashboard was looking uneven and crowded at the top because of the numerous filter controls (source, model, token thresholds, sorting, etc.) and they weren't uniform in size.
+
+### Decision
+
+Moved the entire filter suite into a fixed-width collapsible sidebar (`.sidebar-filters`) on the left side of the dashboard.
+
+### Rationale
+
+- Setting `.dashboard-controls` to `flex-direction: column` within the sidebar ensures all inputs and dropdowns share a uniform width (`100%`) without manual syncing.
+- Adds an explicit filter toggle button, keeping the main content focused purely on data visualization when collapsed.
+- Better maps to traditional dashboard layouts where vertical scanning of filters is standard UX.

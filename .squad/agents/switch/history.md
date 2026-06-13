@@ -153,3 +153,24 @@ Tank resolved all 4 open Copilot review comments (PR #8). Key fixes relevant to 
 
 ## Learnings
 - (2026-06-13T00:52:07.174-04:00) Redesigned the filter bar to be cleaner and simpler based on user feedback. The 'Source' and 'Models' native multi-selects were replaced with custom floating dropdown menus containing checkboxes and 'All' toggles. Numeric filters (Tokens, Credits, API Time) were simplified into 'Gemini style' inline minimal inputs instead of separate <select> operators, hardcoding to '≥' (minimum threshold) as it covers the vast majority of use cases while dramatically reducing visual noise in the HtmlRenderer.ts dashboard.
+
+### 2026-06-13 — Filter Pills Uniformity and Sidebar Layout
+
+- **Issue:** Filter pills looked uneven in size; filters took up too much horizontal space.
+- **Action:** Moved filters into a new collapsible sidebar on the left side of the dashboard.
+- **Implementation:** 
+  - Created .main-layout flex container for the dashboard.
+  - Added .sidebar-filters column with a fixed width, taking advantage of lex-direction: column and lign-items: stretch to make all filter controls (dropdown toggles, gemini-style inputs) uniform in width.
+  - Standardized .dropdown-toggle, .gemini-input-wrap, and .sort-row select to height: 30px and ox-sizing: border-box.
+  - Added a .toggle-sidebar-btn next to the export button to expand/collapse the sidebar, implemented with JS class toggles and CSS transitions.
+  - Adjusted mobile responsiveness to stack the sidebar natively on smaller screens.
+- **Impact:** Cleaner, more predictable UI; filter controls are now perfectly uniform and don't crowd the top timeline area.
+
+### 2026-06-13 — Collapsible Sidebar Decision Finalized
+
+**Status:** Decision documented and merged to decisions.md
+
+- Decision: Responsive Collapsible Sidebar for Filters (Status: Accepted)
+- Date: 2026-06-13T01:28:12.982-04:00
+- Rationale: Fixed-width sidebar with `flex-direction: column` ensures uniform control width (100%); toggle button improves UX; traditional vertical filter scanning pattern
+- Outcome: Collapsible sidebar implementation complete, CSS uniform pill sizing achieved
