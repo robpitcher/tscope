@@ -915,3 +915,17 @@ Moved the entire filter suite into a fixed-width collapsible sidebar (`.sidebar-
 - Setting `.dashboard-controls` to `flex-direction: column` within the sidebar ensures all inputs and dropdowns share a uniform width (`100%`) without manual syncing.
 - Adds an explicit filter toggle button, keeping the main content focused purely on data visualization when collapsed.
 - Better maps to traditional dashboard layouts where vertical scanning of filters is standard UX.
+
+## 2026-06-13
+
+### Removed Calendar Filter from UI
+
+**Date:** 2026-06-13
+**Author:** Switch
+
+**Context:** The dashboard header contained an interactive calendar filter (\date-filter\, \ilter-pill\, etc.) allowing client-side date filtering over the sessions payload.
+
+**Decision:** I have entirely removed the interactive calendar widget and its associated JS/CSS from the HTML template.
+
+**Rationale:** The dashboard generates reports based on sessions provided by the CLI. Since the CLI already handles time-bounding and session selection natively (e.g. \--since\), the client-side calendar filter was redundant visual clutter that duplicated CLI responsibilities.
+
