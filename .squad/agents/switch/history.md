@@ -49,6 +49,12 @@
 - **UI Refinement:** Applied uniform pill styling (border-radius: 100px) across filter row
 - **Decision merged to decisions.md:** "Use custom checkbox dropdowns for Model/Source filters"
 
+### 2026-06-13 — Connected Group Style for Sort Controls (Completed)
+
+- **Change:** Replaced `border-radius: 100px` pill styling on `.export-btn`, `.sort-select`, and `.sort-dir-btn` with `var(--radius)` to match card corner style.
+- **Segmented control:** Wrapped `.sort-select` and `.sort-dir-btn` in a new `<div class="sort-group">` (flex container, no gap). Left control has square right corners; right control has square left corners. Removed `border-right` from `.sort-select` to prevent double border at the join.
+- **No JS changes.** Build, lint, and all 85 html-renderer tests pass.
+
 ## Learnings
 - 2026-06-13: Complex client-side filtering/sorting over a static CLI report proved too confusing and cluttered. Removed all interactive filter/sort UI and JavaScript to favor a simpler "at-a-glance" read with a single "Export CSV" button for offline manipulation.
 - 2026-06-13: Re-implemented the UI dashboard cleanup. Ensured horizontal filter layout, removed the top header pill, moved Export CSV inline, reordered the total cards (Credits before Tokens), updated Date Generated timestamp and card, removed API Time filter, and changed Asc/Desc sorting to ▲/▼ arrows. Fixed unit tests that were failing because they asserted the presence of the removed UI elements.
