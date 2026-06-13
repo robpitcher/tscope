@@ -770,7 +770,7 @@ a:hover { text-decoration: underline; }
 .export-btn {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 100px;
+  border-radius: var(--radius);
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 13px;
@@ -787,12 +787,17 @@ a:hover { text-decoration: underline; }
   color: var(--text-primary);
 }
 
+.sort-group {
+  display: flex;
+  flex-shrink: 0;
+}
 .sort-select {
   appearance: none;
   -webkit-appearance: none;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 100px;
+  border-right: none;
+  border-radius: var(--radius) 0 0 var(--radius);
   color: var(--text-secondary);
   cursor: pointer;
   font-family: inherit;
@@ -817,7 +822,7 @@ a:hover { text-decoration: underline; }
 .sort-dir-btn {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 100px;
+  border-radius: 0 var(--radius) var(--radius) 0;
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 13px;
@@ -1797,12 +1802,14 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
 <div class="report-toolbar container">
   <div class="dashboard-controls" id="dashboard-controls" aria-label="Dashboard controls">
     <label class="sort-label" for="sort-sessions">Sort:</label>
-    <select class="sort-select" id="sort-sessions" aria-label="Sort sessions by">
-      <option value="date">Session date</option>
-      <option value="tokens">Token count</option>
-      <option value="credits">AI credits</option>
-    </select>
-    <button class="sort-dir-btn" id="sort-direction" type="button" aria-label="Sort descending">&#x25BC;</button>
+    <div class="sort-group">
+      <select class="sort-select" id="sort-sessions" aria-label="Sort sessions by">
+        <option value="date">Session date</option>
+        <option value="tokens">Token count</option>
+        <option value="credits">AI credits</option>
+      </select>
+      <button class="sort-dir-btn" id="sort-direction" type="button" aria-label="Sort descending">&#x25BC;</button>
+    </div>
     <button class="export-btn" id="export-csv" type="button" aria-label="Export sessions to CSV" title="Download all sessions as a CSV file">&#x2B07; CSV</button>
   </div>
 </div>
