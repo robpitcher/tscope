@@ -504,6 +504,9 @@ describe("HtmlRenderer", () => {
       id: string;
       start: string | null;
       inProgress: boolean;
+      source: "otel" | "logs" | null;
+      totalCost: number | null;
+      models: string[];
       totalTokens: number;
       input: number;
       cacheRead: number;
@@ -543,6 +546,9 @@ describe("HtmlRenderer", () => {
       if (!done) throw new Error("completed session not found");
       expect(done.id).toBe(SAMPLE_SESSION.sessionId);
       expect(done.start).toBe(SAMPLE_SESSION.startTime);
+      expect(done.source).toBe("logs");
+      expect(done.totalCost).toBeNull();
+      expect(done.models).toEqual(["claude-sonnet-4-5", "claude-haiku-4-5"]);
       // total = input + output (cache is part of input): (1000+500)+(300+100) = 1900
       expect(done.totalTokens).toBe(1900);
       // input column is fresh (uncached) input: (1000-700-100)+(300-0-0) = 200+300 = 500
@@ -568,6 +574,83 @@ describe("HtmlRenderer", () => {
       expect(html).toContain('id="range-from"');
       expect(html).toContain('id="range-to"');
       expect(html).toContain('id="range-apply"');
+    });
+
+    test("renders filter toolbar controls for source, models, thresholds, and reset", () => {
+      const sessionWithCostAndApi: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        source: "otel",
+        totalCost: 1.25,
+        apiDurationMs: 4669,
+      };
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [sessionWithCostAndApi] },
+        "html-test-filter-toolbar.html"
+      );
+      expect(html).toContain('id="dashboard-filter-sort-controls"');
+      expect(html).toContain('id="filter-source"');
+      expect(html).toContain('id="filter-model"');
+      expect(html).toContain('id="filter-model-all"');
+      expect(html).toContain('id="filter-model-clear"');
+      expect(html).toContain('id="filter-tokens-op"');
+      expect(html).toContain('id="filter-tokens-value"');
+      expect(html).toContain('id="filter-credits-op"');
+      expect(html).toContain('id="filter-credits-value"');
+      expect(html).toContain('id="filter-api-time-op"');
+      expect(html).toContain('id="filter-api-time-value"');
+      expect(html).toContain('id="reset-filters"');
+    });
+
+    test("renders sort controls with Date/Credits/Tokens/API Time options and direction toggle", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-sort-controls.html"
+      );
+      expect(html).toContain('id="sort-key"');
+      expect(html).toContain('<option value="date">Date</option>');
+      expect(html).toContain('<option value="credits">Credits</option>');
+      expect(html).toContain('<option value="tokens">Tokens</option>');
+      expect(html).toContain('<option value="apiTime">API Time</option>');
+      expect(html).toContain('id="sort-dir"');
+      expect(html).toContain('data-dir="desc"');
+    });
+
+    test("omits the credits filter when no embedded session has totalCost", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-no-credits-filter.html"
+      );
+      expect(html).not.toContain('id="filter-credits-group"');
+      expect(html).not.toContain('id="filter-credits-value"');
+    });
+
+    test("renders the credits filter when at least one embedded session has totalCost", () => {
+      const sessionWithCost: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        source: "otel",
+        totalCost: 1.25,
+      };
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [sessionWithCost] },
+        "html-test-credits-filter.html"
+      );
+      expect(html).toContain('id="filter-credits-group"');
+      expect(html).toContain('id="filter-credits-value"');
+    });
+
+    test("renders the API time filter only when at least one session has API duration data", () => {
+      const noApiHtml = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-no-api-filter.html"
+      );
+      const apiHtml = renderToString(
+        { ...EMPTY_REPORT, sessions: [{ ...SAMPLE_SESSION, apiDurationMs: 4669 }] },
+        "html-test-api-filter.html"
+      );
+      expect(noApiHtml).not.toContain('id="filter-api-time-group"');
+      expect(noApiHtml).not.toContain('id="filter-api-time-value"');
+      expect(apiHtml).toContain('id="filter-api-time-group"');
+      expect(apiHtml).toContain('id="filter-api-time-value"');
     });
 
     test("renders an Export CSV button in the header with client-side wiring", () => {

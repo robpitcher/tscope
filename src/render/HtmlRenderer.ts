@@ -256,6 +256,9 @@ interface SessionTokenSummary {
   /** ISO 8601 UTC start time, or null if unknown (some in-progress sessions). */
   start: string | null;
   label: string;
+  source: "otel" | "logs" | null;
+  totalCost: number | null;
+  models: string[];
   totalTokens: number;
   input: number;
   cacheRead: number;
@@ -812,9 +815,78 @@ button.filter-badge:hover { background: var(--border); color: var(--text-primary
 
 .report-toolbar {
   display: flex;
-  justify-content: flex-end;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
   margin-top: 24px;
   margin-bottom: 12px;
+}
+.dashboard-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 108px;
+}
+.control-group label,
+.control-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+.control-group select,
+.control-group input {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  min-height: 30px;
+  padding: 4px 8px;
+  color-scheme: dark light;
+}
+.threshold-row,
+.sort-row,
+.model-actions {
+  display: flex;
+  gap: 6px;
+}
+.threshold-row input { width: 92px; }
+.threshold-row select { min-width: 48px; }
+.model-filter-group { min-width: 150px; }
+#filter-model {
+  min-height: 66px;
+  padding: 4px;
+}
+.model-actions button,
+.reset-filters-btn,
+.sort-dir-btn {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 8px;
+  transition: background 0.15s, color 0.15s;
+}
+.model-actions button {
+  flex: 1;
+  font-size: 11px;
+  padding: 3px 6px;
+}
+.model-actions button:hover,
+.reset-filters-btn:hover,
+.sort-dir-btn:hover {
+  background: var(--border);
+  color: var(--text-primary);
 }
 
 .summary-strip {
@@ -1481,7 +1553,7 @@ const JS = `
 })();
 
 (function() {
-  // Client-side date-range filtering over the embedded (CLI-selected) sessions.
+  // Client-side filtering/sorting over the embedded (CLI-selected) sessions.
   var dataEl = document.getElementById('tscope-data');
   if (!dataEl) return;
   var DATA;
@@ -1526,12 +1598,85 @@ const JS = `
   // user is actually looking at. Initialised to the full embedded payload.
   var currentFiltered = SESSIONS.slice();
   var currentFilterLabel = 'all';
+  var dateMode = 'all';
+  var dateFrom = minDate;
+  var dateTo = maxDate;
+  var dateLabel = 'All';
+  var sourceFilter = 'all';
+  var tokenOp = 'gte';
+  var tokenThreshold = null;
+  var creditsOp = 'gte';
+  var creditsThreshold = null;
+  var apiTimeOp = 'gte';
+  var apiTimeThreshold = null;
+  var sortKey = 'date';
+  var sortDir = 'desc';
 
   function inRange(s, mode, from, to) {
     if (mode === 'all') return true;
     var ld = localDate(s.start);
     if (!ld) return false;
     return ld >= from && ld <= to;
+  }
+
+  function selectedModels() {
+    var sel = document.getElementById('filter-model');
+    var values = [];
+    if (!sel || !sel.options) return values;
+    for (var i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].selected) values.push(sel.options[i].value);
+    }
+    return values;
+  }
+
+  function matchesThreshold(value, op, threshold, excludeNull) {
+    if (threshold === null) return true;
+    if (value === null || value === undefined) return !excludeNull;
+    var n = Number(value);
+    if (!isFinite(n)) return !excludeNull;
+    return op === 'lte' ? n <= threshold : n >= threshold;
+  }
+
+  function passesNonDateFilters(s, modelFilters) {
+    if (sourceFilter !== 'all' && s.source !== sourceFilter) return false;
+    if (modelFilters.length > 0) {
+      var anyModel = false;
+      var models = s.models || [];
+      for (var i = 0; i < models.length; i++) {
+        if (modelFilters.indexOf(models[i]) !== -1) { anyModel = true; break; }
+      }
+      if (!anyModel) return false;
+    }
+    if (!matchesThreshold(s.totalTokens, tokenOp, tokenThreshold, false)) return false;
+    // Credits/API-time may be unavailable; active thresholds exclude unknowns
+    // because a null value cannot be confirmed to satisfy either comparator.
+    if (!matchesThreshold(s.totalCost, creditsOp, creditsThreshold, true)) return false;
+    if (!matchesThreshold(s.apiDurationMs, apiTimeOp, apiTimeThreshold, true)) return false;
+    return true;
+  }
+
+  function metricValue(s, key) {
+    if (key === 'tokens') return Number(s.totalTokens || 0);
+    if (key === 'credits') return s.totalCost == null ? null : Number(s.totalCost);
+    if (key === 'apiTime') return s.apiDurationMs == null ? null : Number(s.apiDurationMs);
+    if (!s.start) return null;
+    var t = new Date(s.start).getTime();
+    return isNaN(t) ? null : t;
+  }
+
+  function sortSessions(list) {
+    var sorted = list.slice();
+    sorted.sort(function(a, b) {
+      var av = metricValue(a, sortKey);
+      var bv = metricValue(b, sortKey);
+      if (av === null && bv === null) return String(a.id || '').localeCompare(String(b.id || ''));
+      if (av === null) return 1;
+      if (bv === null) return -1;
+      if (av === bv) return String(a.id || '').localeCompare(String(b.id || ''));
+      var cmp = av < bv ? -1 : 1;
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return sorted;
   }
 
   function buildTimeline(list) {
@@ -1570,44 +1715,71 @@ const JS = `
   function setText(id, text) { var el = document.getElementById(id); if (el) el.textContent = text; }
 
   function recompute(list) {
-    var total = 0, completed = 0, inprog = 0;
+    var total = 0, completed = 0, inprog = 0, credits = 0, creditSessions = 0;
     for (var i = 0; i < list.length; i++) {
       total += list[i].totalTokens;
       if (list[i].inProgress) inprog++; else completed++;
+      if (list[i].totalCost !== null && list[i].totalCost !== undefined) {
+        credits += Number(list[i].totalCost) || 0;
+        creditSessions++;
+      }
     }
     setText('stat-total-value', compact(total));
     setText('stat-total-sub', fmtNum(total) + ' tokens');
     setText('stat-sessions-value', String(list.length));
     setText('stat-sessions-sub', completed + ' completed' + (inprog > 0 ? ', ' + inprog + ' in progress' : ''));
+    setText('stat-credits-value', credits.toFixed(2));
+    setText('stat-credits-sub', creditSessions + ' session' + (creditSessions === 1 ? '' : 's') + ' with credits');
   }
 
   function toggleCards(list) {
     var visible = {};
     for (var i = 0; i < list.length; i++) visible[list[i].id] = true;
-    var cards = document.querySelectorAll('.session-card[data-session-id]');
+    var host = document.getElementById('sessions-host');
+    var cards = host ? host.querySelectorAll('.session-card[data-session-id]') : document.querySelectorAll('.session-card[data-session-id]');
+    var cardMap = {};
+    for (var c = 0; c < cards.length; c++) cardMap[cards[c].getAttribute('data-session-id')] = cards[c];
     var anyVisible = false;
     for (var j = 0; j < cards.length; j++) {
       var on = !!visible[cards[j].getAttribute('data-session-id')];
       cards[j].style.display = on ? '' : 'none';
       if (on) anyVisible = true;
     }
+    if (host) {
+      for (var k = 0; k < list.length; k++) {
+        var card = cardMap[list[k].id];
+        if (card) host.appendChild(card);
+      }
+    }
     var empty = document.getElementById('sessions-empty');
     if (empty) empty.hidden = anyVisible || cards.length === 0;
   }
 
-  function apply(mode, from, to, labelText) {
+  function applyDate(mode, from, to, labelText) {
+    dateMode = mode;
+    dateFrom = from;
+    dateTo = to;
+    dateLabel = labelText;
+    recomputeView();
+  }
+
+  function recomputeView() {
+    var modelFilters = selectedModels();
     var filtered = [];
     for (var i = 0; i < SESSIONS.length; i++) {
-      if (inRange(SESSIONS[i], mode, from, to)) filtered.push(SESSIONS[i]);
+      if (inRange(SESSIONS[i], dateMode, dateFrom, dateTo) && passesNonDateFilters(SESSIONS[i], modelFilters)) {
+        filtered.push(SESSIONS[i]);
+      }
     }
-    currentFiltered = filtered;
-    currentFilterLabel = labelText;
-    recompute(filtered);
+    var sorted = sortSessions(filtered);
+    currentFiltered = sorted;
+    currentFilterLabel = dateLabel;
+    recompute(sorted);
     var host = document.getElementById('timeline-host');
-    if (host) host.innerHTML = buildTimeline(filtered);
-    toggleCards(filtered);
-    setText('filter-pill-label', labelText);
-    setText('stat-filter-value', labelText);
+    if (host) host.innerHTML = buildTimeline(sorted);
+    toggleCards(sorted);
+    setText('filter-pill-label', dateLabel);
+    setText('stat-filter-value', dateLabel);
     updateExportState();
   }
 
@@ -1627,38 +1799,42 @@ const JS = `
   var toInput = document.getElementById('range-to');
   var applyBtn = document.getElementById('range-apply');
   var errEl = document.getElementById('range-error');
-  if (!pill || !pop) return;
 
   if (fromInput) { fromInput.min = minDate; fromInput.max = maxDate; fromInput.value = minDate; }
   if (toInput) { toInput.min = minDate; toInput.max = maxDate; toInput.value = maxDate; }
 
   function openPop() { pop.hidden = false; pill.setAttribute('aria-expanded', 'true'); }
   function closePop() { pop.hidden = true; pill.setAttribute('aria-expanded', 'false'); }
-  pill.addEventListener('click', function(e) {
-    e.stopPropagation();
-    if (pop.hidden) openPop(); else closePop();
-  });
-  document.addEventListener('click', function(e) {
-    if (df && !df.contains(e.target)) closePop();
-  });
-  document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closePop(); });
+  if (pill && pop) {
+    pill.addEventListener('click', function(e) {
+      e.stopPropagation();
+      if (pop.hidden) openPop(); else closePop();
+    });
+    document.addEventListener('click', function(e) {
+      if (df && !df.contains(e.target)) closePop();
+    });
+    document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closePop(); });
+  }
 
   function clearActive() {
+    if (!pop) return;
     var ps = pop.querySelectorAll('.preset');
     for (var i = 0; i < ps.length; i++) ps[i].classList.remove('is-active');
   }
 
-  var presetBtns = pop.querySelectorAll('.preset');
-  for (var i = 0; i < presetBtns.length; i++) {
-    presetBtns[i].addEventListener('click', function() {
-      var mode = this.getAttribute('data-preset');
-      clearActive();
-      this.classList.add('is-active');
-      if (errEl) errEl.hidden = true;
-      var r = presetRange(mode);
-      apply(mode, r[0], r[1], presetLabels[mode] || 'All');
-      closePop();
-    });
+  if (pop) {
+    var presetBtns = pop.querySelectorAll('.preset');
+    for (var i = 0; i < presetBtns.length; i++) {
+      presetBtns[i].addEventListener('click', function() {
+        var mode = this.getAttribute('data-preset');
+        clearActive();
+        this.classList.add('is-active');
+        if (errEl) errEl.hidden = true;
+        var r = presetRange(mode);
+        applyDate(mode, r[0], r[1], presetLabels[mode] || 'All');
+        closePop();
+      });
+    }
   }
 
   if (applyBtn) {
@@ -1672,10 +1848,104 @@ const JS = `
       if (from > to) { var tmp = from; from = to; to = tmp; }
       if (errEl) errEl.hidden = true;
       clearActive();
-      apply('range', from, to, from + ' to ' + to);
+      applyDate('range', from, to, from + ' to ' + to);
       closePop();
     });
   }
+
+  function readNumberInput(id) {
+    var el = document.getElementById(id);
+    if (!el || el.value === '') return null;
+    var n = Number(el.value);
+    return isFinite(n) ? n : null;
+  }
+
+  function selectedValue(id, fallback) {
+    var el = document.getElementById(id);
+    return el && el.value ? el.value : fallback;
+  }
+
+  function syncFilterState() {
+    sourceFilter = selectedValue('filter-source', 'all');
+    tokenOp = selectedValue('filter-tokens-op', 'gte');
+    tokenThreshold = readNumberInput('filter-tokens-value');
+    creditsOp = selectedValue('filter-credits-op', 'gte');
+    creditsThreshold = readNumberInput('filter-credits-value');
+    apiTimeOp = selectedValue('filter-api-time-op', 'gte');
+    apiTimeThreshold = readNumberInput('filter-api-time-value');
+  }
+
+  function bindChange(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', function() { syncFilterState(); recomputeView(); });
+    el.addEventListener('input', function() { syncFilterState(); recomputeView(); });
+  }
+
+  var controlIds = [
+    'filter-source',
+    'filter-model',
+    'filter-tokens-op',
+    'filter-tokens-value',
+    'filter-credits-op',
+    'filter-credits-value',
+    'filter-api-time-op',
+    'filter-api-time-value'
+  ];
+  for (var ci = 0; ci < controlIds.length; ci++) bindChange(controlIds[ci]);
+
+  function setAllModels(selected) {
+    var sel = document.getElementById('filter-model');
+    if (!sel || !sel.options) return;
+    for (var i = 0; i < sel.options.length; i++) sel.options[i].selected = selected;
+    recomputeView();
+  }
+  var modelAll = document.getElementById('filter-model-all');
+  if (modelAll) modelAll.addEventListener('click', function() { setAllModels(true); });
+  var modelClear = document.getElementById('filter-model-clear');
+  if (modelClear) modelClear.addEventListener('click', function() { setAllModels(false); });
+
+  var sortKeyEl = document.getElementById('sort-key');
+  if (sortKeyEl) sortKeyEl.addEventListener('change', function() {
+    sortKey = sortKeyEl.value || 'date';
+    recomputeView();
+  });
+  var sortDirBtn = document.getElementById('sort-dir');
+  function updateSortDirButton() {
+    if (!sortDirBtn) return;
+    sortDirBtn.textContent = sortDir === 'asc' ? 'Asc' : 'Desc';
+    sortDirBtn.setAttribute('data-dir', sortDir);
+    sortDirBtn.setAttribute('title', sortDir === 'asc' ? 'Ascending' : 'Descending');
+  }
+  if (sortDirBtn) {
+    sortDirBtn.addEventListener('click', function() {
+      sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+      updateSortDirButton();
+      recomputeView();
+    });
+  }
+
+  var resetBtn = document.getElementById('reset-filters');
+  if (resetBtn) resetBtn.addEventListener('click', function() {
+    var sourceEl = document.getElementById('filter-source');
+    if (sourceEl) sourceEl.value = 'all';
+    var modelEl = document.getElementById('filter-model');
+    if (modelEl && modelEl.options) {
+      for (var i = 0; i < modelEl.options.length; i++) modelEl.options[i].selected = false;
+    }
+    var thresholdIds = ['filter-tokens-value', 'filter-credits-value', 'filter-api-time-value'];
+    for (var j = 0; j < thresholdIds.length; j++) {
+      var input = document.getElementById(thresholdIds[j]);
+      if (input) input.value = '';
+    }
+    var opIds = ['filter-tokens-op', 'filter-credits-op', 'filter-api-time-op'];
+    for (var k = 0; k < opIds.length; k++) {
+      var op = document.getElementById(opIds[k]);
+      if (op) op.value = 'gte';
+    }
+    syncFilterState();
+    recomputeView();
+  });
 
   // -------------------------------------------------------------------------
   // CSV export of the currently filtered sessions.
@@ -1684,8 +1954,11 @@ const JS = `
     'sessionId',
     'startTime',
     'label',
+    'source',
     'inProgress',
+    'models',
     'totalTokens',
+    'totalCost',
     'freshInputTokens',
     'cacheReadTokens',
     'cacheWriteTokens',
@@ -1717,8 +1990,11 @@ const JS = `
         csvCell(s.id),
         csvCell(s.start || ''),
         csvCell(s.label),
+        csvCell(s.source || ''),
         csvCell(s.inProgress ? 'true' : 'false'),
+        csvCell((s.models || []).join(';')),
         csvCell(s.totalTokens),
+        csvCell(s.totalCost == null ? '' : s.totalCost),
         csvCell(s.input),
         csvCell(s.cacheRead),
         csvCell(s.cacheWrite),
@@ -1767,7 +2043,9 @@ const JS = `
       downloadCsv(filename, csv);
     });
   }
-  updateExportState();
+  syncFilterState();
+  updateSortDirButton();
+  recomputeView();
 })();
 `.trim();
 
@@ -1806,8 +2084,8 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
   ${costAvailable ? `
   <div class="stat-card">
     <div class="stat-label">Total Credits</div>
-    <div class="stat-value accent-green">${grandTotalCredits.toFixed(2)}</div>
-    <div class="stat-sub">${source === "mixed" ? "OTel sessions only" : "AI billing credits"}</div>
+    <div class="stat-value accent-green" id="stat-credits-value">${grandTotalCredits.toFixed(2)}</div>
+    <div class="stat-sub" id="stat-credits-sub">${source === "mixed" ? "OTel sessions only" : "AI billing credits"}</div>
   </div>` : ""}
   <div class="stat-card">
     <div class="stat-label">Date Filter</div>
@@ -1831,6 +2109,9 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
         id: session.sessionId,
         start: session.startTime || null,
         label: session.sessionId.slice(0, 8),
+        source: session.source,
+        totalCost: session.totalCost ?? null,
+        models: Object.keys(session.models),
         totalTokens: total,
         input,
         cacheRead,
@@ -1844,6 +2125,9 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
       id: s.sessionId,
       start: s.startTime || null,
       label: s.sessionId.slice(0, 8),
+      source: "logs" as const,
+      totalCost: null,
+      models: [],
       totalTokens: 0,
       input: 0,
       cacheRead: 0,
@@ -1853,6 +2137,41 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
       inProgress: true,
     })),
   ];
+
+  const modelNames = new Set<string>();
+  let hasCostData = false;
+  let hasApiDurationData = false;
+  for (const summary of allSummaries) {
+    if (summary.totalCost !== null) hasCostData = true;
+    if (summary.apiDurationMs !== null) hasApiDurationData = true;
+    for (const model of summary.models) modelNames.add(model);
+  }
+  const modelOptions = Array.from(modelNames)
+    .sort((a, b) => a.localeCompare(b))
+    .map((model) => `<option value="${esc(model)}">${esc(model)}</option>`)
+    .join("");
+  const creditsFilterControl = hasCostData ? `
+    <div class="control-group threshold-filter" id="filter-credits-group">
+      <label for="filter-credits-value">Credits</label>
+      <div class="threshold-row">
+        <select id="filter-credits-op" aria-label="Credits comparator">
+          <option value="gte">≥</option>
+          <option value="lte">≤</option>
+        </select>
+        <input id="filter-credits-value" type="number" min="0" step="0.01" placeholder="Any" aria-label="Credits threshold">
+      </div>
+    </div>` : "";
+  const apiTimeFilterControl = hasApiDurationData ? `
+    <div class="control-group threshold-filter" id="filter-api-time-group">
+      <label for="filter-api-time-value">API Time (ms)</label>
+      <div class="threshold-row">
+        <select id="filter-api-time-op" aria-label="API time comparator">
+          <option value="gte">≥</option>
+          <option value="lte">≤</option>
+        </select>
+        <input id="filter-api-time-value" type="number" min="0" step="1" placeholder="Any" aria-label="API time threshold">
+      </div>
+    </div>` : "";
 
   const timelineSection =
     totalSessions > 0
@@ -1956,6 +2275,51 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
 </header>
 
 <div class="report-toolbar container">
+  <div class="dashboard-controls" id="dashboard-filter-sort-controls" aria-label="Dashboard filters and sorting">
+    <div class="control-group">
+      <label for="filter-source">Source</label>
+      <select id="filter-source">
+        <option value="all">All</option>
+        <option value="otel">OTel</option>
+        <option value="logs">Logs</option>
+      </select>
+    </div>
+    <div class="control-group model-filter-group">
+      <span class="control-label" id="filter-model-label">Models</span>
+      <select id="filter-model" multiple size="${Math.min(Math.max(modelNames.size, 2), 4)}" aria-labelledby="filter-model-label">
+        ${modelOptions}
+      </select>
+      <div class="model-actions">
+        <button type="button" id="filter-model-all">Select all</button>
+        <button type="button" id="filter-model-clear">Clear all</button>
+      </div>
+    </div>
+    <div class="control-group threshold-filter" id="filter-tokens-group">
+      <label for="filter-tokens-value">Tokens</label>
+      <div class="threshold-row">
+        <select id="filter-tokens-op" aria-label="Tokens comparator">
+          <option value="gte">≥</option>
+          <option value="lte">≤</option>
+        </select>
+        <input id="filter-tokens-value" type="number" min="0" step="1" placeholder="Any" aria-label="Tokens threshold">
+      </div>
+    </div>
+    ${creditsFilterControl}
+    ${apiTimeFilterControl}
+    <div class="control-group">
+      <label for="sort-key">Sort by</label>
+      <div class="sort-row">
+        <select id="sort-key">
+          <option value="date">Date</option>
+          <option value="credits">Credits</option>
+          <option value="tokens">Tokens</option>
+          <option value="apiTime">API Time</option>
+        </select>
+        <button class="sort-dir-btn" id="sort-dir" type="button" data-dir="desc" aria-label="Toggle sort direction" title="Descending">Desc</button>
+      </div>
+    </div>
+    <button class="reset-filters-btn" id="reset-filters" type="button">Reset filters</button>
+  </div>
   <button class="export-btn" id="export-csv" type="button" aria-label="Export filtered sessions to CSV" title="Download the currently filtered sessions as a CSV file">&#x2B07; Export CSV</button>
 </div>
 
