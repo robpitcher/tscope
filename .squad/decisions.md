@@ -821,3 +821,75 @@ Report-level provenance should reflect the **selected source mode** (user intent
 ### Scope
 
 Single-source modes only (`otel` / `logs`). Auto mode is not affected.
+
+---
+
+## Decision: Screenshot Automation Approach for Dashboard PNGs
+
+**Author:** Switch (Frontend / Dashboard Developer)  
+**Date:** 2026-06-12  
+**Status:** RATIFIED
+
+### Context
+
+The documentation screenshots `docs/images/dashboard-light.png` and
+`docs/images/dashboard-dark.png` were previously generated manually.  
+They are referenced via a `<picture>` (prefers-color-scheme) element in `README.md`
+and `docs/html-dashboard.md` and captioned "_Generated from synthetic sample data._"
+
+The `update-docs` gh-aw workflow (`/.github/workflows/update-docs.md`) needed to
+regenerate these screenshots automatically when dashboard-rendering code changes.
+
+### Decision
+
+#### 1. Helper script over inline data generation
+
+**Chose:** A committed helper script `scripts/screenshot-dashboard.mjs`.
+
+**Rationale:** The tscope CLI reads from `~/.copilot/` at runtime, which is
+unavailable on GitHub Actions runners. Running the CLI against synthetic fixtures
+written to `~/.copilot/session-state/` would require knowing the internal
+`events.jsonl` format and directory layout exactly — fragile and tied to parser
+internals. Instead, the script imports the built `HtmlRenderer` directly and
+constructs a `Report` object in code, which is strongly typed and decoupled from
+parsing. The script is minimal (~160 lines) and self-contained.
+
+#### 2. `npx playwright` ad-hoc, no package.json dependency
+
+**Chose:** `npx --yes playwright install chromium --with-deps` inside the bash
+step, invoked ad-hoc. No new `devDependencies` added to `package.json`.
+
+**Rationale:** Playwright is only needed in CI for screenshot generation, not for
+any local dev workflow or test suite. Adding it to `devDependencies` would force
+all contributors to install it on `npm install`, adding ~100 MB with zero local
+benefit. `npx` on CI is idiomatic for one-off tools.
+
+The gh-aw `playwright:` toolset key has no confirmed support in this project's
+gh-aw version (only `github`, `web-fetch`, and `bash` are known-good). Using
+`bash: true` (already present) is more robust.
+
+#### 3. Viewport: 1280×900, fullPage: true
+
+Consistent fixed viewport ensures screenshot diffs reflect only content changes,
+not window-size fluctuations. 1280 px is a common developer desktop width that
+shows the tscope dashboard without horizontal scrolling.
+
+#### 4. Timeout bumped: 15 → 25 minutes
+
+Playwright Chromium download takes 3-4 minutes on a cold runner. Combined with
+the existing docs-update work, 15 minutes was too tight. 25 minutes provides
+comfortable headroom without being wasteful.
+
+#### 5. Trigger condition: only on render-affecting changes
+
+The screenshot step is gated on changes to `src/render/HtmlRenderer.ts` and
+related render files (`src/types.ts`, `src/tokens.ts`). Unrelated doc-only
+changes do not trigger screenshot regeneration, keeping the workflow fast.
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `.github/workflows/update-docs.md` | Added step 6 (Screenshot Regeneration); bumped `timeout-minutes` 15→25; updated `description` |
+| `scripts/screenshot-dashboard.mjs` | New — synthetic Report + HtmlRenderer invocation |
+| `.squad/agents/switch/history.md` | Learnings appended |
