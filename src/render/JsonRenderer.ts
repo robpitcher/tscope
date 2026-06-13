@@ -7,7 +7,7 @@ import { hasTokenData } from "../tokens";
  * v5 adds: `source` provenance field at the top level ("otel", "logs", or
  * "mixed" for merged auto-mode reports), `costAvailable` signal, `coverage`
  * object (per-source session counts + costCoverage indicator), and optional
- * per-session `totalCost` / `modelCosts` fields (OTel only).
+ * per-session `totalCost` (OTel or logs totalNanoAiu) / `modelCosts` (OTel only).
  * All v4 fields are preserved and additive.
  *
  * (v4 history: removed per-session `premiumRequests` field.
@@ -105,8 +105,8 @@ function serializeCompletedSession(session: NormalizedSession) {
  *     sessionId, path, startTime (ISO UTC string), localDateTime (YYYY-MM-DD HH:MM string),
  *     inProgress (always false), apiDurationMs (cumulative model API ms across
  *     runs, or null when no shutdown reported it), source ("otel"|"logs"),
- *     totalCost (OTel only, in AI credits), modelCosts (OTel only, per-model
- *     credits), models[], totals
+ *     totalCost (AI credits, when available), modelCosts (OTel only,
+ *     per-model credits), models[], totals
  *   models[]       — modelName, usage{input,output,cacheRead,cacheWrite,reasoning}
  *   totals         — summed token counts; `total` = input+output (cacheRead and
  *                    cacheWrite are subsets of input, not added on top)

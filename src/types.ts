@@ -92,6 +92,14 @@ export interface ParsedSession {
    * the most defensible "how much AI work happened" measure available.
    */
   apiDurationMs?: number;
+  /**
+   * Total session AI credits (billing credit units).
+   * For log-sourced sessions, derived from `session.shutdown.data.totalNanoAiu / 1e9`.
+   * For OTel-sourced sessions (`NormalizedSession` with `source === "otel"`), summed from
+   * per-span `github.copilot.nano_aiu / 1e9` across all models.
+   * Undefined when no source reported cost data.
+   */
+  totalCost?: number;
   /** /chronicle tips insights captured in this session (chronological) */
   chronicleTips: ChronicleTip[];
   inProgress: false;
@@ -107,13 +115,12 @@ export interface NormalizedSession extends ParsedSession {
   source: DataSourceKind;
   /**
    * Per-model estimated AI credits (OTel only, from github.copilot.nano_aiu ÷ 1e9).
-   * Undefined for log-sourced sessions — render as "cost unavailable".
+   * Undefined for log-sourced sessions.
    * Key = model name, matching the keys in `models`.
    */
   modelCosts?: Record<string, number>;
   /**
-   * Total session AI credits (sum of all modelCosts).
-   * Undefined for log-sourced sessions.
+   * Total session AI credits (OTel, or logs via summed totalNanoAiu).
    */
   totalCost?: number;
   /** Extended OTel-only metrics (v1: reasoning tokens, context window). */

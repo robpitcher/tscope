@@ -1,3 +1,6 @@
 {
-  "version": 1
+  "version": 1,
+  "agentModelOverrides": {
+    "scribe": "mai-code-1-flash-internal"
+  }
 }

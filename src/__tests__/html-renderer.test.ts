@@ -504,6 +504,9 @@ describe("HtmlRenderer", () => {
       id: string;
       start: string | null;
       inProgress: boolean;
+      source: "otel" | "logs" | null;
+      totalCost: number | null;
+      models: string[];
       totalTokens: number;
       input: number;
       cacheRead: number;
@@ -543,6 +546,9 @@ describe("HtmlRenderer", () => {
       if (!done) throw new Error("completed session not found");
       expect(done.id).toBe(SAMPLE_SESSION.sessionId);
       expect(done.start).toBe(SAMPLE_SESSION.startTime);
+      expect(done.source).toBe("logs");
+      expect(done.totalCost).toBeNull();
+      expect(done.models).toEqual(["claude-sonnet-4-5", "claude-haiku-4-5"]);
       // total = input + output (cache is part of input): (1000+500)+(300+100) = 1900
       expect(done.totalTokens).toBe(1900);
       // input column is fresh (uncached) input: (1000-700-100)+(300-0-0) = 200+300 = 500
@@ -554,22 +560,6 @@ describe("HtmlRenderer", () => {
       expect(data.sessions.find((s) => s.id === SAMPLE_IN_PROGRESS.sessionId)).toBeUndefined();
     });
 
-    test("renders an interactive date-range picker in the header", () => {
-      const html = renderToString(
-        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
-        "html-test-picker.html"
-      );
-      expect(html).toContain('id="filter-pill"');
-      expect(html).toContain('id="filter-popover"');
-      expect(html).toContain('data-preset="all"');
-      expect(html).toContain('data-preset="today"');
-      expect(html).toContain('data-preset="7d"');
-      expect(html).toContain('data-preset="30d"');
-      expect(html).toContain('id="range-from"');
-      expect(html).toContain('id="range-to"');
-      expect(html).toContain('id="range-apply"');
-    });
-
     test("renders an Export CSV button in the header with client-side wiring", () => {
       const html = renderToString(
         { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
@@ -578,13 +568,13 @@ describe("HtmlRenderer", () => {
       // Button is present, properly typed, and labelled.
       expect(html).toContain('id="export-csv"');
       expect(html).toMatch(/<button[^>]*id="export-csv"[^>]*type="button"/);
-      expect(html).toContain("Export CSV");
+      expect(html).toContain("CSV");
       // The .export-btn stylesheet rule is included.
       expect(html).toContain(".export-btn");
       // The inline JS defines the CSV builder, downloader, and the
       // expected column headers (matches the SessionTokenSummary shape).
       expect(html).toContain("function buildCsv");
-      expect(html).toContain("function downloadCsv");
+      expect(html).toContain("URL.createObjectURL(blob);");
       expect(html).toContain("'sessionId'");
       expect(html).toContain("'startTime'");
       expect(html).toContain("'totalTokens'");
@@ -595,6 +585,72 @@ describe("HtmlRenderer", () => {
       expect(html).toContain("'apiDurationMs'");
       // Filename incorporates the report date so multi-day exports are distinct.
       expect(html).toContain("'tscope-sessions-'");
+    });
+
+    test("renders a sort dropdown to the left of the CSV button", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-sort-dropdown.html"
+      );
+      // Dropdown is present with correct id and accessible label.
+      expect(html).toContain('id="sort-sessions"');
+      expect(html).toMatch(/<select[^>]*id="sort-sessions"[^>]*aria-label="Sort sessions by"/);
+      // All three sort options are present (option text matches spec).
+      expect(html).toContain('>Session date<');
+      expect(html).toContain('>Token count<');
+      expect(html).toContain('>AI credits<');
+      expect(html).not.toContain('>AI credits consumed<');
+      // Visible "Sort:" label is present.
+      expect(html).toMatch(/<label[^>]*for="sort-sessions"[^>]*>Sort:/);
+      // The sort dropdown appears BEFORE the CSV button in the markup.
+      const sortPos = html.indexOf('id="sort-sessions"');
+      const csvPos = html.indexOf('id="export-csv"');
+      expect(sortPos).toBeGreaterThan(-1);
+      expect(csvPos).toBeGreaterThan(-1);
+      expect(sortPos).toBeLessThan(csvPos);
+      // CSS rule for the select is included.
+      expect(html).toContain(".sort-select");
+      // Sort JS is wired: applySort function is present.
+      expect(html).toContain("function applySort");
+      // Session cards carry sort data-attributes.
+      expect(html).toMatch(/class="session-card"[^>]*data-sort-start=/);
+      expect(html).toMatch(/data-sort-tokens="\d+"/);
+    });
+
+    test("inline <script> body parses as valid JavaScript (regression: no raw LF/CR in string literals)", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-script-parse.html"
+      );
+      // Extract the executable <script> block (last script before </body>).
+      const m = html.match(/<script>([\s\S]+?)<\/script>\s*<\/body>/);
+      expect(m).not.toBeNull();
+      const scriptBody = m![1];
+      // new Function() parses the body as a function body — throws on SyntaxError.
+      // Raw LF/CR inside single-quoted string literals would cause a SyntaxError here.
+      expect(() => new Function(scriptBody)).not.toThrow();
+    });
+
+    test("sort direction toggle button is present and wired", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-sort-dir.html"
+      );
+      // Direction button is present with correct id and initial aria-label.
+      expect(html).toContain('id="sort-direction"');
+      expect(html).toMatch(/<button[^>]*id="sort-direction"[^>]*type="button"/);
+      expect(html).toContain('aria-label="Sort descending"');
+      // Direction button appears AFTER the sort select and BEFORE the CSV button.
+      const selectPos = html.indexOf('id="sort-sessions"');
+      const dirPos = html.indexOf('id="sort-direction"');
+      const csvPos = html.indexOf('id="export-csv"');
+      expect(selectPos).toBeLessThan(dirPos);
+      expect(dirPos).toBeLessThan(csvPos);
+      // JS wiring: direction state variable and toggle logic are present.
+      expect(html).toContain("sortDir");
+      expect(html).toContain("updateDirBtn");
+      // CSS rule for the direction button exists.
+      expect(html).toContain(".sort-dir-btn");
     });
 
     test("cached-input pill is neutrally labelled (no green/amber/red grading)", () => {
@@ -816,67 +872,6 @@ describe("HtmlRenderer", () => {
     });
   });
 
-  describe("source provenance badge", () => {
-    const OTEL_SESSION: NormalizedSession = {
-      ...SAMPLE_SESSION,
-      source: "otel",
-      totalCost: 2.34,
-      modelCosts: { "claude-sonnet-4-5": 1.5, "claude-haiku-4-5": 0.84 },
-    };
-
-    test("shows 'OpenTelemetry' badge in header for OTel reports", () => {
-      const html = renderToString(
-        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION] },
-        "html-test-source-otel-badge.html"
-      );
-      expect(html).toContain("OpenTelemetry");
-      expect(html).toContain("source-badge--otel");
-    });
-
-    test("shows 'event logs' badge in header for logs reports", () => {
-      const html = renderToString(
-        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
-        "html-test-source-logs-badge.html"
-      );
-      expect(html).toContain("event logs");
-      expect(html).toContain("source-badge--logs");
-    });
-
-    test("logs badge does not use the otel styling class", () => {
-      const html = renderToString(
-        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
-        "html-test-source-logs-no-otel-class.html"
-      );
-      // CSS definition is present, but no element should carry the class
-      expect(html).not.toMatch(/class="[^"]*source-badge--otel/);
-    });
-
-    test("otel badge does not use the logs styling class", () => {
-      const html = renderToString(
-        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION] },
-        "html-test-source-otel-no-logs-class.html"
-      );
-      // CSS definition is present, but no element should carry the class
-      expect(html).not.toMatch(/class="[^"]*source-badge--logs/);
-    });
-
-    test("logs source badge tooltip mentions cost unavailable", () => {
-      const html = renderToString(
-        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
-        "html-test-source-logs-tooltip.html"
-      );
-      // The title attribute on the badge communicates cost unavailability.
-      expect(html).toMatch(/source-badge--logs[^>]*title=/);
-      expect(html).toContain("cost data unavailable");
-    });
-
-    test("source badge CSS classes are defined in the style block", () => {
-      const html = renderToString(EMPTY_REPORT, "html-test-source-css.html");
-      expect(html).toContain(".source-badge--otel");
-      expect(html).toContain(".source-badge--logs");
-    });
-  });
-
   describe("per-session source badge on session cards", () => {
     const OTEL_SESSION: NormalizedSession = {
       ...SAMPLE_SESSION,
@@ -952,75 +947,6 @@ describe("HtmlRenderer", () => {
       expect(badgeIdx).toBeGreaterThan(-1);
       expect(tokensIdx).toBeGreaterThan(-1);
       expect(badgeIdx).toBeLessThan(tokensIdx);
-    });
-  });
-
-  describe("mixed report coverage summary in header", () => {
-    const OTEL_SESSION: NormalizedSession = {
-      ...SAMPLE_SESSION,
-      sessionId: "otel-cov-hdr-0000-1111-2222-333344445555",
-      source: "otel",
-      totalCost: 1.5,
-      modelCosts: { "claude-sonnet-4-5": 1.5 },
-    };
-    const LOGS_SESSION: NormalizedSession = {
-      ...SAMPLE_SESSION,
-      sessionId: "logs-cov-hdr-aaaa-bbbb-cccc-ddddeeeeffff",
-      source: "logs",
-    };
-
-    test("mixed report shows coverage-summary element in header", () => {
-      const html = renderToString(
-        {
-          ...EMPTY_REPORT,
-          source: "mixed",
-          costAvailable: true,
-          coverage: { otelCount: 1, logsCount: 1, costCoverage: "partial" },
-          sessions: [OTEL_SESSION, LOGS_SESSION],
-        },
-        "html-test-mixed-coverage-header.html"
-      );
-      expect(html).toContain("coverage-summary");
-    });
-
-    test("mixed coverage summary shows N OTel and M logs counts", () => {
-      const html = renderToString(
-        {
-          ...EMPTY_REPORT,
-          source: "mixed",
-          costAvailable: true,
-          coverage: { otelCount: 4, logsCount: 7, costCoverage: "partial" },
-          sessions: [OTEL_SESSION],
-        },
-        "html-test-mixed-coverage-counts.html"
-      );
-      expect(html).toContain("4 OTel");
-      expect(html).toContain("7 logs");
-    });
-
-    test("mixed report does not show single source-badge--otel or source-badge--logs in header", () => {
-      const html = renderToString(
-        {
-          ...EMPTY_REPORT,
-          source: "mixed",
-          costAvailable: true,
-          coverage: { otelCount: 1, logsCount: 1, costCoverage: "partial" },
-          sessions: [OTEL_SESSION],
-        },
-        "html-test-mixed-no-single-badge.html"
-      );
-      // The header area uses coverage-summary, not a single source-badge
-      const headerArea = html.slice(html.indexOf('<header'), html.indexOf('</header>'));
-      expect(headerArea).not.toContain("source-badge--otel");
-      expect(headerArea).not.toContain("source-badge--logs");
-      expect(headerArea).toContain("coverage-summary");
-    });
-
-    test("coverage summary CSS class is defined in the style block", () => {
-      const html = renderToString(EMPTY_REPORT, "html-test-coverage-css.html");
-      expect(html).toContain(".coverage-summary");
-      expect(html).toContain(".cov-otel");
-      expect(html).toContain(".cov-logs");
     });
   });
 

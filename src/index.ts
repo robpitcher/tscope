@@ -48,7 +48,7 @@ OPTIONS
   --html [FILE]       Write a self-contained HTML dashboard to FILE and open
                       it in the default browser
                       (default: ./tscope-report-YYYY-MM-DD.html)
-  --all               Show all sessions (no date filter)
+  --all               Show all sessions (no date filter or default cap)
   --date YYYY-MM-DD   Show sessions for a specific local date
   --range START END   Show sessions in a local-date range (inclusive)
   --lastdays N        Show sessions from the last N days (today and the
@@ -64,9 +64,9 @@ SUBCOMMANDS
                       (previews, then prompts for confirmation)
 
 DESCRIPTION
-  With no arguments, tscope discovers all Copilot CLI sessions from today
-  (current local date), parses token usage, and prints a formatted report
-  with per-model token counts and session totals.
+  With no arguments, tscope discovers the 20 most recent Copilot CLI
+  sessions across all history, parses token usage, and prints a formatted
+  report with per-model token counts and session totals.
 
   In auto mode (default), tscope merges sessions from both the OTel export and
   the log parser into a single unified report. When the same session appears in
@@ -82,7 +82,7 @@ DESCRIPTION
   your system's light/dark theme.
 
 EXAMPLES
-  tscope                                  Report today's sessions
+  tscope                                  Report the 20 most recent sessions
   tscope --lastdays 7                     Report sessions from the last 7 days
   tscope --range 2026-05-01 2026-05-31    Report sessions in a date range
                                           (dates are YYYY-MM-DD, inclusive)
@@ -107,7 +107,7 @@ NOTES
 type FilterMode = "today" | "date" | "range" | "lastdays" | "all";
 type SourceMode = "auto" | "otel" | "logs";
 
-interface ParsedArgs {
+export interface ParsedArgs {
   help: boolean;
   version: boolean;
   json: boolean;
@@ -120,10 +120,11 @@ interface ParsedArgs {
   filterLastDays?: string;
   max?: string;
   maxProvided: boolean;
+  defaultRecent: boolean;
   sourceMode: SourceMode;
 }
 
-function parseArgs(argv: string[]): ParsedArgs {
+export function parseArgs(argv: string[]): ParsedArgs {
   const args = argv.slice(2);
 
   const help = args.includes("--help") || args.includes("-h");
@@ -147,12 +148,16 @@ function parseArgs(argv: string[]): ParsedArgs {
   const maxIdx = args.indexOf("--max");
   const sourceIdx = args.indexOf("--source");
 
-  let filterMode: FilterMode = "today";
+  const noDateFilterFlags = !all && dateIdx === -1 && rangeIdx === -1 && lastDaysIdx === -1;
+  const noFilterFlags = noDateFilterFlags && maxIdx === -1;
+
+  let filterMode: FilterMode = noDateFilterFlags ? "all" : "today";
   let filterDate: string | undefined;
   let filterStart: string | undefined;
   let filterEnd: string | undefined;
   let filterLastDays: string | undefined;
-  let max: string | undefined;
+  let max: string | undefined = noFilterFlags ? "20" : undefined;
+  const defaultRecent = noFilterFlags;
 
   if (all) {
     filterMode = "all";
@@ -199,6 +204,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     filterLastDays,
     max,
     maxProvided: maxIdx !== -1,
+    defaultRecent,
     sourceMode,
   };
 }
@@ -315,7 +321,9 @@ function buildDatePredicate(args: ParsedArgs): SessionDatePredicate | undefined 
 }
 
 /** Build the human-readable filter description for reports */
-function buildFilterDescription(args: ParsedArgs): string {
+export function buildFilterDescription(args: ParsedArgs): string {
+  if (args.defaultRecent) return "last 20 sessions";
+
   let base: string;
   if (args.filterMode === "all") base = "all time";
   else if (args.filterMode === "date") base = args.filterDate!;
@@ -504,8 +512,10 @@ async function main(): Promise<void> {
   process.exit(0);
 }
 
-main().catch((err) => {
-  process.stderr.write(`Fatal error: ${String(err)}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    process.stderr.write(`Fatal error: ${String(err)}\n`);
+    process.exit(1);
+  });
+}
 

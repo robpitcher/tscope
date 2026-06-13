@@ -256,6 +256,9 @@ interface SessionTokenSummary {
   /** ISO 8601 UTC start time, or null if unknown (some in-progress sessions). */
   start: string | null;
   label: string;
+  source: "otel" | "logs" | null;
+  totalCost: number | null;
+  models: string[];
   totalTokens: number;
   input: number;
   cacheRead: number;
@@ -509,7 +512,7 @@ function buildSessionCard(session: NormalizedSession): string {
   const totalTokensForCard = totalFreshInput + totalCacheRead + totalCacheWrite + totalOutput;
 
   return `
-<article class="session-card" data-session-id="${esc(session.sessionId)}">
+<article class="session-card" data-session-id="${esc(session.sessionId)}" data-sort-start="${esc(session.startTime || '')}" data-sort-tokens="${totalTokensForCard}" data-sort-cost="${session.totalCost !== undefined ? session.totalCost : ''}">
   <div class="session-header">
     <div class="session-meta">
       <span class="session-id">${esc(session.sessionId)}</span>
@@ -582,7 +585,7 @@ function buildSessionCard(session: NormalizedSession): string {
 function buildInProgressCard(session: InProgressSession): string {
   const dateStr = session.startTime ? toLocalDateTime(session.startTime) : "unknown time";
   return `
-<article class="session-card session-card--in-progress" data-session-id="${esc(session.sessionId)}">
+<article class="session-card session-card--in-progress" data-session-id="${esc(session.sessionId)}" data-sort-start="${esc(session.startTime || '')}" data-sort-tokens="0" data-sort-cost="">
   <div class="session-header">
     <div class="session-meta">
       <span class="session-id">${esc(session.sessionId)}</span>
@@ -715,74 +718,6 @@ a:hover { text-decoration: underline; }
   flex-wrap: wrap;
 }
 
-.filter-badge {
-  font-size: 12px;
-  color: var(--text-secondary);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 3px 10px;
-}
-button.filter-badge { cursor: pointer; transition: background 0.15s, color 0.15s; }
-button.filter-badge:hover { background: var(--border); color: var(--text-primary); }
-.filter-badge .caret { font-size: 10px; opacity: 0.7; }
-
-.date-filter { position: relative; }
-.filter-popover {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 60;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  box-shadow: 0 8px 24px rgba(0,0,0,.35);
-  padding: 12px;
-  min-width: 240px;
-}
-.filter-popover[hidden] { display: none; }
-.preset-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-.preset {
-  font-size: 12px;
-  color: var(--text-secondary);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 3px 11px;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-.preset:hover { color: var(--text-primary); border-color: var(--text-muted); }
-.preset.is-active { background: var(--accent-blue); border-color: var(--accent-blue); color: #fff; }
-.range-row { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
-.range-field {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  font-size: 11px;
-  color: var(--text-muted);
-}
-.range-field input {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  font-size: 12px;
-  padding: 3px 6px;
-  color-scheme: dark light;
-}
-#range-apply {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-size: 12px;
-  padding: 4px 10px;
-  cursor: pointer;
-}
-#range-apply:hover { background: var(--border); color: var(--text-primary); }
-.range-error { margin-top: 8px; font-size: 11px; color: var(--accent-amber); }
-.range-error[hidden] { display: none; }
 
 .gh-link {
   display: inline-flex;
@@ -794,27 +729,116 @@ button.filter-badge:hover { background: var(--border); color: var(--text-primary
 .gh-link:hover { color: var(--text-primary); }
 .gh-link svg { width: 22px; height: 22px; display: block; }
 
-.theme-toggle,
-.export-btn {
+.theme-toggle {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: 50%;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 13px;
-  padding: 4px 10px;
+  font-size: 16px;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   transition: background 0.15s, color 0.15s;
 }
-.theme-toggle:hover,
-.export-btn:hover { background: var(--border); color: var(--text-primary); }
+.theme-toggle:hover { background: var(--border); color: var(--text-primary); }
 .export-btn:disabled { cursor: not-allowed; opacity: 0.5; }
 .export-btn:disabled:hover { background: var(--bg-elevated); color: var(--text-secondary); }
 
 .report-toolbar {
   display: flex;
+  align-items: flex-end;
   justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
   margin-top: 24px;
   margin-bottom: 12px;
+}
+.dashboard-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.dashboard-controls::-webkit-scrollbar {
+  display: none;
+}
+.dashboard-controls > * {
+  flex-shrink: 0;
+}
+
+.export-btn {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 12px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  transition: background 0.15s, color 0.15s;
+}
+.export-btn:hover {
+  background: var(--border);
+  color: var(--text-primary);
+}
+
+.sort-group {
+  display: flex;
+  flex-shrink: 0;
+}
+.sort-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-right: none;
+  border-radius: var(--radius) 0 0 var(--radius);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 0 28px 0 12px;
+  height: 32px;
+  box-sizing: border-box;
+  transition: background 0.15s, color 0.15s;
+}
+.sort-select:hover, .sort-select:focus {
+  background: var(--border);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.sort-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  user-select: none;
+}
+.sort-dir-btn {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 10px;
+  height: 32px;
+  box-sizing: border-box;
+  transition: background 0.15s, color 0.15s;
+}
+.sort-dir-btn:hover {
+  background: var(--border);
+  color: var(--text-primary);
 }
 
 .summary-strip {
@@ -1329,7 +1353,7 @@ button.filter-badge:hover { background: var(--border); color: var(--text-primary
 `.trim();
 
 // ---------------------------------------------------------------------------
-// Inline JS (theme toggle, delegated chart tooltip, date-range filter engine)
+// Inline JS (theme toggle, delegated chart tooltip, CSV export)
 // ---------------------------------------------------------------------------
 
 const JS = `
@@ -1348,7 +1372,11 @@ const JS = `
   }
   function label() {
     if (!btn) return;
-    btn.textContent = effective() === 'light' ? '\u2600 Light' : '\u263E Dark';
+    var isDark = effective() === 'dark';
+    btn.textContent = isDark ? '\u2600' : '\u263E';
+    var ariaLabel = isDark ? 'Switch to light theme' : 'Switch to dark theme';
+    btn.setAttribute('aria-label', ariaLabel);
+    btn.setAttribute('title', ariaLabel);
   }
   label();
   if (btn) {
@@ -1481,227 +1509,22 @@ const JS = `
 })();
 
 (function() {
-  // Client-side date-range filtering over the embedded (CLI-selected) sessions.
+  // Client-side CSV export of all sessions in the payload.
   var dataEl = document.getElementById('tscope-data');
   if (!dataEl) return;
   var DATA;
   try { DATA = JSON.parse(dataEl.textContent); } catch (e) { return; }
   var SESSIONS = DATA.sessions || [];
 
-  function pad(n) { return (n < 10 ? '0' : '') + n; }
-  function localDate(iso) {
-    if (!iso) return null;
-    var d = new Date(iso);
-    if (isNaN(d.getTime())) return null;
-    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
-  }
-  function parseYMD(s) {
-    var p = String(s).split('-');
-    return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
-  }
-  function fmtYMD(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
-  function addDays(ymd, n) { var d = parseYMD(ymd); d.setDate(d.getDate() + n); return fmtYMD(d); }
-  function fmtNum(n) { return Number(n || 0).toLocaleString('en-US'); }
-  function compact(n) {
-    if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\\.0$/, '') + 'M';
-    if (n >= 1000) return (n / 1000).toFixed(1).replace(/\\.0$/, '') + 'K';
-    return String(n);
-  }
-  function clamp01(v) { return Math.max(0, Math.min(1, v)); }
-  function escH(s) {
-    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
-
-  var anchor = localDate(DATA.generatedAtIso) || DATA.reportDate;
-  var dates = [];
-  for (var i = 0; i < SESSIONS.length; i++) {
-    var ld = localDate(SESSIONS[i].start);
-    if (ld) dates.push(ld);
-  }
-  dates.sort();
-  var minDate = dates.length ? dates[0] : anchor;
-  var maxDate = dates.length ? dates[dates.length - 1] : anchor;
-
-  // Tracks the most recent filter result so the CSV export reflects what the
-  // user is actually looking at. Initialised to the full embedded payload.
-  var currentFiltered = SESSIONS.slice();
-  var currentFilterLabel = 'all';
-
-  function inRange(s, mode, from, to) {
-    if (mode === 'all') return true;
-    var ld = localDate(s.start);
-    if (!ld) return false;
-    return ld >= from && ld <= to;
-  }
-
-  function buildTimeline(list) {
-    if (list.length === 0) return '<p class="muted-note">No sessions to chart</p>';
-    var BAR_W = 40, BAR_GAP = 8, CHART_H = 80, TOP_PAD = 18, LABEL_H = 18, AXIS_H = 18, LEFT_MARGIN = 52, RIGHT_PAD = 12;
-    var baselineY = TOP_PAD + CHART_H;
-    var SVG_H = TOP_PAD + CHART_H + LABEL_H + AXIS_H;
-    var plotW = list.length * (BAR_W + BAR_GAP) + BAR_GAP;
-    var SVG_W = LEFT_MARGIN + plotW + RIGHT_PAD;
-    var maxTokens = 1;
-    for (var i = 0; i < list.length; i++) { if (list[i].totalTokens > maxTokens) maxTokens = list[i].totalTokens; }
-    var bars = '';
-    for (var i = 0; i < list.length; i++) {
-      var s = list[i];
-      var x = LEFT_MARGIN + BAR_GAP + i * (BAR_W + BAR_GAP);
-      var barH = Math.max(2, clamp01(s.totalTokens / maxTokens) * CHART_H);
-      var y = baselineY - barH;
-      var lbl = (s.label && s.label.length > 8) ? s.label.slice(0, 8) : (s.label || '');
-      var cls = 'tl-bar has-tip' + (s.inProgress ? ' in-progress' : '');
-      bars += '<rect x="' + x + '" y="' + y.toFixed(1) + '" width="' + BAR_W + '" height="' + barH.toFixed(1) + '" rx="3" class="' + cls + '" tabindex="0" role="button" aria-label="Jump to session ' + escH(s.label || '') + '" data-session-id="' + escH(s.id || '') + '" data-input="' + s.input + '" data-cacheread="' + s.cacheRead + '" data-cachewrite="' + s.cacheWrite + '" data-output="' + s.output + '" data-total="' + s.totalTokens + '"></rect>';
-      bars += '<text x="' + (x + BAR_W / 2) + '" y="' + (baselineY + 13) + '" text-anchor="middle" class="tl-label">' + escH(lbl) + '</text>';
-      if (!s.inProgress && s.totalTokens > 0) {
-        bars += '<text x="' + (x + BAR_W / 2) + '" y="' + Math.max(12, y - 3).toFixed(1) + '" text-anchor="middle" class="tl-value">' + compact(s.totalTokens) + '</text>';
-      }
-    }
-    var xTitleX = LEFT_MARGIN + plotW / 2;
-    var xTitleY = SVG_H - 3;
-    var yTitleX = 13;
-    var yTitleY = TOP_PAD + CHART_H / 2;
-    var axes = '<text x="' + xTitleX + '" y="' + xTitleY + '" text-anchor="middle" class="axis-title">Session Id (truncated)</text>'
-      + '<text x="' + yTitleX + '" y="' + yTitleY + '" text-anchor="middle" class="axis-title" transform="rotate(-90 ' + yTitleX + ' ' + yTitleY + ')">Token count</text>';
-    var style = '<style>.tl-bar { fill: #58a6ff; cursor: pointer; transition: fill-opacity .12s ease; }.tl-bar:hover { fill-opacity: .8; }.tl-bar:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 1px; }.tl-bar.in-progress { fill: var(--text-muted); }.tl-label { font: 9px/1 "SF Mono","Consolas",monospace; fill: var(--text-secondary); }.tl-value { font: 10px/1 system-ui,sans-serif; fill: var(--text-muted); }.axis-title { font: 10px/1 system-ui,sans-serif; fill: var(--text-secondary); font-weight: 600; letter-spacing: .03em; }</style>';
-    return '<svg xmlns="http://www.w3.org/2000/svg" width="' + SVG_W + '" height="' + SVG_H + '" viewBox="0 0 ' + SVG_W + ' ' + SVG_H + '" class="chart-svg timeline-svg">' + style + axes + bars + '</svg>';
-  }
-
-  function setText(id, text) { var el = document.getElementById(id); if (el) el.textContent = text; }
-
-  function recompute(list) {
-    var total = 0, completed = 0, inprog = 0;
-    for (var i = 0; i < list.length; i++) {
-      total += list[i].totalTokens;
-      if (list[i].inProgress) inprog++; else completed++;
-    }
-    setText('stat-total-value', compact(total));
-    setText('stat-total-sub', fmtNum(total) + ' tokens');
-    setText('stat-sessions-value', String(list.length));
-    setText('stat-sessions-sub', completed + ' completed' + (inprog > 0 ? ', ' + inprog + ' in progress' : ''));
-  }
-
-  function toggleCards(list) {
-    var visible = {};
-    for (var i = 0; i < list.length; i++) visible[list[i].id] = true;
-    var cards = document.querySelectorAll('.session-card[data-session-id]');
-    var anyVisible = false;
-    for (var j = 0; j < cards.length; j++) {
-      var on = !!visible[cards[j].getAttribute('data-session-id')];
-      cards[j].style.display = on ? '' : 'none';
-      if (on) anyVisible = true;
-    }
-    var empty = document.getElementById('sessions-empty');
-    if (empty) empty.hidden = anyVisible || cards.length === 0;
-  }
-
-  function apply(mode, from, to, labelText) {
-    var filtered = [];
-    for (var i = 0; i < SESSIONS.length; i++) {
-      if (inRange(SESSIONS[i], mode, from, to)) filtered.push(SESSIONS[i]);
-    }
-    currentFiltered = filtered;
-    currentFilterLabel = labelText;
-    recompute(filtered);
-    var host = document.getElementById('timeline-host');
-    if (host) host.innerHTML = buildTimeline(filtered);
-    toggleCards(filtered);
-    setText('filter-pill-label', labelText);
-    setText('stat-filter-value', labelText);
-    updateExportState();
-  }
-
-  var presetLabels = { all: 'All', today: 'Today', '7d': 'Last 7 days', '30d': 'Last 30 days' };
-  function presetRange(mode) {
-    if (mode === 'today') return [anchor, anchor];
-    if (mode === '7d') return [addDays(anchor, -6), anchor];
-    if (mode === '30d') return [addDays(anchor, -29), anchor];
-    return [minDate, maxDate];
-  }
-
-  // Wire UI.
-  var pill = document.getElementById('filter-pill');
-  var pop = document.getElementById('filter-popover');
-  var df = document.getElementById('date-filter');
-  var fromInput = document.getElementById('range-from');
-  var toInput = document.getElementById('range-to');
-  var applyBtn = document.getElementById('range-apply');
-  var errEl = document.getElementById('range-error');
-  if (!pill || !pop) return;
-
-  if (fromInput) { fromInput.min = minDate; fromInput.max = maxDate; fromInput.value = minDate; }
-  if (toInput) { toInput.min = minDate; toInput.max = maxDate; toInput.value = maxDate; }
-
-  function openPop() { pop.hidden = false; pill.setAttribute('aria-expanded', 'true'); }
-  function closePop() { pop.hidden = true; pill.setAttribute('aria-expanded', 'false'); }
-  pill.addEventListener('click', function(e) {
-    e.stopPropagation();
-    if (pop.hidden) openPop(); else closePop();
-  });
-  document.addEventListener('click', function(e) {
-    if (df && !df.contains(e.target)) closePop();
-  });
-  document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closePop(); });
-
-  function clearActive() {
-    var ps = pop.querySelectorAll('.preset');
-    for (var i = 0; i < ps.length; i++) ps[i].classList.remove('is-active');
-  }
-
-  var presetBtns = pop.querySelectorAll('.preset');
-  for (var i = 0; i < presetBtns.length; i++) {
-    presetBtns[i].addEventListener('click', function() {
-      var mode = this.getAttribute('data-preset');
-      clearActive();
-      this.classList.add('is-active');
-      if (errEl) errEl.hidden = true;
-      var r = presetRange(mode);
-      apply(mode, r[0], r[1], presetLabels[mode] || 'All');
-      closePop();
-    });
-  }
-
-  if (applyBtn) {
-    applyBtn.addEventListener('click', function() {
-      var from = fromInput ? fromInput.value : '';
-      var to = toInput ? toInput.value : '';
-      if (!from || !to) {
-        if (errEl) { errEl.textContent = 'Pick both a start and end date.'; errEl.hidden = false; }
-        return;
-      }
-      if (from > to) { var tmp = from; from = to; to = tmp; }
-      if (errEl) errEl.hidden = true;
-      clearActive();
-      apply('range', from, to, from + ' to ' + to);
-      closePop();
-    });
-  }
-
-  // -------------------------------------------------------------------------
-  // CSV export of the currently filtered sessions.
-  // -------------------------------------------------------------------------
   var CSV_COLUMNS = [
-    'sessionId',
-    'startTime',
-    'label',
-    'inProgress',
-    'totalTokens',
-    'freshInputTokens',
-    'cacheReadTokens',
-    'cacheWriteTokens',
-    'outputTokens',
-    'apiDurationMs'
+    'sessionId', 'startTime', 'label', 'source', 'inProgress', 'models',
+    'totalTokens', 'totalCost', 'freshInputTokens', 'cacheReadTokens',
+    'cacheWriteTokens', 'outputTokens', 'apiDurationMs'
   ];
 
   function csvCell(v) {
     if (v === null || v === undefined) return '';
     var s = String(v);
-    // Defence-in-depth: neutralise CSV/spreadsheet formula-injection. A cell
-    // whose first character is =, +, -, @, TAB or CR is interpreted as a
-    // formula by Excel/Sheets/Numbers. Prepend a single quote so the cell
-    // is treated as text. The columns we currently export (UUIDs, ISO
-    // dates, non-negative integers, "true"/"false") shouldn't trigger this
-    // in practice, but it's free protection if the column set grows.
     if (/^[=+\\-@\\t\\r]/.test(s)) s = "'" + s;
     if (s.indexOf('"') !== -1 || s.indexOf(',') !== -1 || s.indexOf('\\n') !== -1 || s.indexOf('\\r') !== -1) {
       return '"' + s.replace(/"/g, '""') + '"';
@@ -1714,15 +1537,11 @@ const JS = `
     for (var i = 0; i < list.length; i++) {
       var s = list[i];
       var row = [
-        csvCell(s.id),
-        csvCell(s.start || ''),
-        csvCell(s.label),
-        csvCell(s.inProgress ? 'true' : 'false'),
-        csvCell(s.totalTokens),
-        csvCell(s.input),
-        csvCell(s.cacheRead),
-        csvCell(s.cacheWrite),
-        csvCell(s.output),
+        csvCell(s.id), csvCell(s.start || ''), csvCell(s.label),
+        csvCell(s.source || ''), csvCell(s.inProgress ? 'true' : 'false'),
+        csvCell((s.models || []).join(';')), csvCell(s.totalTokens),
+        csvCell(s.totalCost == null ? '' : s.totalCost), csvCell(s.input),
+        csvCell(s.cacheRead), csvCell(s.cacheWrite), csvCell(s.output),
         csvCell(s.apiDurationMs == null ? '' : s.apiDurationMs)
       ];
       lines.push(row.join(','));
@@ -1730,44 +1549,95 @@ const JS = `
     return lines.join('\\r\\n') + '\\r\\n';
   }
 
-  function safeSlug(s) {
-    return String(s || 'filter').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'filter';
-  }
-
-  function downloadCsv(filename, csv) {
-    // UTF-8 BOM lets Excel detect encoding correctly.
-    var blob = new Blob(['\\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(function() { URL.revokeObjectURL(url); }, 0);
-  }
-
-  function updateExportState() {
-    var btn = document.getElementById('export-csv');
-    if (!btn) return;
-    btn.disabled = currentFiltered.length === 0;
-    btn.setAttribute('title',
-      currentFiltered.length === 0
-        ? 'No sessions in the current filter to export'
-        : 'Download ' + currentFiltered.length + ' session(s) as a CSV file');
-  }
-
   var exportBtn = document.getElementById('export-csv');
   if (exportBtn) {
     exportBtn.addEventListener('click', function() {
-      if (currentFiltered.length === 0) return;
-      var csv = buildCsv(currentFiltered);
-      var datePart = DATA.reportDate || (anchor || 'report');
-      var filename = 'tscope-sessions-' + datePart + '-' + safeSlug(currentFilterLabel) + '.csv';
-      downloadCsv(filename, csv);
+      if (SESSIONS.length === 0) return;
+      var csv = buildCsv(SESSIONS);
+      var datePart = DATA.reportDate || 'report';
+      var filename = 'tscope-sessions-' + datePart + '.csv';
+      
+      var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function() { URL.revokeObjectURL(url); }, 0);
     });
   }
-  updateExportState();
+
+  var sortDir = 'desc';
+
+  function updateDirBtn() {
+    var btn = document.getElementById('sort-direction');
+    if (!btn) return;
+    if (sortDir === 'desc') {
+      btn.textContent = '▼';
+      btn.setAttribute('aria-label', 'Sort descending');
+    } else {
+      btn.textContent = '▲';
+      btn.setAttribute('aria-label', 'Sort ascending');
+    }
+  }
+
+  function applySort(by) {
+    var host = document.getElementById('sessions-host');
+    if (!host) return;
+    var dir = sortDir === 'desc' ? 1 : -1;
+    var cards = Array.prototype.slice.call(host.querySelectorAll('article.session-card'));
+    cards.sort(function(a, b) {
+      if (by === 'date') {
+        var aVal = a.getAttribute('data-sort-start') || '';
+        var bVal = b.getAttribute('data-sort-start') || '';
+        if (!aVal && !bVal) return 0;
+        if (!aVal) return 1;
+        if (!bVal) return -1;
+        return (bVal > aVal ? 1 : bVal < aVal ? -1 : 0) * dir;
+      }
+      if (by === 'tokens') {
+        var aT = parseInt(a.getAttribute('data-sort-tokens') || '0', 10);
+        var bT = parseInt(b.getAttribute('data-sort-tokens') || '0', 10);
+        return (bT - aT) * dir;
+      }
+      if (by === 'credits') {
+        var aC = a.getAttribute('data-sort-cost');
+        var bC = b.getAttribute('data-sort-cost');
+        var aHas = aC !== null && aC !== '';
+        var bHas = bC !== null && bC !== '';
+        if (!aHas && !bHas) return 0;
+        if (!aHas) return 1;
+        if (!bHas) return -1;
+        return (parseFloat(bC) - parseFloat(aC)) * dir;
+      }
+      return 0;
+    });
+    for (var i = 0; i < cards.length; i++) {
+      host.appendChild(cards[i]);
+    }
+  }
+
+  var sortSelect = document.getElementById('sort-sessions');
+  var sortDirBtn = document.getElementById('sort-direction');
+
+  if (sortSelect) {
+    sortSelect.addEventListener('change', function() {
+      applySort(sortSelect.value);
+    });
+  }
+
+  if (sortDirBtn) {
+    sortDirBtn.addEventListener('click', function() {
+      sortDir = sortDir === 'desc' ? 'asc' : 'desc';
+      updateDirBtn();
+      if (sortSelect) applySort(sortSelect.value);
+    });
+  }
+
+  updateDirBtn();
+  if (sortSelect) applySort(sortSelect.value);
 })();
 `.trim();
 
@@ -1776,7 +1646,7 @@ const JS = `
 // ---------------------------------------------------------------------------
 
 function buildHtml(report: Report, generatedAt: string, generatedAtIso: string): string {
-  const { sessions, inProgressSessions, filterDescription, reportDate, source, costAvailable, coverage } = report;
+  const { sessions, inProgressSessions, filterDescription, reportDate, source, costAvailable } = report;
 
   const completedCount = sessions.length;
   const inProgressCount = inProgressSessions.length;
@@ -1793,6 +1663,12 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
 
   const statCards = `
 <div class="summary-strip container">
+  ${costAvailable ? `
+  <div class="stat-card">
+    <div class="stat-label">Total Credits</div>
+    <div class="stat-value accent-green" id="stat-credits-value">${grandTotalCredits.toFixed(2)}</div>
+    <div class="stat-sub" id="stat-credits-sub">${source === "mixed" ? "OTel sessions only" : "AI billing credits"}</div>
+  </div>` : ""}
   <div class="stat-card">
     <div class="stat-label">Total Tokens</div>
     <div class="stat-value accent-blue" id="stat-total-value">${fmtTokensCompact(grandTotalTokens)}</div>
@@ -1803,16 +1679,10 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
     <div class="stat-value" id="stat-sessions-value">${totalSessions}</div>
     <div class="stat-sub" id="stat-sessions-sub">${completedCount} completed${inProgressCount > 0 ? `, ${inProgressCount} in progress` : ""}</div>
   </div>
-  ${costAvailable ? `
   <div class="stat-card">
-    <div class="stat-label">Total Credits</div>
-    <div class="stat-value accent-green">${grandTotalCredits.toFixed(2)}</div>
-    <div class="stat-sub">${source === "mixed" ? "OTel sessions only" : "AI billing credits"}</div>
-  </div>` : ""}
-  <div class="stat-card">
-    <div class="stat-label">Date Filter</div>
-    <div class="stat-value" style="font-size:16px;" id="stat-filter-value">${esc(filterDescription)}</div>
-    <div class="stat-sub">Report date: ${esc(reportDate)}</div>
+    <div class="stat-label">Date Generated</div>
+    <div class="stat-value" style="font-size:16px;" id="stat-filter-value">${esc(generatedAt)}</div>
+    <div class="stat-sub">Filter: ${esc(filterDescription)}</div>
   </div>
 </div>`;
 
@@ -1831,6 +1701,9 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
         id: session.sessionId,
         start: session.startTime || null,
         label: session.sessionId.slice(0, 8),
+        source: session.source,
+        totalCost: session.totalCost ?? null,
+        models: Object.keys(session.models),
         totalTokens: total,
         input,
         cacheRead,
@@ -1844,6 +1717,9 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
       id: s.sessionId,
       start: s.startTime || null,
       label: s.sessionId.slice(0, 8),
+      source: "logs" as const,
+      totalCost: null,
+      models: [],
       totalTokens: 0,
       input: 0,
       cacheRead: 0,
@@ -1853,6 +1729,8 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
       inProgress: true,
     })),
   ];
+
+
 
   const timelineSection =
     totalSessions > 0
@@ -1890,8 +1768,7 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
       `<h2>No sessions in range</h2><p>Try a wider date range.</p></div>`;
   }
 
-  // Self-contained payload for client-side date filtering. The picker filters
-  // only within these (the CLI-selected) sessions. `<` is escaped so the JSON
+  // Self-contained payload for client-side CSV export. `<` is escaped so the JSON
   // cannot terminate the surrounding <script> element.
   const payload = {
     reportDate,
@@ -1923,40 +1800,27 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
       tscope
     </div>
     <div class="header-meta">
-      <div class="date-filter" id="date-filter">
-        <button class="filter-badge" id="filter-pill" aria-haspopup="true" aria-expanded="false" title="Filter sessions by date">&#x1F5D3; <span id="filter-pill-label">${esc(filterDescription)}</span> <span class="caret">&#x25BE;</span></button>
-        <div class="filter-popover" id="filter-popover" hidden>
-          <div class="preset-row">
-            <button type="button" class="preset is-active" data-preset="all">All</button>
-            <button type="button" class="preset" data-preset="today">Today</button>
-            <button type="button" class="preset" data-preset="7d">7 days</button>
-            <button type="button" class="preset" data-preset="30d">30 days</button>
-          </div>
-          <div class="range-row">
-            <label class="range-field">From <input type="date" id="range-from"></label>
-            <label class="range-field">To <input type="date" id="range-to"></label>
-            <button type="button" id="range-apply">Apply</button>
-          </div>
-          <p class="range-error" id="range-error" hidden></p>
-        </div>
-      </div>
-      ${source === "otel"
-        ? `<span class="source-badge source-badge--otel" title="Data source: OpenTelemetry — includes server-side billing credits">OpenTelemetry</span>`
-        : source === "mixed"
-        ? `<span class="coverage-summary" title="Sources: ${coverage.otelCount} OTel + ${coverage.logsCount} logs sessions — cost available for OTel sessions only"><span class="cov-otel">${coverage.otelCount} OTel</span><span class="cov-sep"> · </span><span class="cov-logs">${coverage.logsCount} logs</span></span>`
-        : `<span class="source-badge source-badge--logs" title="Data source: event logs (historical) — cost data unavailable. Run &#x27;tscope otel enable&#x27; to use OpenTelemetry.">event logs</span>`
-      }
-      <span style="font-size:12px;color:var(--text-muted)">Generated ${esc(generatedAt)}</span>
       <a class="gh-link" href="${REPO_URL}" target="_blank" rel="noopener noreferrer" aria-label="View tscope on GitHub" title="View tscope on GitHub">
         <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" fill="currentColor"><path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
       </a>
-      <button class="theme-toggle" id="theme-toggle" aria-label="Toggle colour theme">&#x263E; Dark</button>
+      <button class="theme-toggle" id="theme-toggle" aria-label="Switch to dark theme" title="Switch to dark theme">&#x263E;</button>
     </div>
   </div>
 </header>
 
 <div class="report-toolbar container">
-  <button class="export-btn" id="export-csv" type="button" aria-label="Export filtered sessions to CSV" title="Download the currently filtered sessions as a CSV file">&#x2B07; Export CSV</button>
+  <div class="dashboard-controls" id="dashboard-controls" aria-label="Dashboard controls">
+    <label class="sort-label" for="sort-sessions">Sort:</label>
+    <div class="sort-group">
+      <select class="sort-select" id="sort-sessions" aria-label="Sort sessions by">
+        <option value="date">Session date</option>
+        <option value="tokens">Token count</option>
+        <option value="credits">AI credits</option>
+      </select>
+      <button class="sort-dir-btn" id="sort-direction" type="button" aria-label="Sort descending">&#x25BC;</button>
+    </div>
+    <button class="export-btn" id="export-csv" type="button" aria-label="Export sessions to CSV" title="Download all sessions as a CSV file">&#x2B07; CSV</button>
+  </div>
 </div>
 
 ${statCards}

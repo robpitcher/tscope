@@ -120,4 +120,10 @@ Trinity's decision: AI-credit data IS available in logs via `session.shutdown.da
 
 ---
 
+## Learnings — 2026-06-13 PR #18 Review Fix (comment 3408130154)
+
+ParsedSession.totalCost doc comment updated to be source-agnostic: logs path uses session.shutdown.data.totalNanoAiu/1e9; OTel path sums per-span github.copilot.nano_aiu/1e9 across all models (otelSource.ts:245). Comment-only change, no logic touched.
+
+---
+
 ## Learnings — 2026-06-03 Merge Pivot (ARCHIVE)

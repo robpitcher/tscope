@@ -27,9 +27,9 @@ The `--html` dashboard follows your system's light/dark theme:
 
 - 📊 **Local-only analysis** — no network calls, no credentials needed; OTel data is read from `~/.copilot/tscope/otel.jsonl`
 - 🔍 **Per-session breakdown** — view token usage by session and model
-- 💰 **Per-session cost** — when [OTel is enabled](#data-sources), shows server-side credits per session and per model; shows "unavailable" for log-parser sessions
-- 📅 **Today's default** — shows current day's sessions by default
-- 📈 **HTML dashboard** — sleek dashboard with token charts, an interactive date-range filter, and system light/dark theme
+- 💰 **Per-session cost** — when [OTel is enabled](#data-sources), shows server-side credits per session and per model; log-parser sessions show estimated AI credits when the `totalNanoAiu` event-log field is present, and "unavailable" only when it is absent
+- 📅 **Recent-by-default** — shows the 20 most recent sessions by default
+- 📈 **HTML dashboard** — sleek dashboard with token charts, sort controls (by date / tokens / credits, ascending/descending), an Export CSV button, and system light/dark theme
 - 💡 **Chronicle Insights** — if a session ran `/chronicle tips` or `/chronicle cost-tips`, the recommendations are surfaced in the HTML dashboard
 - 📤 **JSON output** — machine-readable schema (`tscope/report/v5`) for scripting
 
@@ -65,7 +65,7 @@ Requires **Node.js 18+**.
 
 | Parameter | Values | Description | Required |
 | --- | --- | --- | --- |
-| `--all` | _(none)_ | Include all sessions (disables the default date filter). | No |
+| `--all` | _(none)_ | Include all sessions (disables the default 20-session cap). | No |
 | `--date` | `YYYY-MM-DD` | Show sessions that started on the given local date. | No |
 | `--help`, `-h` | _(none)_ | Show usage and options, then exit. | No |
 | `--html` | `[FILE]` (optional path) | Write a self-contained HTML dashboard to `FILE` (or a default filename) and open it. | No |
@@ -76,7 +76,7 @@ Requires **Node.js 18+**.
 | `--source` | `auto` \| `otel` \| `logs` | Data source. `auto` (default): merges OTel and log-parser sessions into one report (OTel authoritative on overlap); shows cost for OTel sessions, "unavailable" for logs-only. `otel`: OTel only; exits with error if unavailable. `logs`: log parser only. | No |
 | `--version`, `-v` | _(none)_ | Print the installed version and exit. | No |
 
-With no flags, `tscope` reports today's sessions in formatted text. Date filters (`--date`, `--range`, `--lastdays`, `--all`) are mutually exclusive. See [Usage](docs/usage.md) for full details.
+With no flags, `tscope` reports the 20 most recent sessions in formatted text. Date filters (`--date`, `--range`, `--lastdays`, `--all`) are mutually exclusive, and explicit `--max` overrides the default cap. See [Usage](docs/usage.md) for full details.
 
 ## Documentation
 
@@ -86,7 +86,7 @@ Full documentation lives in the [`docs/`](docs/) folder:
 - [Usage](docs/usage.md) — CLI flags, date filtering, output formats, sample output
 - [How It Works](docs/how-it-works.md) — session discovery, token accounting, resumed sessions
 - [JSON Output](docs/json-output.md) — `tscope/report/v5` schema reference
-- [HTML Dashboard](docs/html-dashboard.md) — dashboard features, Chronicle Insights, interactive date filter
+- [HTML Dashboard](docs/html-dashboard.md) — dashboard features, Chronicle Insights, sort controls, CSV export
 - [Development](docs/development.md) — build, test, lint, project structure
 - [Contributing](docs/contributing.md) — roadmap, license
 

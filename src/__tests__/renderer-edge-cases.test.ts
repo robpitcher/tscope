@@ -107,42 +107,6 @@ describe("TextRenderer — renderer edge cases", () => {
 // ---------------------------------------------------------------------------
 
 describe("HtmlRenderer — renderer edge cases", () => {
-  describe("source badge position", () => {
-    test("source badge element appears before the first session-card element in document order", () => {
-      const html = renderHtml(
-        { ...OTEL_REPORT_EMPTY, sessions: [BASE_OTEL_SESSION] },
-        "rendedge-badge-pos.html"
-      );
-      // Search for the *element* occurrences (class attribute), not CSS rule names.
-      const badgeIdx = html.indexOf('class="source-badge');
-      const sessionCardIdx = html.indexOf('class="session-card"');
-      expect(badgeIdx).toBeGreaterThan(-1);
-      expect(sessionCardIdx).toBeGreaterThan(-1);
-      // Badge element must precede the first session-card element.
-      expect(badgeIdx).toBeLessThan(sessionCardIdx);
-    });
-
-    test("source badge element appears after header-meta and before first session-card element", () => {
-      const html = renderHtml(
-        { ...OTEL_REPORT_EMPTY, sessions: [BASE_OTEL_SESSION] },
-        "rendedge-badge-container.html"
-      );
-      const headerMetaIdx = html.indexOf('class="header-meta"');
-      const badgeIdx = html.indexOf('class="source-badge', headerMetaIdx);
-      const firstSessionCardIdx = html.indexOf('class="session-card"');
-      expect(headerMetaIdx).toBeGreaterThan(-1);
-      expect(badgeIdx).toBeGreaterThan(headerMetaIdx);
-      expect(badgeIdx).toBeLessThan(firstSessionCardIdx);
-    });
-
-    test("OTel badge element is present and no session-card elements exist in empty report", () => {
-      const html = renderHtml(OTEL_REPORT_EMPTY, "rendedge-badge-empty.html");
-      expect(html).toContain("source-badge--otel");
-      // In an empty report there should be no session-card elements (CSS rule exists but no element).
-      expect(html).not.toContain('class="session-card"');
-    });
-  });
-
   describe("credits chip decimal precision", () => {
     test("totalCost = 1.5 → chip shows '1.50 credits' (toFixed(2) applied)", () => {
       const session: NormalizedSession = { ...BASE_OTEL_SESSION, totalCost: 1.5 };

@@ -2,6 +2,151 @@
 
 ## Active Decisions
 
+## Filter Redesign (2026-06-13T00:52)
+
+**Status:** SUPERSEDED
+
+**Date:** 2026-06-13T00:52:07.174-04:00
+
+The dashboard filters were redesigned to address a visually chaotic UI:
+- Native <select> inputs for Models and Sources were replaced with custom JS-driven dropdowns containing checkboxes, allowing for simpler multiselection without holding Ctrl/Cmd.
+- Threshold operators (<, >) were removed from the Token, Credit, and API Time filters. We now default to '≥' (minimum value) and use a minimal inline 'Gemini-style' pill input to reduce visual clutter.
+
+**Superseded (2026-06-13):** the interactive filtering UI described here was later removed in favor of session-card sort controls + CSV export.
+
+---
+
+## Sort Fix: Template-Literal Raw-Newline Bug + UX Improvements (2026-06-13)
+
+**Status:** IMPLEMENTED
+
+**Author:** switch (Frontend/Dashboard Dev)  
+**Date:** 2026-06-13
+
+### Root Cause
+
+The entire client-side script is emitted as one `<script>${JS}</script>` block. The `JS` constant is a TypeScript template literal (backtick string). Inside that template literal, escape sequences are resolved at build time:
+
+- `'\n'` → raw LF (0x0A)
+- `'\r'` → raw CR (0x0D)
+- `'\r\n'` → raw CRLF
+
+When these characters appear inside single-quoted JS string literals in the emitted HTML, ECMAScript rejects them — a string literal cannot contain a raw line terminator — producing a **SyntaxError**.
+
+Because all IIFEs share one `<script>` block, a single SyntaxError at any point silences **all** client-side behaviour: sort, CSV export, theme toggle, and chart tooltips.
+
+### Fixes Applied
+
+#### 1. `csvCell` indexOf check (primary bug)
+```
+// Before (raw LF/CR in emitted JS → SyntaxError)
+s.indexOf('\n') !== -1 || s.indexOf('\r') !== -1
+
+// After (proper escape sequences in emitted JS)
+s.indexOf('\\n') !== -1 || s.indexOf('\\r') !== -1
+```
+
+#### 2. `buildCsv` line join (same class)
+```
+// Before
+return lines.join('\r\n') + '\r\n';
+
+// After
+return lines.join('\\r\\n') + '\\r\\n';
+```
+
+#### 3. Regression guard
+Added `new Function(scriptBody)` test in `html-renderer.test.ts` that extracts the executable `<script>` block and asserts it parses without throwing. This test would have failed against the original bugs.
+
+### UX Improvements (same PR)
+
+#### Option text: "AI credits consumed" → "AI credits"
+Shorter, cleaner label. Value attribute `credits` unchanged.
+
+#### Visible "Sort:" label
+Added `<label class="sort-label" for="sort-sessions">Sort:</label>` to the left of the select. Previously the control had only an `aria-label`.
+
+#### Asc/Desc direction toggle button
+Added `<button id="sort-direction">` (▼ desc default) immediately to the right of the select. Clicking toggles `sortDir` state between `'desc'` and `'asc'` and re-runs `applySort`. Sessions with blank/null sort keys (no start date, no credits) always sort to the bottom regardless of direction. JS: `updateDirBtn()` syncs the glyph (▼/▲) and `aria-label`.
+
+#### Apply sort on page load
+`applySort(sortSelect.value)` is called immediately on script execution so cards reflect the dropdown state without requiring a user interaction.
+
+### Files Changed
+
+- `src/render/HtmlRenderer.ts` — csvCell fix, buildCsv fix, sort JS replacement, HTML toolbar, CSS
+- `src/__tests__/html-renderer.test.ts` — updated sort-presence test, new script-parse regression test, new sort-dir test
+
+### Validation
+
+✅ npm run build clean
+✅ npm run lint clean
+✅ full jest suite 528/528 pass; html-renderer suite 85/85
+✅ Global dist rebuilt + verified fixes in global distribution
+
+---
+
+## Sort Dropdown for Session Cards (2026-06-13)
+
+**Status:** IMPLEMENTED
+
+**Author:** switch (Frontend/Dashboard Dev)  
+**Date:** 2026-06-13
+
+### What was added
+
+A `<select id="sort-sessions" class="sort-select">` dropdown with three options:
+- **Session date** (default)
+- **Token count**
+- **AI credits consumed**
+
+Positioned to the left of the CSV button inside `#dashboard-controls`.
+
+Client-side sort wiring (in the existing CSV export IIFE) reads `data-sort-*` attributes stamped on each `<article class="session-card">` at server-render time and reorders existing DOM nodes via `appendChild` — no card HTML is rebuilt in JS.
+
+### Data attributes added to session cards
+
+- `data-sort-start` — ISO start timestamp (empty string if unknown)
+- `data-sort-tokens` — integer total token count
+- `data-sort-cost` — float credits value (empty string if unavailable)
+
+In-progress cards get `data-sort-tokens="0"` and `data-sort-cost=""`.
+
+### Default sort directions
+
+| Option | Direction | Rationale |
+|--------|-----------|-----------|
+| Session date | Newest first | Most recent work is most relevant |
+| Token count | Highest first | Heaviest sessions are most interesting |
+| AI credits consumed | Highest first | Biggest cost sessions first; null/empty floats to bottom |
+
+### In-progress card grouping
+
+In-progress cards sort alongside completed cards using the same key. In practice:
+- **Date**: sorted by actual start time — natural chronological placement
+- **Tokens**: always float to the bottom (0 tokens)
+- **Credits**: always float to the bottom (empty cost)
+
+This is cleaner than pinning them to top/bottom unconditionally, since date order remains coherent.
+
+### Style
+
+`.sort-select` matches `.export-btn` visually: `border-radius: 100px`, `height: 32px`, same border/color/transition tokens.
+
+### Files changed
+
+- `src/render/HtmlRenderer.ts` — toolbar HTML, CSS, JS IIFE, session card data attributes
+- `src/__tests__/html-renderer.test.ts` — new test "renders a sort dropdown to the left of the CSV button"
+
+### Validation
+
+✅ Build passes
+✅ Lint clean
+✅ 83 tests pass
+✅ Global dist rebuilt and verified
+
+---
+
 ## OTel-Primary Pivot — Tank Feasibility (2026-06-10)
 
 **Status:** RATIFIED — Implementation Complete
@@ -894,6 +1039,88 @@ changes do not trigger screenshot regeneration, keeping the workflow fast.
 | `scripts/screenshot-dashboard.mjs` | New — synthetic Report + HtmlRenderer invocation |
 | `.squad/agents/switch/history.md` | Learnings appended |
 
+---
+
+## Decision: Responsive Collapsible Sidebar for Filters
+
+**Date:** 2026-06-13T01:28:12.982-04:00  
+**Agent:** Switch  
+**Status:** Accepted
+
+### Context
+
+The HTML dashboard was looking uneven and crowded at the top because of the numerous filter controls (source, model, token thresholds, sorting, etc.) and they weren't uniform in size.
+
+### Decision
+
+Moved the entire filter suite into a fixed-width collapsible sidebar (`.sidebar-filters`) on the left side of the dashboard.
+
+### Rationale
+
+- Setting `.dashboard-controls` to `flex-direction: column` within the sidebar ensures all inputs and dropdowns share a uniform width (`100%`) without manual syncing.
+- Adds an explicit filter toggle button, keeping the main content focused purely on data visualization when collapsed.
+- Better maps to traditional dashboard layouts where vertical scanning of filters is standard UX.
+
+## 2026-06-13
+
+### Removed Calendar Filter from UI
+
+**Date:** 2026-06-13
+**Author:** Switch
+
+**Context:** The dashboard header contained an interactive calendar filter (\date-filter\, \ilter-pill\, etc.) allowing client-side date filtering over the sessions payload.
+
+**Decision:** I have entirely removed the interactive calendar widget and its associated JS/CSS from the HTML template.
+
+**Rationale:** The dashboard generates reports based on sessions provided by the CLI. Since the CLI already handles time-bounding and session selection natively (e.g. \--since\), the client-side calendar filter was redundant visual clutter that duplicated CLI responsibilities.
+
+
+## Decision: Use custom checkbox dropdowns for Model/Source filters
+
+**Date:** 2026-06-13T02:31:32.831-04:00
+**Agent:** Switch
+
+### Context
+The standard <select multiple> inputs for Models and Source filters took up too much vertical space and broke the uniform 'pill' row aesthetic of the dashboard toolbar. Additionally, numeric filters used an explicit operator dropdown (>=/<=) which added unnecessary UI noise.
+
+### Decision
+1. Implemented a custom floating dropdown pattern (HTML/CSS/JS) for Models and Source filters containing checkboxes and an 'All' toggle logic.
+2. Standardized the filter control groups to use uniform 'pill' styling (\order-radius: 100px\).
+3. Simplified Tokens and Credits filters to single number inputs that implicitly represent 'greater than or equal to'.
+
+### Consequences
+- Requires a tiny bit more vanilla JS in the output to handle click-outside-to-close and the 'All' checkbox logic.
+- Considerably cleaner UI that matches the original dashboard design specification.
+
+
+
+# Standardize Dashboard Filters
+
+**Agent:** Switch  
+**Date:** 2026-06-13T02:41:24-04:00
+
+## Context
+The dashboard filters had regressed into an untidy layout: they wrapped to a second row unnecessarily, and the control elements (inputs, `<select>` dropdowns, and independent buttons) all had varying heights, borders, and paddings. Additionally, the native `<select>` dropdown (Sort by Date) had poor dark mode styling, causing its options to be invisible due to system default white backgrounds.
+
+## Decision
+- Enforced a strict single-row layout for the `.dashboard-controls` container (`flex-wrap: nowrap; overflow-x: auto;`) and added `flex-shrink: 0` to its children so pills maintain their intended width and gracefully scroll instead of wrapping.
+- Standardized all `.control-group` pills and standalone buttons (`.reset-filters-btn`, `.export-btn`) to a uniform `height: 32px` using `box-sizing: border-box`.
+- Adjusted inner elements (inputs, select triggers) to inherit `height: 100%` rather than using divergent minimum heights.
+- Removed inner border and background from the `.sort-dir-btn` so it sits flush within the "Sort by" pill.
+- Applied `background: var(--bg-surface)` to `.control-group select option` to ensure dropdown text is readable against a dark background, overriding OS native light theme defaults for transparent `<select>` elements.
+
+## Consequences
+The dashboard filters now have a polished, uniform, single-row presentation. The dark mode experience for native `<select>` elements is fully readable without relying on hover states.
+
+
+# Removed client-side filtering from UI
+
+**Date:** 2026-06-13
+**Role:** Switch (Frontend Dev)
+
+We removed the client-side interactive filtering and sorting entirely from the HTML dashboard. The UI is now much cleaner, focusing only on the "at-a-glance" read of the metrics. Users were getting frustrated with the dual-layer filtering (CLI filters vs Dashboard client filters).
+
+We kept the "Export CSV" button, positioned where the toolbar used to be, so users can still download the static report and filter or sort in Excel or Sheets if they need to.
 ## Decision: Log Parser Can Extract AI Credits (totalNanoAiu) (2026-06-12)
 
 **Status:** PENDING RATIFICATION

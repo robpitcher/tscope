@@ -55,3 +55,7 @@ Added 69 new tests across 3 new test files; total suite grew from 461 → 530, a
 ### 2026-06-10 — OTel-Primary Pivot Planning (Planning Batch)
 
 Tank and Trinity completed empirical OTel investigation and architecture proposal for OTel-primary pivot + CLI redesign. **Outcome: FEASIBLE.** OTel span token counts match events.jsonl exactly; session ID preserved; bonus signals (latency, tool calls, server-side billing) exposed. Architecture: DataSource abstraction, `--source otel|logs|auto`, JSON v4→v5. **Status:** Proposed decisions merged to decisions.md pending user approval on 5 open forks (cost re-intro, file rotation, bonus signals in v1, v5 timing, CLI surface). **Upcoming work for Apoc:** P3/P4 — Test suite expansion for dual-source parsing (OTel + events.jsonl), extended metrics validation; timeline depends on user fork resolutions. Implementation blocked until user decision.
+
+### 2026-06-13 — PR #18 Formatting Fix: Export CSV Test Indentation (Apoc)
+
+Fixed accidental 20-space indentation on the "renders an Export CSV button in the header with client-side wiring" test declaration (was a copy/paste artifact) and collapsed two consecutive blank lines to one; all 85 html-renderer tests pass.
