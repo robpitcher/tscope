@@ -24,10 +24,7 @@ network: defaults
 safe-outputs:
   create-pull-request:
     draft: true
-    protected-files:
-      policy: fallback-to-issue
-      exclude:
-        - README.md
+    protected-files: fallback-to-issue
     labels: [automation, documentation]
     max-patch-size: 4096
 
