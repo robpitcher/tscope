@@ -23,3 +23,21 @@
 - **Implementation:** Removed date-filter popover, calendar UI, all client-side event handlers
 - **Preservation:** Static 'Generated At' timestamp and report-level date references remain
 - **Decision merged to decisions.md:** "Removed Calendar Filter from UI"
+
+### 2026-06-13 — Restore UI Polish (Background Spawn)
+
+**Orchestration Log:** 2026-06-13T02-19-08Z-switch.md
+
+- **Reason:** Re-apply all dashboard UI polish after it was lost due to a git reset/regression.
+- **Expected Outcome:**
+  - Restored uniform horizontal filter pills
+  - Removed OTel counter from header
+  - Moved Export CSV to filters row
+  - Placed Total Credits before Total Tokens
+  - Moved timestamp to Date Generated card
+  - Removed API Time filter
+  - Added ▲/▼ for sort indicators
+  - Fixed broken tests
+
+## Learnings
+- 2026-06-13: Re-implemented the UI dashboard cleanup. Ensured horizontal filter layout, removed the top header pill, moved Export CSV inline, reordered the total cards (Credits before Tokens), updated Date Generated timestamp and card, removed API Time filter, and changed Asc/Desc sorting to ▲/▼ arrows. Fixed unit tests that were failing because they asserted the presence of the removed UI elements.
