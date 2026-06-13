@@ -21,7 +21,8 @@ function createCompletedSession(
   sessionId: string,
   startTimeISO: string,
   inputTokens = 1000,
-  outputTokens = 400
+  outputTokens = 400,
+  totalNanoAiu?: number
 ): void {
   const sessionDir = path.join(sessionStateDir, sessionId);
   fs.mkdirSync(sessionDir, { recursive: true });
@@ -46,6 +47,7 @@ function createCompletedSession(
           },
         },
         totalApiDurationMs: 5000,
+        ...(totalNanoAiu !== undefined ? { totalNanoAiu } : {}),
       },
     }),
   ];
@@ -244,10 +246,10 @@ describe("LogsDataSource", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Source provenance and no-cost invariants
+  // Source provenance and cost data
   // ---------------------------------------------------------------------------
 
-  describe("source provenance — logs sessions must not carry cost fields", () => {
+  describe("source provenance and logs cost fields", () => {
     test("completed sessions have source: 'logs'", async () => {
       createCompletedSession(tmpDir, "sess-1", "2026-06-10T12:00:00.000Z");
       const sessions = await new LogsDataSource(tmpDir).loadSessions();
@@ -264,6 +266,27 @@ describe("LogsDataSource", () => {
       createCompletedSession(tmpDir, "sess-1", "2026-06-10T12:00:00.000Z");
       const sessions = await new LogsDataSource(tmpDir).loadSessions();
       expect(sessions[0].totalCost).toBeUndefined();
+    });
+
+    test("logs sessions include totalCost when totalNanoAiu is present", async () => {
+      createCompletedSession(
+        tmpDir,
+        "sess-with-cost",
+        "2026-06-10T12:00:00.000Z",
+        1000,
+        400,
+        1_750_000_000
+      );
+      createCompletedSession(tmpDir, "sess-without-cost", "2026-06-10T13:00:00.000Z");
+
+      const sessions = await new LogsDataSource(tmpDir).loadSessions();
+      const withCost = sessions.find((s) => s.sessionId === "sess-with-cost");
+      const withoutCost = sessions.find((s) => s.sessionId === "sess-without-cost");
+
+      expect(withCost?.source).toBe("logs");
+      expect(withCost?.totalCost).toBe(1.75);
+      expect(withoutCost?.source).toBe("logs");
+      expect(withoutCost?.totalCost).toBeUndefined();
     });
 
     test("logs sessions have no extended field", async () => {

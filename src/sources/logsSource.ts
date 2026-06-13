@@ -4,7 +4,8 @@
  * Discovers all session directories under ~/.copilot/session-state, applies
  * a date predicate to each (via the session.start timestamp), then parses the
  * matching ones with parseEventsFile. Returns NormalizedSession[] with
- * source:"logs", no cost data, and no extended metrics.
+ * source:"logs", no modelCosts/extended metrics, and totalCost when events
+ * include session.shutdown.data.totalNanoAiu.
  */
 
 import * as fs from "fs";

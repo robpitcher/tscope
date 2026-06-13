@@ -48,6 +48,7 @@ interface RawSessionShutdown {
     sessionStartTime?: number;
     modelMetrics?: Record<string, RawModelMetrics>;
     totalApiDurationMs?: number;
+    totalNanoAiu?: number;
   };
   timestamp?: string;
 }
@@ -254,6 +255,7 @@ export async function parseEventsFile(
   // total compute time across resumed runs. Undefined if no shutdown
   // reported the field (e.g., older CLI versions).
   let apiDurationMs: number | undefined = undefined;
+  let totalNanoAiu: number | undefined = undefined;
 
   for (const shutdown of shutdownEvents) {
     const rawMetrics = shutdown.data?.modelMetrics ?? {};
@@ -269,7 +271,13 @@ export async function parseEventsFile(
     if (typeof runDuration === "number" && isFinite(runDuration) && runDuration >= 0) {
       apiDurationMs = (apiDurationMs ?? 0) + runDuration;
     }
+    const runNanoAiu = shutdown.data?.totalNanoAiu;
+    if (typeof runNanoAiu === "number" && isFinite(runNanoAiu) && runNanoAiu >= 0) {
+      totalNanoAiu = (totalNanoAiu ?? 0) + runNanoAiu;
+    }
   }
+
+  const totalCost = totalNanoAiu !== undefined ? totalNanoAiu / 1e9 : undefined;
 
   const session: ParsedSession = {
     sessionId,
@@ -279,6 +287,7 @@ export async function parseEventsFile(
     chronicleTips,
     inProgress: false,
     ...(apiDurationMs !== undefined ? { apiDurationMs } : {}),
+    ...(totalCost !== undefined ? { totalCost } : {}),
   };
 
   return session;
