@@ -184,3 +184,27 @@ Tank resolved all 4 open Copilot review comments (PR #8). Key fixes relevant to 
 - **Expected outcome:** Remove OTel/logs pill, move 'Export CSV' to header, move timestamp below header, reorganize filters into horizontal row
 - **Rationale:** Further refinement of filter UI to improve visual hierarchy and usability
 - Agent: switch (background mode)
+
+### 2026-06-13 — Filter and Stat Card Cleanup
+
+- **Action:** Refined dashboard filters and stat cards based on user feedback.
+- **Implementation:**
+  - Removed 'API Time' threshold filter completely to simplify the UI.
+  - Added visible \<label>\ elements to all filter fields (Tokens, Credits, Source, Models, Sort By) for clarity.
+  - Moved the 'Export CSV' button from the top header into the same horizontal control box as the dashboard filters.
+  - Changed the Sort direction button from 'Asc'/'Desc' text to visual up/down arrows (▲/▼).
+  - Reordered the stat cards to put 'Total Credits' before 'Total Tokens'.
+  - Renamed the 'Date Filter' card to 'Date Generated', embedding the actual generated timestamp into it and removing the standalone timestamp row under the header.
+- **Impact:** Cleaner, more legible control grouping and improved semantic labeling for filters.
+
+### 2026-06-13 — Dashboard Layout Fine-tuning (Scribe Recording)
+
+**Orchestration:** Background task spawned by Scribe
+**Outcome (Expected):**
+- Removed min API time filter for UI simplification
+- Updated sort button: Desc/Asc → ▲/▼ visual arrows
+- Added visible <label> elements to all filter fields
+- Moved Export CSV button into filters row
+- Reordered stat cards: Total Credits → Total Tokens
+- Renamed "Date Filter" → "Date Generated" (holds report timestamp)
+- **Impact:** Cleaner filter UX with improved semantic labeling and visual hierarchy
