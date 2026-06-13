@@ -26,12 +26,13 @@ safe-outputs:
     draft: true
     protected-files: fallback-to-issue
     labels: [automation, documentation]
+    max-patch-size: 4096
 
 tools:
   github:
     toolsets: [all]
   web-fetch:
-  # By default this workflow allows all bash commands within the confine of Github Actions VM 
+  # By default this workflow allows all bash commands within the confine of Github Actions VM
   bash: true
 
 # Playwright Chromium install adds ~3-4 min. 25 min gives comfortable headroom
