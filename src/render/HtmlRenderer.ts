@@ -512,7 +512,7 @@ function buildSessionCard(session: NormalizedSession): string {
   const totalTokensForCard = totalFreshInput + totalCacheRead + totalCacheWrite + totalOutput;
 
   return `
-<article class="session-card" data-session-id="${esc(session.sessionId)}">
+<article class="session-card" data-session-id="${esc(session.sessionId)}" data-sort-start="${esc(session.startTime || '')}" data-sort-tokens="${totalTokensForCard}" data-sort-cost="${session.totalCost !== undefined ? session.totalCost : ''}">
   <div class="session-header">
     <div class="session-meta">
       <span class="session-id">${esc(session.sessionId)}</span>
@@ -585,7 +585,7 @@ function buildSessionCard(session: NormalizedSession): string {
 function buildInProgressCard(session: InProgressSession): string {
   const dateStr = session.startTime ? toLocalDateTime(session.startTime) : "unknown time";
   return `
-<article class="session-card session-card--in-progress" data-session-id="${esc(session.sessionId)}">
+<article class="session-card session-card--in-progress" data-session-id="${esc(session.sessionId)}" data-sort-start="${esc(session.startTime || '')}" data-sort-tokens="0" data-sort-cost="">
   <div class="session-header">
     <div class="session-meta">
       <span class="session-id">${esc(session.sessionId)}</span>
@@ -783,6 +783,50 @@ a:hover { text-decoration: underline; }
   transition: background 0.15s, color 0.15s;
 }
 .export-btn:hover {
+  background: var(--border);
+  color: var(--text-primary);
+}
+
+.sort-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 0 28px 0 12px;
+  height: 32px;
+  box-sizing: border-box;
+  transition: background 0.15s, color 0.15s;
+}
+.sort-select:hover, .sort-select:focus {
+  background: var(--border);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.sort-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  user-select: none;
+}
+.sort-dir-btn {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 10px;
+  height: 32px;
+  box-sizing: border-box;
+  transition: background 0.15s, color 0.15s;
+}
+.sort-dir-btn:hover {
   background: var(--border);
   color: var(--text-primary);
 }
@@ -1468,7 +1512,7 @@ const JS = `
     if (v === null || v === undefined) return '';
     var s = String(v);
     if (/^[=+\\-@\\t\\r]/.test(s)) s = "'" + s;
-    if (s.indexOf('"') !== -1 || s.indexOf(',') !== -1 || s.indexOf('\n') !== -1 || s.indexOf('\r') !== -1) {
+    if (s.indexOf('"') !== -1 || s.indexOf(',') !== -1 || s.indexOf('\\n') !== -1 || s.indexOf('\\r') !== -1) {
       return '"' + s.replace(/"/g, '""') + '"';
     }
     return s;
@@ -1488,7 +1532,7 @@ const JS = `
       ];
       lines.push(row.join(','));
     }
-    return lines.join('\r\n') + '\r\n';
+    return lines.join('\\r\\n') + '\\r\\n';
   }
 
   var exportBtn = document.getElementById('export-csv');
@@ -1510,6 +1554,76 @@ const JS = `
       setTimeout(function() { URL.revokeObjectURL(url); }, 0);
     });
   }
+
+  var sortDir = 'desc';
+
+  function updateDirBtn() {
+    var btn = document.getElementById('sort-direction');
+    if (!btn) return;
+    if (sortDir === 'desc') {
+      btn.textContent = '▼';
+      btn.setAttribute('aria-label', 'Sort descending');
+    } else {
+      btn.textContent = '▲';
+      btn.setAttribute('aria-label', 'Sort ascending');
+    }
+  }
+
+  function applySort(by) {
+    var host = document.getElementById('sessions-host');
+    if (!host) return;
+    var dir = sortDir === 'desc' ? 1 : -1;
+    var cards = Array.prototype.slice.call(host.querySelectorAll('article.session-card'));
+    cards.sort(function(a, b) {
+      if (by === 'date') {
+        var aVal = a.getAttribute('data-sort-start') || '';
+        var bVal = b.getAttribute('data-sort-start') || '';
+        if (!aVal && !bVal) return 0;
+        if (!aVal) return 1;
+        if (!bVal) return -1;
+        return (bVal > aVal ? 1 : bVal < aVal ? -1 : 0) * dir;
+      }
+      if (by === 'tokens') {
+        var aT = parseInt(a.getAttribute('data-sort-tokens') || '0', 10);
+        var bT = parseInt(b.getAttribute('data-sort-tokens') || '0', 10);
+        return (bT - aT) * dir;
+      }
+      if (by === 'credits') {
+        var aC = a.getAttribute('data-sort-cost');
+        var bC = b.getAttribute('data-sort-cost');
+        var aHas = aC !== null && aC !== '';
+        var bHas = bC !== null && bC !== '';
+        if (!aHas && !bHas) return 0;
+        if (!aHas) return 1;
+        if (!bHas) return -1;
+        return (parseFloat(bC) - parseFloat(aC)) * dir;
+      }
+      return 0;
+    });
+    for (var i = 0; i < cards.length; i++) {
+      host.appendChild(cards[i]);
+    }
+  }
+
+  var sortSelect = document.getElementById('sort-sessions');
+  var sortDirBtn = document.getElementById('sort-direction');
+
+  if (sortSelect) {
+    sortSelect.addEventListener('change', function() {
+      applySort(sortSelect.value);
+    });
+  }
+
+  if (sortDirBtn) {
+    sortDirBtn.addEventListener('click', function() {
+      sortDir = sortDir === 'desc' ? 'asc' : 'desc';
+      updateDirBtn();
+      if (sortSelect) applySort(sortSelect.value);
+    });
+  }
+
+  updateDirBtn();
+  if (sortSelect) applySort(sortSelect.value);
 })();
 `.trim();
 
@@ -1682,6 +1796,13 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
 
 <div class="report-toolbar container">
   <div class="dashboard-controls" id="dashboard-controls" aria-label="Dashboard controls">
+    <label class="sort-label" for="sort-sessions">Sort:</label>
+    <select class="sort-select" id="sort-sessions" aria-label="Sort sessions by">
+      <option value="date">Session date</option>
+      <option value="tokens">Token count</option>
+      <option value="credits">AI credits</option>
+    </select>
+    <button class="sort-dir-btn" id="sort-direction" type="button" aria-label="Sort descending">&#x25BC;</button>
     <button class="export-btn" id="export-csv" type="button" aria-label="Export sessions to CSV" title="Download all sessions as a CSV file">&#x2B07; CSV</button>
   </div>
 </div>

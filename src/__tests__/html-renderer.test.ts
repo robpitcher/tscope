@@ -588,6 +588,72 @@ describe("HtmlRenderer", () => {
       expect(html).toContain("'tscope-sessions-'");
     });
 
+    test("renders a sort dropdown to the left of the CSV button", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-sort-dropdown.html"
+      );
+      // Dropdown is present with correct id and accessible label.
+      expect(html).toContain('id="sort-sessions"');
+      expect(html).toMatch(/<select[^>]*id="sort-sessions"[^>]*aria-label="Sort sessions by"/);
+      // All three sort options are present (option text matches spec).
+      expect(html).toContain('>Session date<');
+      expect(html).toContain('>Token count<');
+      expect(html).toContain('>AI credits<');
+      expect(html).not.toContain('>AI credits consumed<');
+      // Visible "Sort:" label is present.
+      expect(html).toMatch(/<label[^>]*for="sort-sessions"[^>]*>Sort:/);
+      // The sort dropdown appears BEFORE the CSV button in the markup.
+      const sortPos = html.indexOf('id="sort-sessions"');
+      const csvPos = html.indexOf('id="export-csv"');
+      expect(sortPos).toBeGreaterThan(-1);
+      expect(csvPos).toBeGreaterThan(-1);
+      expect(sortPos).toBeLessThan(csvPos);
+      // CSS rule for the select is included.
+      expect(html).toContain(".sort-select");
+      // Sort JS is wired: applySort function is present.
+      expect(html).toContain("function applySort");
+      // Session cards carry sort data-attributes.
+      expect(html).toMatch(/class="session-card"[^>]*data-sort-start=/);
+      expect(html).toMatch(/data-sort-tokens="\d+"/);
+    });
+
+    test("inline <script> body parses as valid JavaScript (regression: no raw LF/CR in string literals)", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-script-parse.html"
+      );
+      // Extract the executable <script> block (last script before </body>).
+      const m = html.match(/<script>([\s\S]+?)<\/script>\s*<\/body>/);
+      expect(m).not.toBeNull();
+      const scriptBody = m![1];
+      // new Function() parses the body as a function body — throws on SyntaxError.
+      // Raw LF/CR inside single-quoted string literals would cause a SyntaxError here.
+      expect(() => new Function(scriptBody)).not.toThrow();
+    });
+
+    test("sort direction toggle button is present and wired", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-sort-dir.html"
+      );
+      // Direction button is present with correct id and initial aria-label.
+      expect(html).toContain('id="sort-direction"');
+      expect(html).toMatch(/<button[^>]*id="sort-direction"[^>]*type="button"/);
+      expect(html).toContain('aria-label="Sort descending"');
+      // Direction button appears AFTER the sort select and BEFORE the CSV button.
+      const selectPos = html.indexOf('id="sort-sessions"');
+      const dirPos = html.indexOf('id="sort-direction"');
+      const csvPos = html.indexOf('id="export-csv"');
+      expect(selectPos).toBeLessThan(dirPos);
+      expect(dirPos).toBeLessThan(csvPos);
+      // JS wiring: direction state variable and toggle logic are present.
+      expect(html).toContain("sortDir");
+      expect(html).toContain("updateDirBtn");
+      // CSS rule for the direction button exists.
+      expect(html).toContain(".sort-dir-btn");
+    });
+
     test("cached-input pill is neutrally labelled (no green/amber/red grading)", () => {
       const html = renderToString(
         { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
