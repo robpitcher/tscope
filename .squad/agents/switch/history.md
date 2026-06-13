@@ -150,3 +150,13 @@ Tank resolved all 4 open Copilot review comments (PR #8). Key fixes relevant to 
 4. **Provenance fix:** src/index.ts now respects explicit `--source otel` on empty results (no misleading "logs" label).
 
 **Validation:** 533 tests passing (+3 new edge cases), lint/build clean.
+
+---
+
+## Queued for v0.5.0 (2026-06-12)
+
+**GitHub Issue #14:** Dashboard filtering by source/model/tokens/credits/API-time and sorting controls  
+**GitHub Issue #15:** Change default filter from today to last 10 sessions
+
+Trinity's scope assessment split a 4-part feature request into 3 standalone issues. Switch owns dashboard filtering/sorting (#14) and default behavior change (#15). Filtering adds source, model, and cost-based controls. Sorting lets users rank by tokens or credits. Default shifts from "today only" to "last 10 sessions" to provide historical context on first load.
+

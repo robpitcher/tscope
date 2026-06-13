@@ -27,3 +27,24 @@
 - **Architecture impact:** Reinforces the principle that report-level provenance should reflect selected source mode, not just data that happened to load. Clean semantic boundary.
 - **Implementation:** Added post-computation override in src/index.ts; `computeReportSource()` pure function unchanged. Non-breaking.
 - Merged from inbox decision "tank-pr8-review-fixes.md" into decisions.md for institutional record.
+
+### 2026-06-12: Scope Analysis — AI Credits in Logs + Dashboard Filters + Default Window
+
+**Key file paths verified:**
+- Log parser: `src/parser.ts` — parses `session.shutdown` events; does NOT extract `totalNanoAiu` currently
+- Logs data source: `src/sources/logsSource.ts` — wraps parser, returns sessions with `source:"logs"`
+- OTel data source: `src/sources/otelSource.ts` — extracts `github.copilot.nano_aiu` per chat span
+- HTML renderer: `src/render/HtmlRenderer.ts` (68KB) — has date-range filter UI; NO model/source/tokens/credits filters; NO sorting UI
+- CLI entry: `src/index.ts:150` — default `filterMode = "today"` when no flags
+- Types: `src/types.ts` — `NormalizedSession` already has `modelCosts?`, `totalCost?`, `apiDurationMs?`
+
+**Feasibility: AI credits in logs**
+- CONFIRMED: `session.shutdown.data.totalNanoAiu` exists in events.jsonl (verified in live session files)
+- Also found per-model `modelMetrics[model].requests.cost` in older sessions
+- This is NOT a spike — the data is present; parser just needs to extract it
+
+**Scope verdict:**
+- Feature #1 (log credits) is deterministic implementation (~1–2 hours), not research
+- Features #2–4 (dashboard filters/sorting/default) are cohesive UI/CLI work
+- Recommend: ONE epic with 3 sub-issues (log credits, dashboard filters+sorting, default window change)
+- Rationale: log credits touches data layer; filters/sorting is pure frontend; default window is CLI. Clean boundaries.
