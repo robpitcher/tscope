@@ -29,6 +29,7 @@ safe-outputs:
       exclude:
         - README.md
     labels: [automation, documentation]
+    max-patch-size: 4096
 
 tools:
   github:

@@ -112,4 +112,12 @@ Updated to reflect that text output shows Reasoning row for ALL sources (OTel + 
 
 ---
 
+## Queued for v0.5.0 (2026-06-12)
+
+**GitHub Issue #13:** Extract AI credits (totalNanoAiu) from events.jsonl
+
+Trinity's decision: AI-credit data IS available in logs via `session.shutdown.data.totalNanoAiu / 1e9` — same billing math as OTel. Reverses prior "cost unavailable for logs" policy. Modifier `src/parser.ts` to extract field and populate `totalCost` in ParsedSession.
+
+---
+
 ## Learnings — 2026-06-03 Merge Pivot (ARCHIVE)

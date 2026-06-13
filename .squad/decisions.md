@@ -1107,3 +1107,50 @@ The dashboard filters now have a polished, uniform, single-row presentation. The
 We removed the client-side interactive filtering and sorting entirely from the HTML dashboard. The UI is now much cleaner, focusing only on the "at-a-glance" read of the metrics. Users were getting frustrated with the dual-layer filtering (CLI filters vs Dashboard client filters).
 
 We kept the "Export CSV" button, positioned where the toolbar used to be, so users can still download the static report and filter or sort in Excel or Sheets if they need to.
+## Decision: Log Parser Can Extract AI Credits (totalNanoAiu) (2026-06-12)
+
+**Status:** PENDING RATIFICATION
+
+**Author:** Trinity (Lead/Architect)  
+**Date:** 2026-06-12
+
+### Summary
+
+AI credits **ARE available** in events.jsonl and can be extracted by the log parser. This supersedes the earlier "logs-only sessions show cost unavailable" policy for sessions with the `totalNanoAiu` field.
+
+### Evidence
+
+Verified in live session files:
+```json
+{"type":"session.shutdown","data":{
+  "totalNanoAiu":136033700000,
+  "modelMetrics":{"claude-opus-4.8":{"requests":{"count":72,"cost":12},...}},
+  ...
+}}
+```
+
+- `session.shutdown.data.totalNanoAiu` → divide by 1e9 → AI credits (same math as OTel's `github.copilot.nano_aiu`)
+- Also: `modelMetrics[model].requests.cost` provides per-model premium request cost (integer)
+- Field is present in sessions from ~April 2026 onward (Copilot CLI 1.0+)
+
+### Implications
+
+1. **Log-parser can populate `totalCost` for historical sessions** — backfills cost data for pre-OTel-enablement history
+2. **No longer a spike** — the data format is known and stable; implementation is deterministic
+3. **"cost unavailable" now only applies to truly old sessions** missing the field (pre-2026 or edge cases)
+
+### Implementation Notes
+
+- Modify `src/parser.ts` to extract `totalNanoAiu` from shutdown events
+- Add `totalCost` to the return value (same as OTel path)
+- `src/sources/logsSource.ts` already stamps `source: "logs"` — no changes needed there
+- Per-model cost breakdown: could use `modelMetrics[model].requests.cost` if granularity needed, or just use session-level `totalNanoAiu`
+
+### Compatibility
+
+- Sessions without `totalNanoAiu` (older CLI versions) continue to show "cost unavailable" — graceful degradation
+- OTel remains authoritative for overlapping sessions (merge logic unchanged)
+
+### Reference Issues
+
+- GitHub Issue #13: "Extract AI credits (totalNanoAiu) from events.jsonl" (assigned to Tank)
