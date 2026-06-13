@@ -50,6 +50,7 @@
 - **Decision merged to decisions.md:** "Use custom checkbox dropdowns for Model/Source filters"
 
 ## Learnings
+- 2026-06-13: Complex client-side filtering/sorting over a static CLI report proved too confusing and cluttered. Removed all interactive filter/sort UI and JavaScript to favor a simpler "at-a-glance" read with a single "Export CSV" button for offline manipulation.
 - 2026-06-13: Re-implemented the UI dashboard cleanup. Ensured horizontal filter layout, removed the top header pill, moved Export CSV inline, reordered the total cards (Credits before Tokens), updated Date Generated timestamp and card, removed API Time filter, and changed Asc/Desc sorting to ▲/▼ arrows. Fixed unit tests that were failing because they asserted the presence of the removed UI elements.
 - 2026-06-13: Restored custom dropdown filter functionality for models and sources to support multi-select with an 'All' toggle, and applied pill styling to match dashboard UX requirements. Also removed >/< operators for numeric filters in favor of implicit '>=' to simplify the UI.
 - 2026-06-13: Standardized dashboard filter layout. Set a fixed height of 32px for all filter pills, inputs, and standalone buttons to ensure a uniform appearance. Removed redundant background styling from inner elements like the sort direction arrow so they sit flush inside their parent pills. Added explicit background styling to native <option> elements to ensure the 'Sort by' dropdown text remains visible in dark mode, and updated the control group container to strictly enforce a single-row scrollable layout.
@@ -65,3 +66,16 @@
   - Fixed Sort dropdown dark mode visibility with ackground: var(--bg-surface) on <option> elements
   - Removed inner border/background from sort direction button
 - **Decision merged to decisions.md:** "Standardize Dashboard Filters"
+
+### 2026-06-13 — Remove All Interactive Filtering (Current)
+
+**Orchestration Log:** 2026-06-13T02-48-11Z-switch.md
+
+- **Reason:** Remove all interactive filtering and sorting from the dashboard due to user frustration with layout/styling
+- **Implementation:** 
+  - Completely removed filter/sort UI components
+  - Removed associated CSS styling for filter controls
+  - Removed client-side JavaScript logic for filter/sort operations (`recomputeView`, etc.)
+  - Preserved the Export CSV button in a clean row above the summary cards
+  - Dashboard now renders sessions statically based on CLI input
+- **Decision merged to decisions.md:** "Remove all interactive filtering and sorting from the dashboard"

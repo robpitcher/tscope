@@ -967,3 +967,12 @@ The dashboard filters had regressed into an untidy layout: they wrapped to a sec
 ## Consequences
 The dashboard filters now have a polished, uniform, single-row presentation. The dark mode experience for native `<select>` elements is fully readable without relying on hover states.
 
+
+# Removed client-side filtering from UI
+
+**Date:** 2026-06-13
+**Role:** Switch (Frontend Dev)
+
+We removed the client-side interactive filtering and sorting entirely from the HTML dashboard. The UI is now much cleaner, focusing only on the "at-a-glance" read of the metrics. Users were getting frustrated with the dual-layer filtering (CLI filters vs Dashboard client filters).
+
+We kept the "Export CSV" button, positioned where the toolbar used to be, so users can still download the static report and filter or sort in Excel or Sheets if they need to.
