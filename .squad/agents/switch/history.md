@@ -118,6 +118,26 @@ Trinity validated D2 (npm as primary distribution channel) against comprehensive
 - Did NOT add per-session source to the JSON renderer — Tank already serialized
   `session.source` in v5; verified it's correct, no touch needed.
 
+### 2026-06-12 — Screenshot Automation Added
+
+**Workflow:** `.github/workflows/update-docs.md`
+
+- **Screenshot files:** `docs/images/dashboard-light.png` and `docs/images/dashboard-dark.png`
+  — referenced via `<picture>` (prefers-color-scheme) in `README.md` lines ~15-18 and
+  `docs/html-dashboard.md` lines ~10-13. Caption: "_Generated from synthetic sample data._"
+- **Dashboard generation:** `tscope --html [FILE]` writes a self-contained HTML file.
+  The CLI reads from `~/.copilot/` which is unavailable on CI runners, so the helper script
+  bypasses the CLI and calls `HtmlRenderer` directly with a hardcoded synthetic `Report`.
+- **Helper script:** `scripts/screenshot-dashboard.mjs` — builds a synthetic Report,
+  instantiates `HtmlRenderer`, writes `dashboard-preview.html`. Verified working.
+- **gh-aw playwright approach:** The `playwright:` toolset key has no confirmed support in
+  gh-aw; used `bash: true` (already present) + `npx playwright install chromium --with-deps`
+  inline in the job. More robust than relying on an unverified toolset key.
+- **Viewport:** 1280×900 `fullPage: true` for stable, consistent diffs.
+- **Timeout bumped:** 15 → 25 minutes to accommodate Playwright Chromium install (~3-4 min).
+- **Trigger:** Screenshot step runs only when `src/render/HtmlRenderer.ts` or related render
+  files change — skip on unrelated doc-only changes.
+
 ### 2026-06-11 — Tank's PR #8 Review Fixes Complete
 
 **Branch:** `otel` | **Commit:** 3b82f00
