@@ -52,3 +52,16 @@
 ## Learnings
 - 2026-06-13: Re-implemented the UI dashboard cleanup. Ensured horizontal filter layout, removed the top header pill, moved Export CSV inline, reordered the total cards (Credits before Tokens), updated Date Generated timestamp and card, removed API Time filter, and changed Asc/Desc sorting to ▲/▼ arrows. Fixed unit tests that were failing because they asserted the presence of the removed UI elements.
 - 2026-06-13: Restored custom dropdown filter functionality for models and sources to support multi-select with an 'All' toggle, and applied pill styling to match dashboard UX requirements. Also removed >/< operators for numeric filters in favor of implicit '>=' to simplify the UI.
+- 2026-06-13: Standardized dashboard filter layout. Set a fixed height of 32px for all filter pills, inputs, and standalone buttons to ensure a uniform appearance. Removed redundant background styling from inner elements like the sort direction arrow so they sit flush inside their parent pills. Added explicit background styling to native <option> elements to ensure the 'Sort by' dropdown text remains visible in dark mode, and updated the control group container to strictly enforce a single-row scrollable layout.
+
+### 2026-06-13 — Standardize Dashboard Filters (Current)
+
+**Orchestration Log:** 2026-06-13T02-41-13Z-switch.md
+
+- **Decision:** Fix filter row wrapping and standardize control heights
+- **Implementation:** 
+  - Enforced single-row layout with horizontal scrolling via lex-wrap: nowrap; overflow-x: auto;
+  - Standardized all control elements to height: 32px with ox-sizing: border-box
+  - Fixed Sort dropdown dark mode visibility with ackground: var(--bg-surface) on <option> elements
+  - Removed inner border/background from sort direction button
+- **Decision merged to decisions.md:** "Standardize Dashboard Filters"

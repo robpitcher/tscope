@@ -948,3 +948,22 @@ The standard <select multiple> inputs for Models and Source filters took up too 
 - Considerably cleaner UI that matches the original dashboard design specification.
 
 
+
+# Standardize Dashboard Filters
+
+**Agent:** Switch  
+**Date:** 2026-06-13T02:41:24-04:00
+
+## Context
+The dashboard filters had regressed into an untidy layout: they wrapped to a second row unnecessarily, and the control elements (inputs, `<select>` dropdowns, and independent buttons) all had varying heights, borders, and paddings. Additionally, the native `<select>` dropdown (Sort by Date) had poor dark mode styling, causing its options to be invisible due to system default white backgrounds.
+
+## Decision
+- Enforced a strict single-row layout for the `.dashboard-controls` container (`flex-wrap: nowrap; overflow-x: auto;`) and added `flex-shrink: 0` to its children so pills maintain their intended width and gracefully scroll instead of wrapping.
+- Standardized all `.control-group` pills and standalone buttons (`.reset-filters-btn`, `.export-btn`) to a uniform `height: 32px` using `box-sizing: border-box`.
+- Adjusted inner elements (inputs, select triggers) to inherit `height: 100%` rather than using divergent minimum heights.
+- Removed inner border and background from the `.sort-dir-btn` so it sits flush within the "Sort by" pill.
+- Applied `background: var(--bg-surface)` to `.control-group select option` to ensure dropdown text is readable against a dark background, overriding OS native light theme defaults for transparent `<select>` elements.
+
+## Consequences
+The dashboard filters now have a polished, uniform, single-row presentation. The dark mode experience for native `<select>` elements is fully readable without relying on hover states.
+
