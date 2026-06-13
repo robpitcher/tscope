@@ -2,6 +2,67 @@
 
 ## Active Decisions
 
+## Sort Dropdown for Session Cards (2026-06-13)
+
+**Status:** IMPLEMENTED
+
+**Author:** switch (Frontend/Dashboard Dev)  
+**Date:** 2026-06-13
+
+### What was added
+
+A `<select id="sort-sessions" class="sort-select">` dropdown with three options:
+- **Session date** (default)
+- **Token count**
+- **AI credits consumed**
+
+Positioned to the left of the CSV button inside `#dashboard-controls`.
+
+Client-side sort wiring (in the existing CSV export IIFE) reads `data-sort-*` attributes stamped on each `<article class="session-card">` at server-render time and reorders existing DOM nodes via `appendChild` — no card HTML is rebuilt in JS.
+
+### Data attributes added to session cards
+
+- `data-sort-start` — ISO start timestamp (empty string if unknown)
+- `data-sort-tokens` — integer total token count
+- `data-sort-cost` — float credits value (empty string if unavailable)
+
+In-progress cards get `data-sort-tokens="0"` and `data-sort-cost=""`.
+
+### Default sort directions
+
+| Option | Direction | Rationale |
+|--------|-----------|-----------|
+| Session date | Newest first | Most recent work is most relevant |
+| Token count | Highest first | Heaviest sessions are most interesting |
+| AI credits consumed | Highest first | Biggest cost sessions first; null/empty floats to bottom |
+
+### In-progress card grouping
+
+In-progress cards sort alongside completed cards using the same key. In practice:
+- **Date**: sorted by actual start time — natural chronological placement
+- **Tokens**: always float to the bottom (0 tokens)
+- **Credits**: always float to the bottom (empty cost)
+
+This is cleaner than pinning them to top/bottom unconditionally, since date order remains coherent.
+
+### Style
+
+`.sort-select` matches `.export-btn` visually: `border-radius: 100px`, `height: 32px`, same border/color/transition tokens.
+
+### Files changed
+
+- `src/render/HtmlRenderer.ts` — toolbar HTML, CSS, JS IIFE, session card data attributes
+- `src/__tests__/html-renderer.test.ts` — new test "renders a sort dropdown to the left of the CSV button"
+
+### Validation
+
+✅ Build passes
+✅ Lint clean
+✅ 83 tests pass
+✅ Global dist rebuilt and verified
+
+---
+
 ## OTel-Primary Pivot — Tank Feasibility (2026-06-10)
 
 **Status:** RATIFIED — Implementation Complete
