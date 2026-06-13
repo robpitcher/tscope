@@ -28,7 +28,7 @@ The `--html` dashboard follows your system's light/dark theme:
 - 📊 **Local-only analysis** — no network calls, no credentials needed; OTel data is read from `~/.copilot/tscope/otel.jsonl`
 - 🔍 **Per-session breakdown** — view token usage by session and model
 - 💰 **Per-session cost** — when [OTel is enabled](#data-sources), shows server-side credits per session and per model; shows "unavailable" for log-parser sessions
-- 📅 **Recent-by-default** — shows the 10 most recent sessions by default
+- 📅 **Recent-by-default** — shows the 20 most recent sessions by default
 - 📈 **HTML dashboard** — sleek dashboard with token charts, an interactive date-range filter, and system light/dark theme
 - 💡 **Chronicle Insights** — if a session ran `/chronicle tips` or `/chronicle cost-tips`, the recommendations are surfaced in the HTML dashboard
 - 📤 **JSON output** — machine-readable schema (`tscope/report/v5`) for scripting
@@ -76,7 +76,7 @@ Requires **Node.js 18+**.
 | `--source` | `auto` \| `otel` \| `logs` | Data source. `auto` (default): merges OTel and log-parser sessions into one report (OTel authoritative on overlap); shows cost for OTel sessions, "unavailable" for logs-only. `otel`: OTel only; exits with error if unavailable. `logs`: log parser only. | No |
 | `--version`, `-v` | _(none)_ | Print the installed version and exit. | No |
 
-With no flags, `tscope` reports the 10 most recent sessions in formatted text. Date filters (`--date`, `--range`, `--lastdays`, `--all`) are mutually exclusive, and explicit `--max` overrides the default cap. See [Usage](docs/usage.md) for full details.
+With no flags, `tscope` reports the 20 most recent sessions in formatted text. Date filters (`--date`, `--range`, `--lastdays`, `--all`) are mutually exclusive, and explicit `--max` overrides the default cap. See [Usage](docs/usage.md) for full details.
 
 ## Documentation
 

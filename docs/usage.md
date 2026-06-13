@@ -2,7 +2,7 @@
 
 ## Basic Usage
 
-Show the 10 most recent sessions:
+Show the 20 most recent sessions:
 
 ```bash
 tscope

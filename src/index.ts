@@ -64,7 +64,7 @@ SUBCOMMANDS
                       (previews, then prompts for confirmation)
 
 DESCRIPTION
-  With no arguments, tscope discovers the 10 most recent Copilot CLI
+  With no arguments, tscope discovers the 20 most recent Copilot CLI
   sessions across all history, parses token usage, and prints a formatted
   report with per-model token counts and session totals.
 
@@ -82,7 +82,7 @@ DESCRIPTION
   your system's light/dark theme.
 
 EXAMPLES
-  tscope                                  Report the 10 most recent sessions
+  tscope                                  Report the 20 most recent sessions
   tscope --lastdays 7                     Report sessions from the last 7 days
   tscope --range 2026-05-01 2026-05-31    Report sessions in a date range
                                           (dates are YYYY-MM-DD, inclusive)
@@ -156,7 +156,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let filterStart: string | undefined;
   let filterEnd: string | undefined;
   let filterLastDays: string | undefined;
-  let max: string | undefined = noFilterFlags ? "10" : undefined;
+  let max: string | undefined = noFilterFlags ? "20" : undefined;
   const defaultRecent = noFilterFlags;
 
   if (all) {
@@ -322,7 +322,7 @@ function buildDatePredicate(args: ParsedArgs): SessionDatePredicate | undefined 
 
 /** Build the human-readable filter description for reports */
 export function buildFilterDescription(args: ParsedArgs): string {
-  if (args.defaultRecent) return "last 10 sessions";
+  if (args.defaultRecent) return "last 20 sessions";
 
   let base: string;
   if (args.filterMode === "all") base = "all time";

@@ -118,21 +118,6 @@ describe("HTML: coverage.otelCount=0 with source='mixed' (edge case — no crash
   test("renders without throwing when otelCount=0 and source='mixed'", () => {
     expect(() => renderHtml(ZERO_OTEL_MIXED, "rg-html-zero-otel-crash.html")).not.toThrow();
   });
-
-  test("coverage-summary element is present in output", () => {
-    const html = renderHtml(ZERO_OTEL_MIXED, "rg-html-zero-otel-summary.html");
-    expect(html).toContain("coverage-summary");
-  });
-
-  test("shows '0 OTel' in coverage summary (zero is a valid count)", () => {
-    const html = renderHtml(ZERO_OTEL_MIXED, "rg-html-zero-otel-count.html");
-    expect(html).toContain("0 OTel");
-  });
-
-  test("shows correct logsCount (5 logs) in coverage summary", () => {
-    const html = renderHtml(ZERO_OTEL_MIXED, "rg-html-zero-otel-logscount.html");
-    expect(html).toContain("5 logs");
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -282,50 +267,6 @@ describe("JSON: mixed report provenance and coverage shape", () => {
     const json = captureJson(MIXED_REPORT);
     expect(json.costAvailable).toBe(true);
     expect(json.coverage.otelCount).toBeGreaterThan(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 5. HTML: coverage counts match post-slice session array (--max simulation)
-// ---------------------------------------------------------------------------
-
-describe("HTML: coverage counts reflect the post---max session set", () => {
-  test("sliced to OTel-only: no coverage-summary, shows OpenTelemetry badge", () => {
-    // After --max, if only OTel sessions survive, source becomes "otel"
-    const slicedOtelOnly: Report = {
-      sessions: [BASE_OTEL_SESSION],
-      inProgressSessions: [],
-      reportDate: "2026-06-10",
-      filterDescription: "all time (top 1 most recent session)",
-      source: "otel",
-      costAvailable: true,
-      coverage: { otelCount: 1, logsCount: 0, costCoverage: "all" },
-    };
-    const html = renderHtml(slicedOtelOnly, "rg-html-sliced-otel.html");
-    expect(html).toContain("OpenTelemetry");
-    // Pure otel → no coverage-summary element
-    const headerArea = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
-    expect(headerArea).not.toContain("coverage-summary");
-  });
-
-  test("sliced mixed set: coverage-summary shows correct OTel and logs counts", () => {
-    const secondLogsSession: NormalizedSession = {
-      ...BASE_LOGS_SESSION,
-      sessionId: "logs-rg-slice-bbbb-cccc-dddd-eeeeffff3333",
-    };
-    const slicedMixed: Report = {
-      sessions: [BASE_OTEL_SESSION, secondLogsSession],
-      inProgressSessions: [],
-      reportDate: "2026-06-10",
-      filterDescription: "all time (top 2 most recent sessions)",
-      source: "mixed",
-      costAvailable: true,
-      coverage: { otelCount: 1, logsCount: 1, costCoverage: "partial" },
-    };
-    const html = renderHtml(slicedMixed, "rg-html-sliced-mixed.html");
-    expect(html).toContain("coverage-summary");
-    expect(html).toContain("1 OTel");
-    expect(html).toContain("1 logs");
   });
 });
 

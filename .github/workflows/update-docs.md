@@ -24,14 +24,17 @@ network: defaults
 safe-outputs:
   create-pull-request:
     draft: true
-    protected-files: fallback-to-issue
+    protected-files:
+      policy: fallback-to-issue
+      exclude:
+        - README.md
     labels: [automation, documentation]
 
 tools:
   github:
     toolsets: [all]
   web-fetch:
-  # By default this workflow allows all bash commands within the confine of Github Actions VM 
+  # By default this workflow allows all bash commands within the confine of Github Actions VM
   bash: true
 
 # Playwright Chromium install adds ~3-4 min. 25 min gives comfortable headroom

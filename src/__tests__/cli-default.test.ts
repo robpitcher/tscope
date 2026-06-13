@@ -1,14 +1,14 @@
 import { buildFilterDescription, parseArgs } from "../index";
 
 describe("CLI default filter behavior", () => {
-  test("no args defaults to the 10 most recent sessions", () => {
+  test("no args defaults to the 20 most recent sessions", () => {
     const args = parseArgs(["node", "tscope"]);
 
     expect(args.filterMode).toBe("all");
-    expect(args.max).toBe("10");
+    expect(args.max).toBe("20");
     expect(args.defaultRecent).toBe(true);
     expect(args.maxProvided).toBe(false);
-    expect(buildFilterDescription(args)).toBe("last 10 sessions");
+    expect(buildFilterDescription(args)).toBe("last 20 sessions");
   });
 
   test("explicit --max overrides the implicit default cap", () => {

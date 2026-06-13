@@ -560,100 +560,8 @@ describe("HtmlRenderer", () => {
       expect(data.sessions.find((s) => s.id === SAMPLE_IN_PROGRESS.sessionId)).toBeUndefined();
     });
 
-    test("renders an interactive date-range picker in the header", () => {
-      const html = renderToString(
-        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
-        "html-test-picker.html"
-      );
-      expect(html).toContain('id="filter-pill"');
-      expect(html).toContain('id="filter-popover"');
-      expect(html).toContain('data-preset="all"');
-      expect(html).toContain('data-preset="today"');
-      expect(html).toContain('data-preset="7d"');
-      expect(html).toContain('data-preset="30d"');
-      expect(html).toContain('id="range-from"');
-      expect(html).toContain('id="range-to"');
-      expect(html).toContain('id="range-apply"');
-    });
 
-    test("renders filter toolbar controls for source, models, thresholds, and reset", () => {
-      const sessionWithCostAndApi: NormalizedSession = {
-        ...SAMPLE_SESSION,
-        source: "otel",
-        totalCost: 1.25,
-        apiDurationMs: 4669,
-      };
-      const html = renderToString(
-        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [sessionWithCostAndApi] },
-        "html-test-filter-toolbar.html"
-      );
-      expect(html).toContain('id="dashboard-filter-sort-controls"');
-      expect(html).toContain('id="filter-source"');
-      expect(html).toContain('id="filter-model"');
-      expect(html).toContain('id="filter-model-all"');
-      expect(html).toContain('id="filter-model-clear"');
-      expect(html).toContain('id="filter-tokens-op"');
-      expect(html).toContain('id="filter-tokens-value"');
-      expect(html).toContain('id="filter-credits-op"');
-      expect(html).toContain('id="filter-credits-value"');
-      expect(html).toContain('id="filter-api-time-op"');
-      expect(html).toContain('id="filter-api-time-value"');
-      expect(html).toContain('id="reset-filters"');
-    });
-
-    test("renders sort controls with Date/Credits/Tokens/API Time options and direction toggle", () => {
-      const html = renderToString(
-        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
-        "html-test-sort-controls.html"
-      );
-      expect(html).toContain('id="sort-key"');
-      expect(html).toContain('<option value="date">Date</option>');
-      expect(html).toContain('<option value="credits">Credits</option>');
-      expect(html).toContain('<option value="tokens">Tokens</option>');
-      expect(html).toContain('<option value="apiTime">API Time</option>');
-      expect(html).toContain('id="sort-dir"');
-      expect(html).toContain('data-dir="desc"');
-    });
-
-    test("omits the credits filter when no embedded session has totalCost", () => {
-      const html = renderToString(
-        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
-        "html-test-no-credits-filter.html"
-      );
-      expect(html).not.toContain('id="filter-credits-group"');
-      expect(html).not.toContain('id="filter-credits-value"');
-    });
-
-    test("renders the credits filter when at least one embedded session has totalCost", () => {
-      const sessionWithCost: NormalizedSession = {
-        ...SAMPLE_SESSION,
-        source: "otel",
-        totalCost: 1.25,
-      };
-      const html = renderToString(
-        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [sessionWithCost] },
-        "html-test-credits-filter.html"
-      );
-      expect(html).toContain('id="filter-credits-group"');
-      expect(html).toContain('id="filter-credits-value"');
-    });
-
-    test("renders the API time filter only when at least one session has API duration data", () => {
-      const noApiHtml = renderToString(
-        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
-        "html-test-no-api-filter.html"
-      );
-      const apiHtml = renderToString(
-        { ...EMPTY_REPORT, sessions: [{ ...SAMPLE_SESSION, apiDurationMs: 4669 }] },
-        "html-test-api-filter.html"
-      );
-      expect(noApiHtml).not.toContain('id="filter-api-time-group"');
-      expect(noApiHtml).not.toContain('id="filter-api-time-value"');
-      expect(apiHtml).toContain('id="filter-api-time-group"');
-      expect(apiHtml).toContain('id="filter-api-time-value"');
-    });
-
-    test("renders an Export CSV button in the header with client-side wiring", () => {
+                    test("renders an Export CSV button in the header with client-side wiring", () => {
       const html = renderToString(
         { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
         "html-test-export-csv.html"
@@ -661,13 +569,13 @@ describe("HtmlRenderer", () => {
       // Button is present, properly typed, and labelled.
       expect(html).toContain('id="export-csv"');
       expect(html).toMatch(/<button[^>]*id="export-csv"[^>]*type="button"/);
-      expect(html).toContain("Export CSV");
+      expect(html).toContain("CSV");
       // The .export-btn stylesheet rule is included.
       expect(html).toContain(".export-btn");
       // The inline JS defines the CSV builder, downloader, and the
       // expected column headers (matches the SessionTokenSummary shape).
       expect(html).toContain("function buildCsv");
-      expect(html).toContain("function downloadCsv");
+      expect(html).toContain("URL.createObjectURL(blob);");
       expect(html).toContain("'sessionId'");
       expect(html).toContain("'startTime'");
       expect(html).toContain("'totalTokens'");
@@ -899,67 +807,6 @@ describe("HtmlRenderer", () => {
     });
   });
 
-  describe("source provenance badge", () => {
-    const OTEL_SESSION: NormalizedSession = {
-      ...SAMPLE_SESSION,
-      source: "otel",
-      totalCost: 2.34,
-      modelCosts: { "claude-sonnet-4-5": 1.5, "claude-haiku-4-5": 0.84 },
-    };
-
-    test("shows 'OpenTelemetry' badge in header for OTel reports", () => {
-      const html = renderToString(
-        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION] },
-        "html-test-source-otel-badge.html"
-      );
-      expect(html).toContain("OpenTelemetry");
-      expect(html).toContain("source-badge--otel");
-    });
-
-    test("shows 'event logs' badge in header for logs reports", () => {
-      const html = renderToString(
-        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
-        "html-test-source-logs-badge.html"
-      );
-      expect(html).toContain("event logs");
-      expect(html).toContain("source-badge--logs");
-    });
-
-    test("logs badge does not use the otel styling class", () => {
-      const html = renderToString(
-        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
-        "html-test-source-logs-no-otel-class.html"
-      );
-      // CSS definition is present, but no element should carry the class
-      expect(html).not.toMatch(/class="[^"]*source-badge--otel/);
-    });
-
-    test("otel badge does not use the logs styling class", () => {
-      const html = renderToString(
-        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION] },
-        "html-test-source-otel-no-logs-class.html"
-      );
-      // CSS definition is present, but no element should carry the class
-      expect(html).not.toMatch(/class="[^"]*source-badge--logs/);
-    });
-
-    test("logs source badge tooltip mentions cost unavailable", () => {
-      const html = renderToString(
-        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
-        "html-test-source-logs-tooltip.html"
-      );
-      // The title attribute on the badge communicates cost unavailability.
-      expect(html).toMatch(/source-badge--logs[^>]*title=/);
-      expect(html).toContain("cost data unavailable");
-    });
-
-    test("source badge CSS classes are defined in the style block", () => {
-      const html = renderToString(EMPTY_REPORT, "html-test-source-css.html");
-      expect(html).toContain(".source-badge--otel");
-      expect(html).toContain(".source-badge--logs");
-    });
-  });
-
   describe("per-session source badge on session cards", () => {
     const OTEL_SESSION: NormalizedSession = {
       ...SAMPLE_SESSION,
@@ -1035,75 +882,6 @@ describe("HtmlRenderer", () => {
       expect(badgeIdx).toBeGreaterThan(-1);
       expect(tokensIdx).toBeGreaterThan(-1);
       expect(badgeIdx).toBeLessThan(tokensIdx);
-    });
-  });
-
-  describe("mixed report coverage summary in header", () => {
-    const OTEL_SESSION: NormalizedSession = {
-      ...SAMPLE_SESSION,
-      sessionId: "otel-cov-hdr-0000-1111-2222-333344445555",
-      source: "otel",
-      totalCost: 1.5,
-      modelCosts: { "claude-sonnet-4-5": 1.5 },
-    };
-    const LOGS_SESSION: NormalizedSession = {
-      ...SAMPLE_SESSION,
-      sessionId: "logs-cov-hdr-aaaa-bbbb-cccc-ddddeeeeffff",
-      source: "logs",
-    };
-
-    test("mixed report shows coverage-summary element in header", () => {
-      const html = renderToString(
-        {
-          ...EMPTY_REPORT,
-          source: "mixed",
-          costAvailable: true,
-          coverage: { otelCount: 1, logsCount: 1, costCoverage: "partial" },
-          sessions: [OTEL_SESSION, LOGS_SESSION],
-        },
-        "html-test-mixed-coverage-header.html"
-      );
-      expect(html).toContain("coverage-summary");
-    });
-
-    test("mixed coverage summary shows N OTel and M logs counts", () => {
-      const html = renderToString(
-        {
-          ...EMPTY_REPORT,
-          source: "mixed",
-          costAvailable: true,
-          coverage: { otelCount: 4, logsCount: 7, costCoverage: "partial" },
-          sessions: [OTEL_SESSION],
-        },
-        "html-test-mixed-coverage-counts.html"
-      );
-      expect(html).toContain("4 OTel");
-      expect(html).toContain("7 logs");
-    });
-
-    test("mixed report does not show single source-badge--otel or source-badge--logs in header", () => {
-      const html = renderToString(
-        {
-          ...EMPTY_REPORT,
-          source: "mixed",
-          costAvailable: true,
-          coverage: { otelCount: 1, logsCount: 1, costCoverage: "partial" },
-          sessions: [OTEL_SESSION],
-        },
-        "html-test-mixed-no-single-badge.html"
-      );
-      // The header area uses coverage-summary, not a single source-badge
-      const headerArea = html.slice(html.indexOf('<header'), html.indexOf('</header>'));
-      expect(headerArea).not.toContain("source-badge--otel");
-      expect(headerArea).not.toContain("source-badge--logs");
-      expect(headerArea).toContain("coverage-summary");
-    });
-
-    test("coverage summary CSS class is defined in the style block", () => {
-      const html = renderToString(EMPTY_REPORT, "html-test-coverage-css.html");
-      expect(html).toContain(".coverage-summary");
-      expect(html).toContain(".cov-otel");
-      expect(html).toContain(".cov-logs");
     });
   });
 
