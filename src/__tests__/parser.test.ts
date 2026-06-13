@@ -242,6 +242,72 @@ describe("parser", () => {
     });
   });
 
+  describe("totalCost (AI credits from totalNanoAiu)", () => {
+    test("captures totalNanoAiu from a single shutdown as AI credits", async () => {
+      const withNanoAiu = {
+        ...shutdownEvent,
+        data: { ...shutdownEvent.data, totalNanoAiu: 1_500_000_000 },
+      };
+      const eventsPath = writeTempEvents(tmpDir, [sessionStart, withNanoAiu]);
+      const session = await parseEventsFile("cost-single", eventsPath);
+      expect(session.inProgress).toBe(false);
+      if (session.inProgress) return;
+      expect(session.totalCost).toBe(1.5);
+    });
+
+    test("sums totalNanoAiu across multiple shutdowns", async () => {
+      const run1 = {
+        ...shutdownEvent,
+        data: { ...shutdownEvent.data, totalNanoAiu: 1_250_000_000 },
+        timestamp: "2026-06-02T23:06:01.000Z",
+      };
+      const run2 = {
+        ...shutdownEvent,
+        data: { ...shutdownEvent.data, totalNanoAiu: 750_000_000 },
+        timestamp: "2026-06-02T23:06:02.000Z",
+      };
+      const eventsPath = writeTempEvents(tmpDir, [sessionStart, run1, run2]);
+      const session = await parseEventsFile("cost-resumed", eventsPath);
+      expect(session.inProgress).toBe(false);
+      if (session.inProgress) return;
+      expect(session.totalCost).toBe(2);
+    });
+
+    test("totalCost is undefined when no shutdown reports totalNanoAiu", async () => {
+      const eventsPath = writeTempEvents(tmpDir, [sessionStart, shutdownEvent]);
+      const session = await parseEventsFile("cost-missing", eventsPath);
+      expect(session.inProgress).toBe(false);
+      if (session.inProgress) return;
+      expect(session.totalCost).toBeUndefined();
+    });
+
+    test("ignores negative and non-numeric totalNanoAiu values", async () => {
+      const badShutdown1 = {
+        ...shutdownEvent,
+        data: { ...shutdownEvent.data, totalNanoAiu: -1 },
+        timestamp: "2026-06-02T23:06:01.000Z",
+      };
+      const badShutdown2 = {
+        ...shutdownEvent,
+        data: { ...shutdownEvent.data, totalNanoAiu: "not-a-number" },
+        timestamp: "2026-06-02T23:06:02.000Z",
+      };
+      const goodShutdown = {
+        ...shutdownEvent,
+        data: { ...shutdownEvent.data, totalNanoAiu: 250_000_000 },
+        timestamp: "2026-06-02T23:06:03.000Z",
+      };
+      const eventsPath = writeTempEvents(
+        tmpDir,
+        [sessionStart, badShutdown1, badShutdown2, goodShutdown]
+      );
+      const session = await parseEventsFile("cost-bad", eventsPath);
+      expect(session.inProgress).toBe(false);
+      if (session.inProgress) return;
+      expect(session.totalCost).toBe(0.25);
+    });
+  });
+
   test("handles malformed lines gracefully", async () => {
     const content =
       JSON.stringify(sessionStart) +
