@@ -76,9 +76,9 @@
 
 - **Decision:** Fix filter row wrapping and standardize control heights
 - **Implementation:** 
-  - Enforced single-row layout with horizontal scrolling via lex-wrap: nowrap; overflow-x: auto;
-  - Standardized all control elements to height: 32px with ox-sizing: border-box
-  - Fixed Sort dropdown dark mode visibility with ackground: var(--bg-surface) on <option> elements
+  - Enforced single-row layout with horizontal scrolling via flex-wrap: nowrap; overflow-x: auto;
+  - Standardized all control elements to height: 32px with box-sizing: border-box
+  - Fixed Sort dropdown dark mode visibility with background: var(--bg-surface) on <option> elements
   - Removed inner border/background from sort direction button
 - **Decision merged to decisions.md:** "Standardize Dashboard Filters"
 
@@ -94,7 +94,9 @@
   - Preserved the Export CSV button in a clean row above the summary cards
   - Dashboard now renders sessions statically based on CLI input
 - **Decision merged to decisions.md:** "Remove all interactive filtering and sorting from the dashboard"
-## Seed
+
+## Learnings (PR #18 review)
+- 2026-06-13: Docs drift is costly. After removing the date-range picker and adding sort controls, README, html-dashboard.md, and the changeset all described the old UI. Always update docs in the same pass as the UI change. Also: control characters (0x08 backspace) in history markdown eat leading letters silently — validate plain-text files after any copy-paste from terminal output.
 
 - **Project:** tscope — a tool for developers to track and analyze their token usage, motivated by GitHub's new usage-based billing for Copilot (organizations & enterprises).
 - **User:** robpitcher

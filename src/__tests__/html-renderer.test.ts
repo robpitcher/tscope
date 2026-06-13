@@ -560,8 +560,7 @@ describe("HtmlRenderer", () => {
       expect(data.sessions.find((s) => s.id === SAMPLE_IN_PROGRESS.sessionId)).toBeUndefined();
     });
 
-
-                    test("renders an Export CSV button in the header with client-side wiring", () => {
+    test("renders an Export CSV button in the header with client-side wiring", () => {
       const html = renderToString(
         { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
         "html-test-export-csv.html"

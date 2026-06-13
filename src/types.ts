@@ -93,8 +93,11 @@ export interface ParsedSession {
    */
   apiDurationMs?: number;
   /**
-   * Total session AI credits from summed `session.shutdown.data.totalNanoAiu / 1e9`.
-   * Undefined when no shutdown reported the field.
+   * Total session AI credits (billing credit units).
+   * For log-sourced sessions, derived from `session.shutdown.data.totalNanoAiu / 1e9`.
+   * For OTel-sourced sessions (`NormalizedSession` with `source === "otel"`), summed from
+   * per-span `github.copilot.nano_aiu / 1e9` across all models.
+   * Undefined when no source reported cost data.
    */
   totalCost?: number;
   /** /chronicle tips insights captured in this session (chronological) */
