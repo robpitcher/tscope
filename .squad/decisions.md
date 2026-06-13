@@ -2,6 +2,76 @@
 
 ## Active Decisions
 
+## Sort Fix: Template-Literal Raw-Newline Bug + UX Improvements (2026-06-13)
+
+**Status:** IMPLEMENTED
+
+**Author:** switch (Frontend/Dashboard Dev)  
+**Date:** 2026-06-13
+
+### Root Cause
+
+The entire client-side script is emitted as one `<script>${JS}</script>` block. The `JS` constant is a TypeScript template literal (backtick string). Inside that template literal, escape sequences are resolved at build time:
+
+- `'\n'` → raw LF (0x0A)
+- `'\r'` → raw CR (0x0D)
+- `'\r\n'` → raw CRLF
+
+When these characters appear inside single-quoted JS string literals in the emitted HTML, ECMAScript rejects them — a string literal cannot contain a raw line terminator — producing a **SyntaxError**.
+
+Because all IIFEs share one `<script>` block, a single SyntaxError at any point silences **all** client-side behaviour: sort, CSV export, theme toggle, and chart tooltips.
+
+### Fixes Applied
+
+#### 1. `csvCell` indexOf check (primary bug)
+```
+// Before (raw LF/CR in emitted JS → SyntaxError)
+s.indexOf('\n') !== -1 || s.indexOf('\r') !== -1
+
+// After (proper escape sequences in emitted JS)
+s.indexOf('\\n') !== -1 || s.indexOf('\\r') !== -1
+```
+
+#### 2. `buildCsv` line join (same class)
+```
+// Before
+return lines.join('\r\n') + '\r\n';
+
+// After
+return lines.join('\\r\\n') + '\\r\\n';
+```
+
+#### 3. Regression guard
+Added `new Function(scriptBody)` test in `html-renderer.test.ts` that extracts the executable `<script>` block and asserts it parses without throwing. This test would have failed against the original bugs.
+
+### UX Improvements (same PR)
+
+#### Option text: "AI credits consumed" → "AI credits"
+Shorter, cleaner label. Value attribute `credits` unchanged.
+
+#### Visible "Sort:" label
+Added `<label class="sort-label" for="sort-sessions">Sort:</label>` to the left of the select. Previously the control had only an `aria-label`.
+
+#### Asc/Desc direction toggle button
+Added `<button id="sort-direction">` (▼ desc default) immediately to the right of the select. Clicking toggles `sortDir` state between `'desc'` and `'asc'` and re-runs `applySort`. Sessions with blank/null sort keys (no start date, no credits) always sort to the bottom regardless of direction. JS: `updateDirBtn()` syncs the glyph (▼/▲) and `aria-label`.
+
+#### Apply sort on page load
+`applySort(sortSelect.value)` is called immediately on script execution so cards reflect the dropdown state without requiring a user interaction.
+
+### Files Changed
+
+- `src/render/HtmlRenderer.ts` — csvCell fix, buildCsv fix, sort JS replacement, HTML toolbar, CSS
+- `src/__tests__/html-renderer.test.ts` — updated sort-presence test, new script-parse regression test, new sort-dir test
+
+### Validation
+
+✅ npm run build clean
+✅ npm run lint clean
+✅ full jest suite 528/528 pass; html-renderer suite 85/85
+✅ Global dist rebuilt + verified fixes in global distribution
+
+---
+
 ## Sort Dropdown for Session Cards (2026-06-13)
 
 **Status:** IMPLEMENTED
