@@ -929,3 +929,22 @@ Moved the entire filter suite into a fixed-width collapsible sidebar (`.sidebar-
 
 **Rationale:** The dashboard generates reports based on sessions provided by the CLI. Since the CLI already handles time-bounding and session selection natively (e.g. \--since\), the client-side calendar filter was redundant visual clutter that duplicated CLI responsibilities.
 
+
+## Decision: Use custom checkbox dropdowns for Model/Source filters
+
+**Date:** 2026-06-13T02:31:32.831-04:00
+**Agent:** Switch
+
+### Context
+The standard <select multiple> inputs for Models and Source filters took up too much vertical space and broke the uniform 'pill' row aesthetic of the dashboard toolbar. Additionally, numeric filters used an explicit operator dropdown (>=/<=) which added unnecessary UI noise.
+
+### Decision
+1. Implemented a custom floating dropdown pattern (HTML/CSS/JS) for Models and Source filters containing checkboxes and an 'All' toggle logic.
+2. Standardized the filter control groups to use uniform 'pill' styling (\order-radius: 100px\).
+3. Simplified Tokens and Credits filters to single number inputs that implicitly represent 'greater than or equal to'.
+
+### Consequences
+- Requires a tiny bit more vanilla JS in the output to handle click-outside-to-close and the 'All' checkbox logic.
+- Considerably cleaner UI that matches the original dashboard design specification.
+
+

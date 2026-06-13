@@ -39,5 +39,16 @@
   - Added ▲/▼ for sort indicators
   - Fixed broken tests
 
+### 2026-06-13 — Custom Dropdowns & Pill Styling (Completed)
+
+**Orchestration Log:** 2026-06-13T06-31-32Z-switch.md  
+**Decision:** Use custom checkbox dropdowns for Model/Source filters
+
+- **Implementation:** Custom floating dropdown pattern with checkboxes and 'All' toggle for Models/Source
+- **Simplified Tokens/Credits:** Removed operator dropdowns, now single number inputs (implicitly >=)
+- **UI Refinement:** Applied uniform pill styling (border-radius: 100px) across filter row
+- **Decision merged to decisions.md:** "Use custom checkbox dropdowns for Model/Source filters"
+
 ## Learnings
 - 2026-06-13: Re-implemented the UI dashboard cleanup. Ensured horizontal filter layout, removed the top header pill, moved Export CSV inline, reordered the total cards (Credits before Tokens), updated Date Generated timestamp and card, removed API Time filter, and changed Asc/Desc sorting to ▲/▼ arrows. Fixed unit tests that were failing because they asserted the presence of the removed UI elements.
+- 2026-06-13: Restored custom dropdown filter functionality for models and sources to support multi-select with an 'All' toggle, and applied pill styling to match dashboard UX requirements. Also removed >/< operators for numeric filters in favor of implicit '>=' to simplify the UI.
