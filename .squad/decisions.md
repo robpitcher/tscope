@@ -1168,3 +1168,69 @@ Verified in live session files:
 ### Reference Issues
 
 - GitHub Issue #13: "Extract AI credits (totalNanoAiu) from events.jsonl" (assigned to Tank)
+
+---
+
+## Context Window Attribute Keys Are `github.copilot.*` Prefixed (2026-06-13)
+
+**Status:** IMPLEMENTED
+
+**Author:** Tank  
+**Date:** 2026-06-13
+
+### Context
+
+The tscope OTel parser reads context-window utilization from span events on `chat` spans.  
+The original parser implementation used attribute keys `event.github.copilot.current_tokens` and `token_limit`,  
+which were inferred/assumed at implementation time but never verified against live data.
+
+### Finding
+
+Inspection of `~/.copilot/tscope/otel.jsonl` (2118 lines, 103 matching spans) confirmed:
+
+| Field | **Parser expected** | **Actual data key** |
+|---|---|---|
+| Used tokens | `event.github.copilot.current_tokens` | `github.copilot.current_tokens` |
+| Token limit | `token_limit` | `github.copilot.token_limit` |
+| Event name | `gen_ai.context.window` (test only) | `github.copilot.session.usage_info` |
+
+Both keys follow the `github.copilot.*` proprietary namespace consistently (same as `github.copilot.nano_aiu`, `github.copilot.server_duration`, etc.).
+
+### Decision
+
+Use `github.copilot.current_tokens` and `github.copilot.token_limit` as the canonical attribute keys for context window data. The parser does not need to filter by event name (presence of both numeric attributes is sufficient).
+
+### Files Changed
+
+- `src/sources/otelSource.ts` — lines 50–51 (interface), lines 197–198 (parser read)
+- `src/__tests__/otel-source-edge.test.ts` — `contextWindowEvent()` helper
+- `src/types.ts` — line 30 (doc comment)
+
+---
+
+## Dashboard Screenshot Workflow (2026-06-14)
+
+**Status:** COMPLETED
+
+**Date:** 2026-06-14
+
+**Scope:** Documentation / README
+
+### Decision
+
+Regenerate dashboard screenshots automatically from built HtmlRenderer using Playwright Chromium at 1280×900, capturing both light and dark themes.
+
+### Rationale
+
+README screenshots were outdated. Automation ensures screenshots stay current with HtmlRenderer changes, improving documentation accuracy.
+
+### Action Items
+
+- ✅ Updated `docs/images/dashboard-light.png`
+- ✅ Updated `docs/images/dashboard-dark.png`
+- Workflow documented in `.github\workflows\update-docs.md`
+
+### Related
+
+- Switch agent history: `.squad/agents/switch/history.md`
+- Orchestration log: `.squad/orchestration-log/2026-06-14T02-38-33Z-switch.md`
