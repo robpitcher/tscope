@@ -2,6 +2,17 @@
 
 ## Active Decisions
 
+## Release Changeset for Context Window Fix (2026-06-13)
+
+**Status:** COMPLETED
+
+**Author:** Tank (Backend/Data Engineer)  
+**Date:** 2026-06-13
+
+Created changeset `.changeset/fix-context-window-attribute-keys.md` to track patch version bump (0.5.0 → 0.5.1) for the OTel context window attribute keys fix. Changeset verified with `npx changeset status`.
+
+---
+
 ## Filter Redesign (2026-06-13T00:52)
 
 **Status:** SUPERSEDED

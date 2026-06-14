@@ -151,4 +151,10 @@ All 528 tests pass.
 
 ---
 
+## Session 2026-06-14T03:01:33Z — Changeset for Context Window Fix
+
+Created patch changeset `.changeset/fix-context-window-attribute-keys.md` to declare version bump (0.5.0 → 0.5.1) for the OTel context window attribute keys fix (commit 987224c). Verified with `npx changeset status`. Released from background spawn request by robpitcher.
+
+---
+
 ## Learnings — 2026-06-03 Merge Pivot (ARCHIVE)
