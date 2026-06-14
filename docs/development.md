@@ -13,9 +13,14 @@ tscope/
 │   ├── types.ts              # TypeScript types
 │   ├── render/
 │   │   ├── Renderer.ts       # Renderer interface
+│   │   ├── index.ts          # Renderer registry and factory
 │   │   ├── TextRenderer.ts   # Text output implementation
-│   │   ├── JsonRenderer.ts   # JSON output (schema v4)
+│   │   ├── JsonRenderer.ts   # JSON output (schema v5)
 │   │   └── HtmlRenderer.ts   # HTML dashboard
+│   ├── sources/
+│   │   ├── logsSource.ts     # Log-file data source (events.jsonl)
+│   │   ├── otelSource.ts     # OTel data source (otel.jsonl)
+│   │   └── merge.ts          # OTel + logs merge helpers
 │   └── __tests__/            # Unit and integration tests
 ├── docs/                     # Documentation (you are here)
 ├── package.json              # Dependencies, scripts, metadata
