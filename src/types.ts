@@ -27,7 +27,7 @@ export type SessionDatePredicate = (localDateString: string, sessionId: string) 
 export interface ExtendedMetrics {
   /** Chain-of-thought token count from gen_ai.usage.reasoning_output_tokens */
   reasoningTokens?: number;
-  /** Context-window utilization from event.github.copilot.current_tokens vs token_limit */
+  /** Context-window utilization from github.copilot.current_tokens vs github.copilot.token_limit */
   contextWindow?: {
     usedTokens: number;
     limitTokens: number;

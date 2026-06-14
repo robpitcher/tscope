@@ -47,8 +47,8 @@ interface OtelSpanAttributes {
 interface OtelSpanEvent {
   name?: string;
   attributes?: {
-    "event.github.copilot.current_tokens"?: number;
-    "token_limit"?: number;
+    "github.copilot.current_tokens"?: number;
+    "github.copilot.token_limit"?: number;
     [key: string]: unknown;
   };
 }
@@ -194,8 +194,8 @@ export class OtelDataSource implements DataSource {
         if (Array.isArray(span.events)) {
           for (const evt of span.events) {
             const ea = evt.attributes ?? {};
-            const used = ea["event.github.copilot.current_tokens"];
-            const limit = ea["token_limit"];
+            const used = ea["github.copilot.current_tokens"];
+            const limit = ea["github.copilot.token_limit"];
             if (typeof used === "number" && typeof limit === "number" && limit > 0) {
               acc.lastContextWindowSample = { used, limit };
             }

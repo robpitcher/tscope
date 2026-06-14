@@ -126,4 +126,29 @@ ParsedSession.totalCost doc comment updated to be source-agnostic: logs path use
 
 ---
 
+## Learnings — 2026-06-13 Context Window Attribute Key Mismatch (FIXED)
+
+**Investigation:** robpitcher's HTML report showed no context window bar despite OTel data being present.
+
+**Root cause (case b — wrong attribute keys in parser):**  
+The parser in `src/sources/otelSource.ts` (lines 197–198) read:
+- `ea["event.github.copilot.current_tokens"]`  
+- `ea["token_limit"]`
+
+The ACTUAL keys in `otel.jsonl` (verified on 103 matching lines, 10 spot-checked):
+- `github.copilot.current_tokens`
+- `github.copilot.token_limit`
+
+The event name is `github.copilot.session.usage_info` (not `gen_ai.context.window` as assumed in tests). The event appears on `chat <model>` spans — the same spans the parser already iterates — so span type was not the issue.
+
+**Fix applied (2026-06-13):**  
+- `src/sources/otelSource.ts` lines 197–198 and `OtelSpanEvent` interface (lines 50–51): updated to correct keys  
+- `src/__tests__/otel-source-edge.test.ts`: `contextWindowEvent()` helper updated to use real event name + attribute keys  
+- `src/types.ts` line 30: doc comment updated  
+All 528 tests pass.
+
+**Schema note:** The `github.copilot.*` attributes are proprietary (not OTel GenAI semantic conventions). These keys are stable per `service.version` field on spans. The context window data appears on ALL `chat` spans that carry a usage_info event (not just one per session).
+
+---
+
 ## Learnings — 2026-06-03 Merge Pivot (ARCHIVE)
