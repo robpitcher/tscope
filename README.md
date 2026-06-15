@@ -87,6 +87,7 @@ Full documentation lives in the [`docs/`](docs/) folder:
 - [How It Works](docs/how-it-works.md) — session discovery, token accounting, resumed sessions
 - [JSON Output](docs/json-output.md) — `tscope/report/v5` schema reference
 - [HTML Dashboard](docs/html-dashboard.md) — dashboard features, Chronicle Insights, sort controls, CSV export
+- [OTel Setup](docs/otel.md) — enable, disable, and inspect the OpenTelemetry file exporter
 - [Development](docs/development.md) — build, test, lint, project structure
 - [Contributing](docs/contributing.md) — roadmap, license
 

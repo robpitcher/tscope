@@ -182,6 +182,36 @@ Note: OTel `startTime` on the first `invoke_agent` span is ~10s later than `even
 
 ---
 
+## Context Window Event Schema
+
+Context window utilization appears as **span events** on `chat <model>` spans. Event details:
+
+| Field | Value |
+|---|---|
+| Event name | `github.copilot.session.usage_info` |
+| Used-tokens attribute | `github.copilot.current_tokens` (number) |
+| Token-limit attribute | `github.copilot.token_limit` (number) |
+
+Additional attributes on the same event: `github.copilot.messages_length` (message count in context).
+
+**Parser pattern:** Match on presence of both numeric attributes (no event-name filter needed). Keep only the last sample per session (`lastContextWindowSample`).
+
+**Verified:** 2026-06-13 against `~/.copilot/tscope/otel.jsonl` (2118 lines, 103 context-window events, across `chat claude-opus-4.8` and `chat gemini-3.1-pro-preview` spans).
+
+**Stale keys (DO NOT USE):** The original implementation mistakenly read `event.github.copilot.current_tokens` and `token_limit` — these keys do not exist in real data. Fixed in `src/sources/otelSource.ts` lines 50–51, 197–198.
+
+---
+
+## Other Event Types on `chat` Spans
+
+| Event name | Key attributes |
+|---|---|
+| `github.copilot.hook.start` | `github.copilot.hook.type`, `github.copilot.hook.invocation_id`, `github.copilot.hook.tool_names` |
+| `github.copilot.hook.end` | above + `github.copilot.hook.decision`, `github.copilot.hook.duration` |
+| `github.copilot.system.notification` | `github.copilot.system.notification.type` |
+
+---
+
 ## Operational Risks
 
 1. **No file rotation** — implement size/age-based rotation in tscope; `otel.jsonl` grows unbounded

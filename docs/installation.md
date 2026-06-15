@@ -40,3 +40,15 @@ If `tscope` is not on your `PATH` after a global install, confirm that your npm 
 ```bash
 npm bin -g
 ```
+
+## Enabling OTel (Recommended)
+
+Out of the box, `tscope` reads session data from the Copilot CLI log files. To also get **server-side AI credit data**, enable the OpenTelemetry file exporter:
+
+```bash
+tscope otel enable
+```
+
+This adds a single environment variable (`COPILOT_OTEL_FILE_EXPORTER_PATH`) to your shell profile and creates the export directory. Open a new terminal after running it, then start a Copilot session — telemetry will be written automatically.
+
+For full details on enabling, disabling, and checking OTel status, see [OTel Setup](otel.md).

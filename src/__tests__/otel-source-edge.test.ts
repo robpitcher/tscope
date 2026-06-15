@@ -59,10 +59,10 @@ function chatSpan(
 
 function contextWindowEvent(usedTokens: number, limitTokens: number): object {
   return {
-    name: "gen_ai.context.window",
+    name: "github.copilot.session.usage_info",
     attributes: {
-      "event.github.copilot.current_tokens": usedTokens,
-      token_limit: limitTokens,
+      "github.copilot.current_tokens": usedTokens,
+      "github.copilot.token_limit": limitTokens,
     },
   };
 }
@@ -307,7 +307,7 @@ describe("OtelDataSource — edge cases (Phase 4)", () => {
       expect(sessions[0].extended?.contextWindow?.usedTokens).toBe(12500);
     });
 
-    test("ignores span events that are missing token_limit", async () => {
+    test("ignores span events that are missing github.copilot.token_limit", async () => {
       const p = path.join(tmpDir, "otel.jsonl");
       writeLine(
         p,
@@ -315,8 +315,8 @@ describe("OtelDataSource — edge cases (Phase 4)", () => {
           events: [
             {
               name: "some_event",
-              attributes: { "event.github.copilot.current_tokens": 8000 },
-              // No "token_limit"
+              attributes: { "github.copilot.current_tokens": 8000 },
+              // No "github.copilot.token_limit"
             },
           ],
         })
