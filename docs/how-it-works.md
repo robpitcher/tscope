@@ -75,6 +75,8 @@ Each session's `events.jsonl` contains a `session.shutdown` event with per-model
 
 Because cache read/write are already part of input, the non-double-counted session total is **`input + output`** (reported as **Total (I/O)**).
 
+The `session.shutdown` event also carries a `totalNanoAiu` field (present in Copilot CLI 1.0+). When present, `tscope` converts this to estimated AI credits (`totalNanoAiu / 1e9`) and surfaces it as `totalCost` — shown in text, JSON, and HTML output just as OTel credits are. Sessions from older CLI versions that lack this field show "no cost data".
+
 > A `reasoningTokens` field is also parsed from the session events and surfaced in the JSON output. The text report shows a **Reasoning** row whenever `reasoningTokens > 0`, regardless of source (OTel or log parser). The HTML report does not surface reasoning tokens.
 
 ## Resumed Sessions

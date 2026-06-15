@@ -24,9 +24,9 @@ tscope --html report.html   # Generate dashboard at the specified path and open 
 - **Credits by Model** chart — OTel sessions only; shows AI credit totals grouped by model name
 - **Chronicle Insights** box — if any session ran `/chronicle tips` or `/chronicle cost-tips`, the most recent set of recommendations is parsed and shown in its own box, below the *Tokens Over Time* chart and above the session list (see below)
 - Per-session cards with:
-  - **Source badge** — "OTel" (blue) or "log parser" (muted) so you know provenance at a glance
-  - **Credit chip** (green, OTel only) — shows `X.XX credits` for the session's total cost
-  - **Cost unavailable chip** (logs only) — transparent badge saying "no cost data" to indicate logs do not include billing data
+  - **Source badge** — "OTel" (blue) or "log parser" (muted). For log-parser sessions with no cost data, the badge tooltip notes "cost data unavailable"; for those that do have cost (from `totalNanoAiu`), the tooltip omits the unavailable note.
+  - **Credit chip** (green) — shows `X.XX credits` for the session's total cost. Present for OTel sessions (server-side billing) and log-parser sessions that include estimated credits from `totalNanoAiu` (Copilot CLI 1.0+). The chip tooltip distinguishes between "Server-side AI credits from OpenTelemetry billing data" (OTel) and "Estimated AI credits from event log data" (logs).
+  - **Cost unavailable chip** (transparent "no cost data") — shown only for log-parser sessions where no `totalNanoAiu` field was recorded (older Copilot CLI sessions).
   - **Token Usage by Model** — stacked bar chart (fresh input / cacheRead / cacheWrite / output)
   - **Tokens by Model** — horizontal bars (total tokens per model; hover for the token-type breakdown)
   - **Cache Efficiency** — % cache hit rate per model

@@ -521,11 +521,11 @@ function buildSessionCard(session: NormalizedSession): string {
     <div class="session-summary-chips">
       ${session.source === "otel"
         ? `<span class="source-badge source-badge--otel" title="Data source: OpenTelemetry">OTel</span>`
-        : `<span class="source-badge source-badge--logs" title="Data source: event log parser — cost data unavailable">log parser</span>`}
+        : `<span class="source-badge source-badge--logs" title="Data source: event log parser${session.totalCost === undefined ? " — cost data unavailable" : ""}">log parser</span>`}
       ${session.apiDurationMs !== undefined ? `<span class="chip chip-duration" title="Cumulative model API time (compute only — excludes idle / user think time)">${esc(fmtDuration(session.apiDurationMs))} API</span>` : ""}
       <span class="chip chip-tokens">${fmtNum(totalTokensForCard)} tokens</span>
       ${session.totalCost !== undefined
-        ? `<span class="chip chip-credits" title="Estimated AI credits from OpenTelemetry billing data">${session.totalCost.toFixed(2)} credits</span>`
+        ? `<span class="chip chip-credits" title="${session.source === "otel" ? "Server-side AI credits from OpenTelemetry billing data" : "Estimated AI credits from event log data"}">${session.totalCost.toFixed(2)} credits</span>`
         : session.source === "logs"
         ? `<span class="chip chip-cost-unavail" title="Cost data unavailable — run &#x27;tscope otel enable&#x27; to get billing data">no cost data</span>`
         : ""}
