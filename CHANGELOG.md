@@ -1,5 +1,11 @@
 # tscope
 
+## 0.5.1
+
+### Patch Changes
+
+- 0371798: Fix OTel context window parsing: read the correct span-event attribute keys (`github.copilot.current_tokens` and `github.copilot.token_limit`) so the context window size displays correctly in the dashboard.
+
 ## 0.5.0
 
 ### Minor Changes
