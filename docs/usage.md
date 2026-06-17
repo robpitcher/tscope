@@ -61,8 +61,8 @@ The process exits with code 0 — the hint is advisory, not an error.
 | Source | Cost shown |
 |---|---|
 | OTel (merged report or pure OTel) | Server-side AI credits per session and per model (from `github.copilot.nano_aiu`). |
-| Log parser (merged report) | Cost unavailable — the events.jsonl format does not include billing data. Per-session source badges identify which sessions have cost data. |
-| Log parser (pure logs) | Cost unavailable — the events.jsonl format does not include billing data. |
+| Log parser (merged report) | Estimated AI credits when `totalNanoAiu` is present in `session.shutdown` (Copilot CLI 1.0+); "cost unavailable" for older sessions. Per-session source badges identify which sessions have cost data. |
+| Log parser (pure logs) | Estimated AI credits when `totalNanoAiu` is present in `session.shutdown` (Copilot CLI 1.0+); "cost unavailable" for older sessions. |
 
 ### Interaction with date filters
 

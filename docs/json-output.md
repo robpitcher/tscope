@@ -168,14 +168,15 @@ tscope --all --json | jq '.sessions[].totals'
 }
 ```
 
-### Log-parser source (without cost data)
+### Log-parser source
 
 When `--source logs` (or OTel is not configured and no merge occurs), the output is identical except:
 - `source` is `"logs"`
 - `costAvailable` is `false`
 - `coverage.costCoverage` is `"none"`
 - Per-session `source` is `"logs"`
-- `totalCost`, `modelCosts`, and `extended` are **absent** (not `null`)
+- `modelCosts` and `extended` are **absent** (not `null`)
+- `totalCost` is **present** when the session's `session.shutdown` event includes `totalNanoAiu` (Copilot CLI 1.0+), or **absent** for older sessions without that field
 
 ```json
 {
@@ -232,7 +233,7 @@ When `--source logs` (or OTel is not configured and no merge occurs), the output
 | `inProgress` | `false` | Always | Always `false` (in-progress sessions are excluded). |
 | `apiDurationMs` | `number \| null` | Always | Cumulative model API duration in ms across resumed runs, or `null` if not recorded. |
 | `source` | `"otel"` \| `"logs"` | Always | Which source produced this session. Use this for per-session provenance badges in the UI. |
-| `totalCost` | `number` | OTel only | Total AI credits for this session (sum across all models). |
+| `totalCost` | `number` | OTel, or logs when `totalNanoAiu` is present | Total AI credits for this session. For OTel: sum of per-span `github.copilot.nano_aiu ÷ 1e9`. For logs: `session.shutdown.data.totalNanoAiu ÷ 1e9` summed across runs (Copilot CLI 1.0+). |
 | `modelCosts` | `Record<string, number>` | OTel only | Per-model AI credit breakdown. Keys match `models[].modelName`. |
 | `extended` | `object` | OTel only (when present) | Extended metrics — see below. |
 | `models[]` | `array` | Always | Per-model token breakdown. |
