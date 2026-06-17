@@ -19,7 +19,13 @@ on:
 
 permissions: read-all
 
-network: defaults
+network:
+  allowed:
+    - defaults
+    - "accounts.google.com"
+    - "cdn.playwright.dev"
+    - "clients2.google.com"
+    - "www.google.com"
 
 safe-outputs:
   create-pull-request:
