@@ -19,7 +19,10 @@ on:
 
 permissions: read-all
 
-network: defaults
+network:
+  allowed:
+    - defaults
+    - "cdn.playwright.dev"
 
 safe-outputs:
   create-pull-request:

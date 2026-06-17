@@ -176,13 +176,22 @@ export class TextRenderer implements Renderer {
       );
     }
 
+    const anyLogCost = sessionsWithData.some((s) => s.source === "logs" && s.totalCost !== undefined);
+
     if (report.source === "mixed") {
       const { otelCount, logsCount } = report.coverage;
-      process.stdout.write(`Sources: ${otelCount} OTel, ${logsCount} logs — cost available for OTel sessions only\n`);
+      const costDesc = anyLogCost
+        ? "cost available for OTel sessions; estimated credits for some log sessions"
+        : "cost available for OTel sessions only";
+      process.stdout.write(`Sources: ${otelCount} OTel, ${logsCount} logs — ${costDesc}\n`);
     } else {
       const sourceLabel =
         report.source === "otel" ? "OpenTelemetry" : "event logs (historical)";
-      const costNote = report.source === "logs" ? " — cost data unavailable" : "";
+      const costNote = report.source === "logs"
+        ? anyLogCost
+          ? " — estimated AI credits from event log where available"
+          : " — cost data unavailable"
+        : "";
       process.stdout.write(`Source: ${sourceLabel}${costNote}\n`);
     }
   }

@@ -61,8 +61,10 @@ The process exits with code 0 — the hint is advisory, not an error.
 | Source | Cost shown |
 |---|---|
 | OTel (merged report or pure OTel) | Server-side AI credits per session and per model (from `github.copilot.nano_aiu`). |
-| Log parser (merged report) | Estimated AI credits when `totalNanoAiu` is present in `session.shutdown` (Copilot CLI 1.0+); "cost unavailable" for older sessions. Per-session source badges identify which sessions have cost data. |
-| Log parser (pure logs) | Estimated AI credits when `totalNanoAiu` is present in `session.shutdown` (Copilot CLI 1.0+); "cost unavailable" for older sessions. |
+| Log parser (merged report) | Estimated AI credits per session when `session.shutdown.data.totalNanoAiu` is present (Copilot CLI 1.0+); "no cost data" for older sessions. Per-session source badges identify provenance. |
+| Log parser (pure logs) | Estimated AI credits per session when `session.shutdown.data.totalNanoAiu` is present (Copilot CLI 1.0+); "no cost data" for older sessions. |
+
+> **Note:** OTel provides authoritative server-side billing including a per-model breakdown (`modelCosts`). Log-parser cost is a session-level estimate derived from the `totalNanoAiu` field written by Copilot CLI 1.0+. Older sessions that predate this field show "no cost data".
 
 ### Interaction with date filters
 
