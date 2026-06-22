@@ -55,6 +55,21 @@
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "node",
+    "collectCoverage": true,
+    "coverageDirectory": "coverage",
+    "collectCoverageFrom": [
+      "src/**/*.ts",
+      "!src/**/__tests__/**",
+      "!src/**/*.test.ts"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "lines": 65,
+        "functions": 70,
+        "branches": 55,
+        "statements": 65
+      }
+    },
     "testMatch": [
       "**/__tests__/**/*.test.ts",
       "**/*.test.ts"
