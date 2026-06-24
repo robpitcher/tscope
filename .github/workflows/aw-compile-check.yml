@@ -1,0 +1,47 @@
+name: Agentic Workflow Compile Check
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    paths:
+      - ".github/workflows/*.md"
+      - ".github/workflows/*.lock.yml"
+      - ".github/workflows/agentics-maintenance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aw-compile-check-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-aw-compiled-files:
+    name: Verify gh aw compile outputs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install gh-aw CLI
+        uses: github/gh-aw-actions/setup-cli@b5cde6c5013569c8b0229dd2d7ffd63eaf2c9ad2 # v0.81.2
+        with:
+          version: v0.80.9
+
+      - name: Recompile workflows
+        run: gh aw compile
+
+      - name: Fail on stale generated workflow files
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git diff --quiet -- '.github/workflows/*.lock.yml' .github/workflows/agentics-maintenance.yml; then
+            echo "::error title=Stale Agentic Workflow compile outputs::Detected generated workflow changes after 'gh aw compile'."
+            echo "::error::Run 'gh aw compile' locally and commit updated .lock.yml / agentics-maintenance.yml files."
+            echo "Changed generated files:"
+            git --no-pager diff --name-only -- '.github/workflows/*.lock.yml' .github/workflows/agentics-maintenance.yml
+            exit 1
+          fi
