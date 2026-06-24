@@ -26,6 +26,8 @@ tscope/
 │           ├── fixtures.ts   # Canonical Report/Session constants
 │           ├── fs.ts         # Filesystem helpers (tmp dirs, event files)
 │           └── render.ts     # Renderer capture helpers
+├── scripts/
+│   └── screenshot-dashboard.mjs  # Generates synthetic HTML preview for CI screenshots
 ├── docs/                     # Documentation (you are here)
 ├── package.json              # Dependencies, scripts, metadata
 ├── tsconfig.json             # TypeScript config
