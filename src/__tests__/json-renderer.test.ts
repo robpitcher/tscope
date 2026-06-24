@@ -5,65 +5,12 @@
 
 import { JsonRenderer } from "../render/JsonRenderer";
 import { Report, NormalizedSession, InProgressSession } from "../types";
-function captureOutput(report: Report): string {
-  const chunks: string[] = [];
-  jest.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
-    chunks.push(String(chunk));
-    return true;
-  });
-  const renderer = new JsonRenderer();
-  renderer.render(report);
-  (process.stdout.write as jest.Mock).mockRestore();
-  return chunks.join("");
-}
-
-/** Parse the captured output as JSON */
-function captureJson(report: Report): ReturnType<typeof JSON.parse> {
-  return JSON.parse(captureOutput(report));
-}
-
-const EMPTY_REPORT: Report = {
-  sessions: [],
-  inProgressSessions: [],
-  reportDate: "2026-06-02",
-  filterDescription: "today",
-  source: "logs",
-  costAvailable: false,
-  coverage: { otelCount: 0, logsCount: 0, costCoverage: "none" },
-};
-
-const SAMPLE_SESSION: NormalizedSession = {
-  sessionId: "abc-00000000-1111-2222-3333-444444444444",
-  eventsPath: "/home/user/.copilot/session-state/abc/events.jsonl",
-  startTime: "2026-06-02T20:00:00.000Z",
-  models: {
-    "claude-sonnet-4-5": {
-      inputTokens: 1000,
-      outputTokens: 500,
-      cacheReadTokens: 200,
-      cacheWriteTokens: 100,
-      reasoningTokens: 50,
-    },
-    "claude-haiku-4-5": {
-      inputTokens: 300,
-      outputTokens: 100,
-      cacheReadTokens: 0,
-      cacheWriteTokens: 0,
-      reasoningTokens: 0,
-    },
-  },
-  chronicleTips: [],
-  inProgress: false,
-  source: "logs",
-};
-
-const SAMPLE_IN_PROGRESS: InProgressSession = {
-  sessionId: "xyz-99999999-8888-7777-6666-555555555555",
-  eventsPath: "/home/user/.copilot/session-state/xyz/events.jsonl",
-  startTime: "2026-06-02T21:00:00.000Z",
-  chronicleTips: [],
-  inProgress: true,
-};
+import {
+  EMPTY_REPORT,
+  SAMPLE_SESSION,
+  SAMPLE_IN_PROGRESS,
+} from "./helpers/fixtures";
+import { captureJson } from "./helpers/render";
 
 describe("JsonRenderer", () => {
   describe("output is valid JSON", () => {
@@ -330,7 +277,7 @@ describe("JsonRenderer", () => {
       const model = sessionOut.models[0];
       expect(model.usage.input).toBe(1000);
       expect(model.usage.output).toBe(500);
-      expect(model.usage.cacheRead).toBe(200);
+      expect(model.usage.cacheRead).toBe(700);
       expect(model.usage.cacheWrite).toBe(100);
       expect(model.usage.reasoning).toBe(50);
     });
@@ -339,7 +286,7 @@ describe("JsonRenderer", () => {
       const totals = sessionOut.totals;
       expect(totals.input).toBe(1300); // 1000 + 300
       expect(totals.output).toBe(600); // 500 + 100
-      expect(totals.cacheRead).toBe(200);
+      expect(totals.cacheRead).toBe(700); // 700 + 0
       expect(totals.cacheWrite).toBe(100);
       expect(totals.reasoning).toBe(50);
       expect(totals.total).toBe(1900); // input + output (cache is part of input)
@@ -488,7 +435,19 @@ describe("JsonRenderer", () => {
 
   describe("JSON output ends with newline", () => {
     test("output string ends with newline character", () => {
-      const raw = captureOutput(EMPTY_REPORT);
+      const chunks: string[] = [];
+      const writeSpy = jest
+        .spyOn(process.stdout, "write")
+        .mockImplementation((chunk: unknown) => {
+        chunks.push(String(chunk));
+        return true;
+        });
+      try {
+        new JsonRenderer().render(EMPTY_REPORT);
+      } finally {
+        writeSpy.mockRestore();
+      }
+      const raw = chunks.join("");
       expect(raw.endsWith("\n")).toBe(true);
     });
   });

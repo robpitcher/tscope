@@ -13,16 +13,12 @@
  */
 
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import { spawnSync, execSync } from "child_process";
+import { makeTmpDir, writeLogsSession } from "./helpers/fs";
 
 const DIST_INDEX = path.resolve(__dirname, "..", "..", "dist", "index.js");
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
-
-function makeTmpDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "tscope-merge-int-"));
-}
 
 /**
  * Append a minimal OTel span to otelDir/otel.jsonl.
@@ -54,44 +50,6 @@ function writeOtelSpan(
   fs.appendFileSync(path.join(otelDir, "otel.jsonl"), JSON.stringify(span) + "\n", "utf8");
 }
 
-function writeLogsSession(
-  sessionStateDir: string,
-  sessionId: string,
-  startTimeISO: string
-): void {
-  const sessionDir = path.join(sessionStateDir, sessionId);
-  fs.mkdirSync(sessionDir, { recursive: true });
-  const lines = [
-    JSON.stringify({
-      type: "session.start",
-      data: { sessionId, startTime: startTimeISO },
-      timestamp: startTimeISO,
-    }),
-    JSON.stringify({
-      type: "session.shutdown",
-      data: {
-        modelMetrics: {
-          "gpt-4": {
-            usage: {
-              inputTokens: 500,
-              outputTokens: 200,
-              cacheReadTokens: 0,
-              cacheWriteTokens: 0,
-              reasoningTokens: 0,
-            },
-          },
-        },
-        totalApiDurationMs: 1000,
-      },
-    }),
-  ];
-  fs.writeFileSync(
-    path.join(sessionDir, "events.jsonl"),
-    lines.join("\n") + "\n",
-    "utf8"
-  );
-}
-
 function runCli(
   args: string[],
   fakeHome: string
@@ -118,7 +76,7 @@ describe("merge integration (subprocess)", () => {
   let tmpHome: string;
 
   beforeEach(() => {
-    tmpHome = makeTmpDir();
+    tmpHome = makeTmpDir("tscope-merge-int-");
   });
 
   afterEach(() => {

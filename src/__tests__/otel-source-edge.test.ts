@@ -12,17 +12,9 @@
  */
 
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import { OtelDataSource } from "../sources/otelSource";
-
-function makeTmpDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "tscope-otel-edge-"));
-}
-
-function writeLine(filePath: string, obj: object): void {
-  fs.appendFileSync(filePath, JSON.stringify(obj) + "\n", "utf8");
-}
+import { makeTmpDir, writeLine } from "./helpers/fs";
 
 function chatSpan(
   conversationId: string,

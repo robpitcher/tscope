@@ -6,14 +6,10 @@
  */
 
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import { LogsDataSource } from "../sources/logsSource";
 import { utcToLocalDateString } from "../filter";
-
-function makeTmpDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "tscope-logs-test-"));
-}
+import { makeTmpDir } from "./helpers/fs";
 
 /** Create a minimal valid completed events.jsonl in sessionStateDir/sessionId/. */
 function createCompletedSession(

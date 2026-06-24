@@ -12,38 +12,12 @@
  * json-renderer.test.ts (Switch's committed suites).
  */
 
-import * as fs from "fs";
-import * as path from "path";
-import { TextRenderer } from "../render/TextRenderer";
-import { HtmlRenderer } from "../render/HtmlRenderer";
 import { Report, NormalizedSession } from "../types";
+import { captureText, renderHtml } from "./helpers/render";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function captureText(report: Report): string {
-  const chunks: string[] = [];
-  const orig = process.stdout.write.bind(process.stdout);
-  (process.stdout.write as unknown as (s: string) => boolean) = (s: string) => {
-    chunks.push(s);
-    return true;
-  };
-  try {
-    new TextRenderer().render(report);
-  } finally {
-    process.stdout.write = orig;
-  }
-  return chunks.join("");
-}
-
-function renderHtml(report: Report, filename: string): string {
-  const outPath = path.join(process.cwd(), filename);
-  new HtmlRenderer(outPath).render(report);
-  const content = fs.readFileSync(outPath, "utf8");
-  fs.unlinkSync(outPath);
-  return content;
-}
 
 /** Extract the numeric percentage value from a ctx-window-fill width style. */
 function extractCtxFillPct(html: string): number {
