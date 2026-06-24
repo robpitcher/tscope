@@ -29,8 +29,8 @@ export function captureText(report: Report): string {
 }
 
 /**
- * Render `report` as HTML to a temporary file named `filename` in the current
- * working directory, read the content, delete the file, and return the HTML
+ * Render `report` as HTML to a temporary file named `filename` in
+ * `process.cwd()`, read the content, delete the file, and return the HTML
  * string.
  */
 export function renderHtml(report: Report, filename: string): string {
