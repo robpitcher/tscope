@@ -9,19 +9,15 @@
  */
 
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import { spawnSync, execSync } from "child_process";
+import { makeTmpDir, writeLogsSession } from "./helpers/fs";
 
 const DIST_INDEX = path.resolve(__dirname, "..", "..", "dist", "index.js");
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
 const FALLBACK_NOTICE = "No OpenTelemetry data found — falling back to log-file parsing.";
 const FALLBACK_HOW_TO_FIX = "tscope otel enable";
-
-function makeTmpDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "tscope-cli-int-"));
-}
 
 /** Write a minimal valid OTel span to otelDir/otel.jsonl. */
 function writeValidOtelSpan(otelDir: string): void {
@@ -43,50 +39,6 @@ function writeValidOtelSpan(otelDir: string): void {
     events: [],
   };
   fs.writeFileSync(path.join(otelDir, "otel.jsonl"), JSON.stringify(span) + "\n", "utf8");
-}
-
-/**
- * Write a minimal completed events.jsonl log session.
- * The session will have 1 model ("gpt-4") with the given token counts.
- */
-function writeLogsSession(
-  sessionStateDir: string,
-  sessionId: string,
-  startTimeISO: string,
-  inputTokens = 500,
-  outputTokens = 200
-): void {
-  const sessionDir = path.join(sessionStateDir, sessionId);
-  fs.mkdirSync(sessionDir, { recursive: true });
-  const lines = [
-    JSON.stringify({
-      type: "session.start",
-      data: { sessionId, startTime: startTimeISO },
-      timestamp: startTimeISO,
-    }),
-    JSON.stringify({
-      type: "session.shutdown",
-      data: {
-        modelMetrics: {
-          "gpt-4": {
-            usage: {
-              inputTokens,
-              outputTokens,
-              cacheReadTokens: 0,
-              cacheWriteTokens: 0,
-              reasoningTokens: 0,
-            },
-          },
-        },
-        totalApiDurationMs: 1000,
-      },
-    }),
-  ];
-  fs.writeFileSync(
-    path.join(sessionDir, "events.jsonl"),
-    lines.join("\n") + "\n",
-    "utf8"
-  );
 }
 
 /**
@@ -118,7 +70,7 @@ describe("source-selection integration (subprocess)", () => {
   let tmpHome: string;
 
   beforeEach(() => {
-    tmpHome = makeTmpDir();
+    tmpHome = makeTmpDir("tscope-cli-int-");
   });
 
   afterEach(() => {

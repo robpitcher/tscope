@@ -6,25 +6,13 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import * as os from "os";
 import {
   isValidDateString,
   makeRangeDateFilter,
   todayLocalDateString,
 } from "../filter";
 import { SessionRef } from "../types";
-
-/** Write a minimal events.jsonl with a session.start for the given ISO timestamp */
-function writeEventsWithStart(dir: string, startTime: string): string {
-  const event = {
-    type: "session.start",
-    data: { sessionId: "test", startTime },
-    timestamp: startTime,
-  };
-  const filePath = path.join(dir, "events.jsonl");
-  fs.writeFileSync(filePath, JSON.stringify(event) + "\n", "utf8");
-  return filePath;
-}
+import { makeTmpDir, writeEventsWithStart } from "./helpers/fs";
 
 describe("isValidDateString", () => {
   test("accepts valid dates", () => {
@@ -76,7 +64,7 @@ describe("makeRangeDateFilter", () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tscope-range-"));
+    tmpDir = makeTmpDir("tscope-range-");
   });
 
   afterEach(() => {

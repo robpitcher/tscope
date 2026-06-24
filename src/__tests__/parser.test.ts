@@ -1,21 +1,13 @@
 import * as fs from "fs";
 import * as path from "path";
-import * as os from "os";
 import { parseEventsFile, readSessionStartTime, readSessionStartOrFirstEventTime } from "../parser";
-
-/** Write a JSONL events file to a temp directory for testing */
-function writeTempEvents(tmpDir: string, lines: object[]): string {
-  const filePath = path.join(tmpDir, "events.jsonl");
-  const content = lines.map((l) => JSON.stringify(l)).join("\n");
-  fs.writeFileSync(filePath, content, "utf8");
-  return filePath;
-}
+import { makeTmpDir, writeTempEvents } from "./helpers/fs";
 
 describe("parser", () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tscope-test-"));
+    tmpDir = makeTmpDir("tscope-test-");
   });
 
   afterEach(() => {

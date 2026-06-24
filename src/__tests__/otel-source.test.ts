@@ -18,9 +18,9 @@
  */
 
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import { OtelDataSource, isOtelAvailable } from "../sources/otelSource";
+import { makeTmpDir, writeLine } from "./helpers/fs";
 
 /** Minimal valid OTel chat span for a given session and model */
 function chatSpan(
@@ -64,7 +64,7 @@ describe("isOtelAvailable", () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tscope-otel-test-"));
+    tmpDir = makeTmpDir("tscope-otel-test-");
   });
 
   afterEach(() => {
@@ -92,16 +92,12 @@ describe("OtelDataSource", () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tscope-otel-test-"));
+    tmpDir = makeTmpDir("tscope-otel-test-");
   });
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
-
-  function writeLine(filePath: string, obj: object): void {
-    fs.appendFileSync(filePath, JSON.stringify(obj) + "\n", "utf8");
-  }
 
   test("returns empty array when otel file does not exist", async () => {
     const src = new OtelDataSource(path.join(tmpDir, "nonexistent.jsonl"));

@@ -1,6 +1,5 @@
 import * as fs from "fs";
 import * as path from "path";
-import * as os from "os";
 import {
   utcToLocalDateString,
   todayLocalDateString,
@@ -8,24 +7,13 @@ import {
   localDateNDaysAgo,
 } from "../filter";
 import { SessionRef } from "../types";
-
-/** Write a minimal events.jsonl file with a session.start for the given ISO timestamp */
-function writeEventsWithStart(dir: string, startTime: string): string {
-  const event = {
-    type: "session.start",
-    data: { sessionId: "filter-test", startTime },
-    timestamp: startTime,
-  };
-  const filePath = path.join(dir, "events.jsonl");
-  fs.writeFileSync(filePath, JSON.stringify(event) + "\n", "utf8");
-  return filePath;
-}
+import { makeTmpDir, writeEventsWithStart } from "./helpers/fs";
 
 describe("filter", () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tscope-filter-"));
+    tmpDir = makeTmpDir("tscope-filter-");
   });
 
   afterEach(() => {

@@ -10,55 +10,12 @@ import { HtmlRenderer } from "../render/HtmlRenderer";
 import {
   Report,
   NormalizedSession,
-  InProgressSession,
 } from "../types";
-
-// ---------------------------------------------------------------------------
-// Test fixtures
-// ---------------------------------------------------------------------------
-
-const EMPTY_REPORT: Report = {
-  sessions: [],
-  inProgressSessions: [],
-  reportDate: "2026-06-02",
-  filterDescription: "today",
-  source: "logs",
-  costAvailable: false,
-  coverage: { otelCount: 0, logsCount: 0, costCoverage: "none" },
-};
-
-const SAMPLE_SESSION: NormalizedSession = {
-  sessionId: "abc-00000000-1111-2222-3333-444444444444",
-  eventsPath: "/home/user/.copilot/session-state/abc/events.jsonl",
-  startTime: "2026-06-02T20:00:00.000Z",
-  models: {
-    "claude-sonnet-4-5": {
-      inputTokens: 1000,
-      outputTokens: 500,
-      cacheReadTokens: 700,
-      cacheWriteTokens: 100,
-      reasoningTokens: 50,
-    },
-    "claude-haiku-4-5": {
-      inputTokens: 300,
-      outputTokens: 100,
-      cacheReadTokens: 0,
-      cacheWriteTokens: 0,
-      reasoningTokens: 0,
-    },
-  },
-  chronicleTips: [],
-  inProgress: false,
-  source: "logs",
-};
-
-const SAMPLE_IN_PROGRESS: InProgressSession = {
-  sessionId: "xyz-99999999-8888-7777-6666-555555555555",
-  eventsPath: "/home/user/.copilot/session-state/xyz/events.jsonl",
-  startTime: "2026-06-02T21:00:00.000Z",
-  chronicleTips: [],
-  inProgress: true,
-};
+import {
+  EMPTY_REPORT,
+  SAMPLE_SESSION,
+  SAMPLE_IN_PROGRESS,
+} from "./helpers/fixtures";
 
 /** Write to a file path in cwd, read back contents, delete the file */
 function renderToString(report: Report, filename = "test-report.html"): string {
