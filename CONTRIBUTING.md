@@ -63,7 +63,7 @@ Every pull request is expected to pass these checks:
 - `npm test`
 - `aw-compile-check` for Agentic Workflow source/generated file sync
 
-If you edit Agentic Workflow source files under `.github/workflows/*.md`, run:
+If you edit Agentic Workflow source files under `.github/workflows/*.md`, generated workflow files under `.github/workflows/*.lock.yml`, or `.github/workflows/agentics-maintenance.yml`, run:
 
 ```bash
 gh aw compile
