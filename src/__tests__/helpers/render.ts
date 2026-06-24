@@ -35,20 +35,25 @@ export function captureText(report: Report): string {
  */
 export function renderHtml(report: Report, filename: string): string {
   const outPath = path.join(process.cwd(), filename);
-  new HtmlRenderer(outPath).render(report);
-  const content = fs.readFileSync(outPath, "utf8");
-  fs.unlinkSync(outPath);
-  return content;
+  try {
+    new HtmlRenderer(outPath).render(report);
+    return fs.readFileSync(outPath, "utf8");
+  } finally {
+    fs.rmSync(outPath, { force: true });
+  }
 }
 
 /** Capture all text written to stdout during a JsonRenderer.render() call and parse as JSON. */
 export function captureJson(report: Report): ReturnType<typeof JSON.parse> {
   const chunks: string[] = [];
-  jest.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
+  const writeSpy = jest.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
     chunks.push(String(chunk));
     return true;
   });
-  new JsonRenderer().render(report);
-  (process.stdout.write as jest.Mock).mockRestore();
-  return JSON.parse(chunks.join(""));
+  try {
+    new JsonRenderer().render(report);
+    return JSON.parse(chunks.join(""));
+  } finally {
+    writeSpy.mockRestore();
+  }
 }

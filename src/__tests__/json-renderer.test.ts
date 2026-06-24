@@ -436,12 +436,17 @@ describe("JsonRenderer", () => {
   describe("JSON output ends with newline", () => {
     test("output string ends with newline character", () => {
       const chunks: string[] = [];
-      jest.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
+      const writeSpy = jest
+        .spyOn(process.stdout, "write")
+        .mockImplementation((chunk: unknown) => {
         chunks.push(String(chunk));
         return true;
-      });
-      new JsonRenderer().render(EMPTY_REPORT);
-      (process.stdout.write as jest.Mock).mockRestore();
+        });
+      try {
+        new JsonRenderer().render(EMPTY_REPORT);
+      } finally {
+        writeSpy.mockRestore();
+      }
       const raw = chunks.join("");
       expect(raw.endsWith("\n")).toBe(true);
     });
