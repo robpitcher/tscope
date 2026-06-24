@@ -32,15 +32,15 @@ jobs:
           version: v0.80.9
 
       - name: Recompile workflows
-        run: gh aw compile --all
+        run: gh aw compile
 
       - name: Fail on stale generated workflow files
         shell: bash
         run: |
           set -euo pipefail
           if ! git diff --quiet -- '.github/workflows/*.lock.yml' .github/workflows/agentics-maintenance.yml; then
-            echo "::error title=Stale Agentic Workflow compile outputs::Detected generated workflow changes after 'gh aw compile --all'."
-            echo "::error::Run 'gh aw compile --all' locally and commit updated .lock.yml / agentics-maintenance.yml files."
+            echo "::error title=Stale Agentic Workflow compile outputs::Detected generated workflow changes after 'gh aw compile'."
+            echo "::error::Run 'gh aw compile' locally and commit updated .lock.yml / agentics-maintenance.yml files."
             echo "Changed generated files:"
             git --no-pager diff --name-only -- '.github/workflows/*.lock.yml' .github/workflows/agentics-maintenance.yml
             exit 1
