@@ -54,6 +54,23 @@ Issues get the `squad` label by default, which triggers Lead triage. Once triage
 
 **Commit messages:** Write clear, descriptive messages in plain English. No enforced format — just make it obvious what changed and why.
 
+## CI checks
+
+Every pull request is expected to pass these checks:
+
+- `npm run lint`
+- `npm run build`
+- `npm test`
+- `aw-compile-check` for Agentic Workflow source/generated file sync
+
+If you edit Agentic Workflow source files under `.github/workflows/*.md`, generated workflow files under `.github/workflows/*.lock.yml`, or `.github/workflows/agentics-maintenance.yml`, run:
+
+```bash
+gh aw compile
+```
+
+Then commit any updated `.github/workflows/*.lock.yml` files and `.github/workflows/agentics-maintenance.yml`. The `aw-compile-check` workflow fails when generated workflow files are out of date.
+
 ## Releases
 
 We use [Changesets](https://github.com/changesets/changesets) to manage versioning and publish to npm. The release flow is automated — your job as a contributor is just to add a changeset when your PR should ship.
