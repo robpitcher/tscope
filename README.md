@@ -39,7 +39,6 @@ tscope reads from local sources with intelligent merging in default mode:
 
 | Mode | Behavior | Cost |
 |---|---|---|
-<<<<<<< HEAD
 | **`--source auto`** (default) | Reads OTel (`~/.copilot/tscope/otel.jsonl`) and log-parser sessions (`~/.copilot/session-state/`) into a **merged report**. Sessions present in both are deduplicated — OTel records are authoritative (no double-counting). OTel sessions show server-side credits (per-session and per-model); log-only sessions show estimated AI credits when the `totalNanoAiu` event-log field is present, and "unavailable" only when it is absent. | ✅ OTel: server-side credits / ✅ Logs: estimated credits (Copilot CLI 1.0+) |
 | **`--source otel`** | Reads only OTel data; exits with a helpful error if the file is absent or empty. | ✅ Server-side credits per session/model |
 | **`--source logs`** | Reads only the log-parser sessions (pre-OTel behavior). Shows estimated AI credits when the `totalNanoAiu` event-log field is present; shows "unavailable" when it is absent. | ✅ Estimated credits (Copilot CLI 1.0+) |
