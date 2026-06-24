@@ -16,18 +16,20 @@ on:
 
 jobs:
   verify:
-    name: Verify (Node ${{ inputs.node-version }})
+    name: Verify (Node ${{ inputs['node-version'] }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
 
-      - name: Set up Node.js ${{ inputs.node-version }}
+      - name: Set up Node.js ${{ inputs['node-version'] }}
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
         with:
-          node-version: ${{ inputs.node-version }}
+          node-version: ${{ inputs['node-version'] }}
           cache: 'npm'
 
       - name: Install dependencies
@@ -44,8 +46,8 @@ jobs:
 
       - name: Upload coverage
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
-        if: ${{ inputs.upload-coverage }}
+        if: ${{ inputs['upload-coverage'] }}
         with:
-          name: coverage-${{ inputs.node-version }}
+          name: coverage-${{ inputs['node-version'] }}
           path: coverage/
           retention-days: 7
