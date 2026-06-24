@@ -4,6 +4,9 @@ dist/
 *.js.map
 *.d.ts.map
 
+# Test coverage
+coverage/
+
 # Generated HTML reports — do not commit
 tscope-report-*.html
 

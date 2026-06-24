@@ -6,7 +6,7 @@
 
 | Without OTel | With OTel |
 |---|---|
-| Token counts from `events.jsonl`; estimated AI credits when `totalNanoAiu` is present (Copilot CLI 1.0+) | Token counts **and** authoritative server-side AI credits per session and model |
+| Token counts from `events.jsonl`; estimated session-level AI credits for Copilot CLI 1.0+ sessions when `totalNanoAiu` is present; no per-model cost breakdown | Token counts **and** authoritative server-side AI credits per session **and per model** (from `github.copilot.nano_aiu`) |
 | Historical sessions available | Historical sessions **plus** new sessions captured live |
 | `--source logs` behavior | `--source auto` (default) merges both |
 

@@ -1014,6 +1014,83 @@ describe("HtmlRenderer", () => {
     });
   });
 
+  describe("estimated-credit chip on logs session cards with totalCost", () => {
+    const LOGS_SESSION_WITH_COST: NormalizedSession = {
+      ...SAMPLE_SESSION,
+      sessionId: "logs-with-cost-0000-1111-2222-333344445555",
+      source: "logs",
+      totalCost: 1.23,
+    };
+
+    test("logs session with totalCost shows chip-credits and not chip-cost-unavail", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [LOGS_SESSION_WITH_COST] },
+        "html-test-logs-cost-credits-chip.html"
+      );
+      const cardStart = html.indexOf(
+        `class="session-card" data-session-id="${LOGS_SESSION_WITH_COST.sessionId}"`
+      );
+      expect(cardStart).toBeGreaterThan(-1);
+      const cardChips = html.slice(cardStart, cardStart + 800);
+      expect(cardChips).toContain("chip-credits");
+      expect(cardChips).toContain("1.23 credits");
+      expect(cardChips).not.toContain("chip-cost-unavail");
+    });
+
+    test("logs session with totalCost uses the event-log credits tooltip (not the OTel one)", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [LOGS_SESSION_WITH_COST] },
+        "html-test-logs-cost-credits-title.html"
+      );
+      expect(html).toContain('title="Estimated AI credits from event log data"');
+      expect(html).not.toContain("Server-side AI credits from OpenTelemetry billing data");
+    });
+
+    test("logs session with totalCost source badge omits the 'cost data unavailable' suffix", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [LOGS_SESSION_WITH_COST] },
+        "html-test-logs-cost-badge-title.html"
+      );
+      expect(html).toContain('title="Data source: event log parser"');
+      expect(html).not.toContain("Data source: event log parser — cost data unavailable");
+    });
+
+    test("logs session without totalCost keeps the 'cost data unavailable' badge suffix", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-logs-nocost-badge-title.html"
+      );
+      expect(html).toContain('title="Data source: event log parser — cost data unavailable"');
+    });
+
+    test("in a mixed report, a logs card with totalCost shows credits chip, not cost-unavail", () => {
+      const otelSession: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        sessionId: "otel-logscost-mix-0000-aaaa-bbbb-ccccddddeeee",
+        source: "otel",
+        totalCost: 1.5,
+        modelCosts: { "claude-sonnet-4-5": 1.5 },
+      };
+      const mixedReport: Report = {
+        ...EMPTY_REPORT,
+        source: "mixed",
+        costAvailable: true,
+        coverage: { otelCount: 1, logsCount: 1, costCoverage: "partial" },
+        sessions: [otelSession, LOGS_SESSION_WITH_COST],
+      };
+      const html = renderToString(mixedReport, "html-test-mixed-logs-cost-chip.html");
+
+      const logsCardIdx = html.indexOf(
+        `class="session-card" data-session-id="${LOGS_SESSION_WITH_COST.sessionId}"`
+      );
+      expect(logsCardIdx).toBeGreaterThan(-1);
+      const logsChips = html.slice(logsCardIdx, logsCardIdx + 800);
+      expect(logsChips).toContain("chip-credits");
+      expect(logsChips).toContain("Estimated AI credits from event log data");
+      expect(logsChips).not.toContain("chip-cost-unavail");
+    });
+  });
+
   describe("Total Credits stat card subtitle in mixed reports", () => {
     const OTEL_SESSION: NormalizedSession = {
       ...SAMPLE_SESSION,
