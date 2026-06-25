@@ -12,9 +12,11 @@ tscope/
 │   ├── filter.ts             # Date filtering and recency limiting
 │   ├── tokens.ts             # Token math / aggregation helpers
 │   ├── types.ts              # TypeScript types
+│   ├── otel.ts               # `tscope otel` subcommand (enable/disable/status)
 │   ├── render/
 │   │   ├── Renderer.ts       # Renderer interface
 │   │   ├── index.ts          # Renderer registry and factory
+│   │   ├── style.ts          # ANSI text styling (bold/dim; respects NO_COLOR and TTY)
 │   │   ├── TextRenderer.ts   # Text output implementation
 │   │   ├── JsonRenderer.ts   # JSON output (schema v5)
 │   │   └── HtmlRenderer.ts   # HTML dashboard
