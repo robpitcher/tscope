@@ -59,6 +59,52 @@ npm run lint
 
 Runs ESLint on TypeScript source.
 
+## Shared Utilities
+
+### `jsonlReader.ts` — JSONL stream reader
+
+`jsonlReader.ts` provides the shared `readJsonlFile` function used by both `parser.ts`
+and `otelSource.ts` to stream JSONL files line by line. Both sources import it directly:
+
+```typescript
+import { readJsonlFile, JsonlReadControl } from "./jsonlReader";
+// or, from a subdirectory:
+import { readJsonlFile } from "../jsonlReader";
+```
+
+#### `readJsonlFile(filePath, onLine): Promise<void>`
+
+Streams non-empty lines from `filePath`. For each non-empty, trimmed line, calls
+`onLine(trimmedLine, control)` synchronously.
+
+- **Resolves** after all lines have been delivered (triggered by `readline.close`).
+- **Rejects** if the file cannot be opened or if a stream/readline error occurs.
+- Errors thrown from inside `onLine` are caught and forwarded as rejections.
+- Always destroys the underlying `ReadStream` and closes the `readline.Interface` on
+  both normal completion and error — no handles are left open.
+
+#### `JsonlReadControl`
+
+The `control` object passed as the second argument to every `onLine` call exposes one
+method for early termination:
+
+| Method | Description |
+|---|---|
+| `control.stop()` | Closes the readline interface and destroys the stream immediately. The promise resolves normally (not as an error). Subsequent `onLine` calls are not made. |
+
+**Example — read the first non-empty record and stop:**
+
+```typescript
+let firstRecord: unknown = null;
+await readJsonlFile(filePath, (line, control) => {
+  firstRecord = JSON.parse(line);
+  control.stop();
+});
+```
+
+`control.stop()` is used in `parser.ts` to terminate the scan early once the
+`session.start` timestamp has been found.
+
 ## Writing Tests
 
 ### Shared Test Helpers
