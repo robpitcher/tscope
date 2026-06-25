@@ -31,6 +31,7 @@ safe-outputs:
       policy: fallback-to-issue
       exclude:
         - README.md
+        - CONTRIBUTING.md
     labels: [automation, documentation]
     max-patch-size: 4096
 
