@@ -39,11 +39,17 @@ export async function readJsonlFile(
     }
 
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+    let cleanedUp = false;
+    const cleanup = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      rl.close();
+      stream.destroy();
+    };
 
     const control: JsonlReadControl = {
       stop: () => {
-        rl.close();
-        stream.destroy();
+        cleanup();
       },
     };
 
@@ -54,13 +60,18 @@ export async function readJsonlFile(
         onLine(trimmed, control);
       } catch (err) {
         settleReject(err);
-        rl.close();
-        stream.destroy();
+        cleanup();
       }
     });
 
     rl.on("close", settleResolve);
-    rl.on("error", settleReject);
-    stream.on("error", settleReject);
+    rl.on("error", (err) => {
+      settleReject(err);
+      cleanup();
+    });
+    stream.on("error", (err) => {
+      settleReject(err);
+      cleanup();
+    });
   });
 }
