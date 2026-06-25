@@ -240,4 +240,11 @@ describe("OtelDataSource", () => {
     const inProgress = await src.loadInProgressSessions();
     expect(inProgress).toEqual([]);
   });
+
+  test("rejects when otel path exists but cannot be read as a file", async () => {
+    const dirPath = path.join(tmpDir, "otel-dir");
+    fs.mkdirSync(dirPath);
+    const src = new OtelDataSource(dirPath);
+    await expect(src.loadSessions()).rejects.toThrow();
+  });
 });
