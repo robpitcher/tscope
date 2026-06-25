@@ -8,6 +8,7 @@ tscope/
 │   ├── index.ts              # CLI entry point, argument parsing
 │   ├── discovery.ts          # Session discovery logic
 │   ├── parser.ts             # events.jsonl parsing
+│   ├── jsonlReader.ts        # Shared JSONL stream reader (used by parser and OTel source)
 │   ├── filter.ts             # Date filtering and recency limiting
 │   ├── tokens.ts             # Token math / aggregation helpers
 │   ├── types.ts              # TypeScript types
