@@ -59,6 +59,52 @@ npm run lint
 
 Runs ESLint on TypeScript source.
 
+## Shared Utilities
+
+### `jsonlReader.ts` — JSONL stream reader
+
+`jsonlReader.ts` provides the shared `readJsonlFile` function used by both `parser.ts`
+and `otelSource.ts` to stream JSONL files line by line. Both sources import it directly:
+
+```typescript
+import { readJsonlFile, JsonlReadControl } from "./jsonlReader";
+// or, from a subdirectory:
+import { readJsonlFile } from "../jsonlReader";
+```
+
+#### `readJsonlFile(filePath, onLine): Promise<void>`
+
+Streams non-empty lines from `filePath`. For each non-empty, trimmed line, calls
+`onLine(trimmedLine, control)` synchronously.
+
+- **Resolves** after all lines have been delivered (triggered by `readline.close`).
+- **Rejects** if the file cannot be opened or if a stream/readline error occurs.
+- Errors thrown from inside `onLine` are caught and forwarded as rejections.
+- Always destroys the underlying `ReadStream` and closes the `readline.Interface` on
+  both normal completion and error — no handles are left open.
+
+#### `JsonlReadControl`
+
+The `control` object passed as the second argument to every `onLine` call exposes one
+method for early termination:
+
+| Method | Description |
+|---|---|
+| `control.stop()` | Closes the readline interface and destroys the stream immediately. The promise resolves normally (not as an error). Subsequent `onLine` calls are not made. |
+
+**Example — read the first non-empty record and stop:**
+
+```typescript
+let firstRecord: unknown = null;
+await readJsonlFile(filePath, (line, control) => {
+  firstRecord = JSON.parse(line);
+  control.stop();
+});
+```
+
+`control.stop()` is used in `parser.ts` to terminate the scan early once the
+`session.start` timestamp has been found.
+
 ## Writing Tests
 
 ### Shared Test Helpers
@@ -109,6 +155,56 @@ import { captureText, renderHtml, captureJson } from "./helpers/render";
 - `captureText(report)` — captures `TextRenderer` stdout output as a string
 - `renderHtml(report, filename)` — renders HTML to a temp file and returns its content
 - `captureJson(report)` — captures `JsonRenderer` stdout and parses as JSON
+
+### Testing the `otel` module
+
+`src/otel.ts` mutates shell profile files and calls PowerShell to locate its profile path — both are external side effects that tests must not trigger. The module uses **dependency injection** for every injectable boundary, making it fully unit-testable without touching the real filesystem or running subprocesses.
+
+#### `resolveProfileTarget` — injecting the PowerShell resolver
+
+`resolveProfileTarget` accepts four parameters, all with defaults that match production behavior:
+
+```typescript
+resolveProfileTarget(
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+  homeDir: string = os.homedir(),
+  resolvePowerShellProfilePath: () => string | null = resolvePowerShellProfile
+): ProfileTarget
+```
+
+Pass the last parameter to avoid the real `pwsh`/`powershell` subprocess call in tests:
+
+```typescript
+// PowerShell profile successfully resolved
+resolveProfileTarget("win32", {}, "C:\\Users\\u", () => "C:\\Users\\u\\Documents\\PowerShell\\profile.ps1");
+
+// Simulate failure / OneDrive redirect absent — falls back to default path
+resolveProfileTarget("win32", {}, "C:\\Users\\u", () => null);
+
+// Non-Windows: drive from env.SHELL; resolver is not called
+resolveProfileTarget("linux", { SHELL: "/bin/zsh" }, "/home/u");
+```
+
+#### `otelEnable` / `otelDisable` — injecting the confirmation prompt
+
+Both commands preview a change and ask `[y/N]` before writing. The `confirm` parameter (type `Confirm`) is injectable for tests:
+
+```typescript
+type Confirm = (question: string) => Promise<boolean>;
+
+// Always confirm
+await otelEnable(() => Promise.resolve(true));
+
+// Always cancel
+await otelDisable(() => Promise.resolve(false));
+```
+
+The default `confirm` implementation reads a single line from `stdin`, so any test that doesn't inject a replacement would hang waiting for user input.
+
+#### Pure string helpers
+
+`hasBlock`, `upsertBlock`, `removeBlock`, and `renderBlock` are pure functions with no I/O — test them directly without any injection.
 
 ### Conventions
 
