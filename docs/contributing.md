@@ -2,7 +2,7 @@
 
 Found a bug or have a feature request? [Open an issue on GitHub](https://github.com/robpitcher/tscope/issues).
 
-Pull requests are welcome. For local development setup, see [Development](development.md).
+Pull requests are welcome. For the full contributing guide — including the PR workflow, changeset requirements, and release process — see [CONTRIBUTING.md](../CONTRIBUTING.md). For local development setup, see [Development](development.md).
 
 ## CI checks
 
