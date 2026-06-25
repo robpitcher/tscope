@@ -61,6 +61,106 @@ npm run lint
 
 Runs ESLint on TypeScript source.
 
+## Shared Utilities
+
+### `jsonlReader.ts` — JSONL stream reader
+
+`jsonlReader.ts` provides the shared `readJsonlFile` function used by both `parser.ts`
+and `otelSource.ts` to stream JSONL files line by line. Both sources import it directly:
+
+```typescript
+import { readJsonlFile, JsonlReadControl } from "./jsonlReader";
+// or, from a subdirectory:
+import { readJsonlFile } from "../jsonlReader";
+```
+
+#### `readJsonlFile(filePath, onLine): Promise<void>`
+
+Streams non-empty lines from `filePath`. For each non-empty, trimmed line, calls
+`onLine(trimmedLine, control)` synchronously.
+
+- **Resolves** after all lines have been delivered (triggered by `readline.close`).
+- **Rejects** if the file cannot be opened or if a stream/readline error occurs.
+- Errors thrown from inside `onLine` are caught and forwarded as rejections.
+- Always destroys the underlying `ReadStream` and closes the `readline.Interface` on
+  both normal completion and error — no handles are left open.
+
+#### `JsonlReadControl`
+
+The `control` object passed as the second argument to every `onLine` call exposes one
+method for early termination:
+
+| Method | Description |
+|---|---|
+| `control.stop()` | Closes the readline interface and destroys the stream immediately. The promise resolves normally (not as an error). Subsequent `onLine` calls are not made. |
+
+**Example — read the first non-empty record and stop:**
+
+```typescript
+let firstRecord: unknown = null;
+await readJsonlFile(filePath, (line, control) => {
+  firstRecord = JSON.parse(line);
+  control.stop();
+});
+```
+
+`control.stop()` is used in `parser.ts` to terminate the scan early once the
+`session.start` timestamp has been found.
+
+### `tokens.ts` — token math helpers
+
+`tokens.ts` is the single source of truth for all token arithmetic across the renderers
+and the test suite. Import the functions you need:
+
+```typescript
+import {
+  tokenPartition,
+  totalTokens,
+  freshInputTokens,
+  emptyTokenCounts,
+  addTokenCounts,
+  hasTokenData,
+} from "./tokens";
+```
+
+**Key invariant** — Copilot's `inputTokens` is the grand total of all input and already
+**includes** `cacheReadTokens` and `cacheWriteTokens` as subsets (not separate additive
+buckets). The only non-overlapping session total is therefore `inputTokens + outputTokens`.
+
+#### `TokenPartition`
+
+The interface returned by `tokenPartition`:
+
+| Field | Type | Description |
+|---|---|---|
+| `freshInput` | `number` | `inputTokens − cacheRead − cacheWrite`, clamped at 0 — genuinely new (uncached) input. |
+| `cacheRead` | `number` | Cache-read tokens (subset of input). |
+| `cacheWrite` | `number` | Cache-write tokens (subset of input). |
+| `output` | `number` | Output tokens. |
+| `total` | `number` | `inputTokens + outputTokens` — the only non-double-counted grand total. |
+| `anomalous` | `boolean` | `true` when `cacheRead + cacheWrite` exceeds `inputTokens` beyond a 16-token rounding tolerance. |
+
+#### Functions
+
+| Function | Returns | Description |
+|---|---|---|
+| `totalTokens(t)` | `number` | `t.inputTokens + t.outputTokens` — the correct grand total. |
+| `freshInputTokens(t)` | `number` | `inputTokens − cacheRead − cacheWrite`, clamped at 0. |
+| `tokenPartition(t)` | `TokenPartition` | Splits usage into the disjoint `[freshInput, cacheRead, cacheWrite, output]` segments used by all renderers for stacked bars and totals. |
+| `emptyTokenCounts()` | `TokenCounts` | Returns a zeroed `TokenCounts` object — use as an accumulator seed. |
+| `addTokenCounts(a, b)` | `TokenCounts` | Field-by-field sum of two `TokenCounts`. |
+| `hasTokenData(models)` | `boolean` | Returns `true` when at least one model has non-zero `inputTokens` or `outputTokens`. Used by all three renderers to silently exclude zero-activity sessions. |
+
+**Example — accumulate totals across models:**
+
+```typescript
+import { emptyTokenCounts, addTokenCounts, tokenPartition } from "./tokens";
+
+const zero = emptyTokenCounts();
+const total = Object.values(session.models).reduce(addTokenCounts, zero);
+const { freshInput, cacheRead, cacheWrite, output, total: grand } = tokenPartition(total);
+```
+
 ## Writing Tests
 
 ### Shared Test Helpers
