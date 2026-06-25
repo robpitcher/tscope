@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
-import { parseEventsFile, readSessionStartTime, readSessionStartOrFirstEventTime } from "../parser";
+import { parseEventsFile, readSessionStartOrFirstEventTime } from "../parser";
 import { makeTmpDir, writeTempEvents } from "./helpers/fs";
 
 describe("parser", () => {
@@ -560,46 +560,6 @@ describe("parser", () => {
     });
   });
 
-  describe("readSessionStartTime", () => {
-    test("reads startTime from session.start data", async () => {
-      const eventsPath = writeTempEvents(tmpDir, [sessionStart, shutdownEvent]);
-      const startTime = await readSessionStartTime(eventsPath);
-      expect(startTime).toBe("2026-06-02T22:58:00.000Z");
-    });
-
-    test("falls back to event timestamp when data.startTime missing", async () => {
-      const startNoData = {
-        type: "session.start",
-        data: {},
-        timestamp: "2026-06-02T10:00:00.000Z",
-      };
-      const eventsPath = writeTempEvents(tmpDir, [startNoData]);
-      const startTime = await readSessionStartTime(eventsPath);
-      expect(startTime).toBe("2026-06-02T10:00:00.000Z");
-    });
-
-    test("returns null for file with no session.start event", async () => {
-      const eventsPath = writeTempEvents(tmpDir, [shutdownEvent]);
-      const startTime = await readSessionStartTime(eventsPath);
-      expect(startTime).toBeNull();
-    });
-
-    test("returns null for empty file", async () => {
-      const filePath = path.join(tmpDir, "events.jsonl");
-      fs.writeFileSync(filePath, "", "utf8");
-      const startTime = await readSessionStartTime(filePath);
-      expect(startTime).toBeNull();
-    });
-
-    test("does not crash for malformed lines", async () => {
-      const content = "not json\n" + JSON.stringify(sessionStart) + "\nalso not json\n";
-      const filePath = path.join(tmpDir, "events.jsonl");
-      fs.writeFileSync(filePath, content, "utf8");
-      const startTime = await readSessionStartTime(filePath);
-      expect(startTime).toBe("2026-06-02T22:58:00.000Z");
-    });
-  });
-
   describe("readSessionStartOrFirstEventTime", () => {
     test("prefers session.start startTime when present", async () => {
       const eventsPath = writeTempEvents(tmpDir, [sessionStart, shutdownEvent]);
@@ -630,6 +590,38 @@ describe("parser", () => {
       fs.writeFileSync(filePath, "", "utf8");
       const result = await readSessionStartOrFirstEventTime(filePath);
       expect(result).toBeNull();
+    });
+
+    test("falls back to event timestamp when session.start has no data.startTime", async () => {
+      const startNoData = {
+        type: "session.start",
+        data: {},
+        timestamp: "2026-06-02T10:00:00.000Z",
+      };
+      const eventsPath = writeTempEvents(tmpDir, [startNoData]);
+      const result = await readSessionStartOrFirstEventTime(eventsPath);
+      expect(result).toBe("2026-06-02T10:00:00.000Z");
+    });
+
+    test("does not crash for malformed lines", async () => {
+      const content = "not json\n" + JSON.stringify(sessionStart) + "\nalso not json\n";
+      const filePath = path.join(tmpDir, "events.jsonl");
+      fs.writeFileSync(filePath, content, "utf8");
+      const result = await readSessionStartOrFirstEventTime(filePath);
+      expect(result).toBe("2026-06-02T22:58:00.000Z");
+    });
+
+    test("returns null when file cannot be read", async () => {
+      const missingPath = path.join(tmpDir, "missing-events.jsonl");
+      const result = await readSessionStartOrFirstEventTime(missingPath);
+      expect(result).toBeNull();
+    });
+  });
+
+  describe("stream-level error semantics", () => {
+    test("parseEventsFile rejects when file cannot be read", async () => {
+      const missingPath = path.join(tmpDir, "missing-events.jsonl");
+      await expect(parseEventsFile("missing-session", missingPath)).rejects.toThrow();
     });
   });
 });

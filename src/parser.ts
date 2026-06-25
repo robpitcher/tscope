@@ -1,7 +1,6 @@
-import * as fs from "fs";
-import * as readline from "readline";
 import { ParsedSession, InProgressSession, Session, TokenCounts, ChronicleTip } from "./types";
 import { addTokenCounts } from "./tokens";
+import { readJsonlFile } from "./jsonlReader";
 
 interface RawUserMessage {
   type: "user.message";
@@ -134,6 +133,7 @@ function extractTokenCounts(raw: RawModelUsage | undefined): TokenCounts {
  * final run are not yet recorded in any shutdown and are therefore omitted.
  *
  * Malformed lines are silently skipped.
+ * Throws when the file cannot be read or the stream errors mid-read.
  */
 export async function parseEventsFile(
   sessionId: string,
@@ -157,67 +157,51 @@ export async function parseEventsFile(
     lastAssistantByInteraction: new Map<string, string>(),
   };
 
-  await new Promise<void>((resolve, reject) => {
-    let stream: fs.ReadStream;
-    try {
-      stream = fs.createReadStream(eventsPath, { encoding: "utf8" });
-    } catch (err) {
-      reject(err);
-      return;
+  await readJsonlFile(eventsPath, (line) => {
+    const event = parseLine(line);
+    if (!event) return;
+
+    if (event.type === "session.start" && scanResult.startEvent === null) {
+      scanResult.startEvent = event as RawSessionStart;
     }
 
-    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+    if (event.type === "session.shutdown") {
+      scanResult.shutdownEvents.push(event as RawSessionShutdown);
+    }
 
-    rl.on("line", (line) => {
-      const event = parseLine(line);
-      if (!event) return;
-
-      if (event.type === "session.start" && scanResult.startEvent === null) {
-        scanResult.startEvent = event as RawSessionStart;
-      }
-
-      if (event.type === "session.shutdown") {
-        scanResult.shutdownEvents.push(event as RawSessionShutdown);
-      }
-
-      if (event.type === "user.message") {
-        const um = event as RawUserMessage;
-        const content = um.data?.content;
-        const interactionId = um.data?.interactionId;
-        if (typeof content === "string" && typeof interactionId === "string") {
-          const variant = matchChronicleCommand(content);
-          if (variant) {
-            scanResult.chronicleInvocations.push({
-              variant,
-              timestamp: um.timestamp ?? "",
-              interactionId,
-            });
-            scanResult.chronicleInteractionIds.add(interactionId);
-          }
+    if (event.type === "user.message") {
+      const um = event as RawUserMessage;
+      const content = um.data?.content;
+      const interactionId = um.data?.interactionId;
+      if (typeof content === "string" && typeof interactionId === "string") {
+        const variant = matchChronicleCommand(content);
+        if (variant) {
+          scanResult.chronicleInvocations.push({
+            variant,
+            timestamp: um.timestamp ?? "",
+            interactionId,
+          });
+          scanResult.chronicleInteractionIds.add(interactionId);
         }
       }
+    }
 
-      if (event.type === "assistant.message") {
-        const am = event as RawAssistantMessage;
-        const interactionId = am.data?.interactionId;
-        const content = am.data?.content;
-        if (
-          typeof interactionId === "string" &&
-          scanResult.chronicleInteractionIds.has(interactionId) &&
-          typeof content === "string" &&
-          content.trim() !== ""
-        ) {
-          // Last non-empty assistant message for a chronicle interaction wins
-          // (the final rendered tips). The command always precedes its response,
-          // so its interactionId is already registered by this point.
-          scanResult.lastAssistantByInteraction.set(interactionId, content);
-        }
+    if (event.type === "assistant.message") {
+      const am = event as RawAssistantMessage;
+      const interactionId = am.data?.interactionId;
+      const content = am.data?.content;
+      if (
+        typeof interactionId === "string" &&
+        scanResult.chronicleInteractionIds.has(interactionId) &&
+        typeof content === "string" &&
+        content.trim() !== ""
+      ) {
+        // Last non-empty assistant message for a chronicle interaction wins
+        // (the final rendered tips). The command always precedes its response,
+        // so its interactionId is already registered by this point.
+        scanResult.lastAssistantByInteraction.set(interactionId, content);
       }
-    });
-
-    rl.on("close", resolve);
-    rl.on("error", reject);
-    stream.on("error", reject);
+    }
   });
 
   startEvent = scanResult.startEvent;
@@ -294,82 +278,21 @@ export async function parseEventsFile(
 }
 
 /**
- * Read only the session.start event from an events.jsonl file (used for date filtering).
- * Returns the startTime string or null if not found.
- */
-export async function readSessionStartTime(eventsPath: string): Promise<string | null> {
-  return new Promise<string | null>((resolve) => {
-    let found: string | null = null;
-    let resolved = false;
-    let stream: fs.ReadStream;
-
-    const finish = () => {
-      if (resolved) return;
-      resolved = true;
-      resolve(found);
-    };
-
-    try {
-      stream = fs.createReadStream(eventsPath, { encoding: "utf8" });
-    } catch {
-      resolve(null);
-      return;
-    }
-
-    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-
-    rl.on("line", (line) => {
-      if (found !== null) return;
-      const event = parseLine(line);
-      if (event && event.type === "session.start") {
-        const se = event as RawSessionStart;
-        found = se.data?.startTime ?? se.timestamp ?? null;
-        if (found !== null) {
-          rl.close();
-          stream.destroy();
-          finish();
-        }
-      }
-    });
-
-    rl.on("close", finish);
-    rl.on("error", finish);
-    stream.on("error", finish);
-  });
-}
-
-/**
  * Read the best-effort start timestamp for date filtering. Prefers the
  * `session.start` event's startTime (or its timestamp); when no session.start
  * event exists (e.g. imported conversations), falls back to the timestamp of
  * the first event that carries one. Returns null only when the file has no
  * usable timestamp at all (callers may then fall back to file mtime).
+ * Never throws; read errors are treated as "timestamp unknown" and return null.
  */
 export async function readSessionStartOrFirstEventTime(
   eventsPath: string
 ): Promise<string | null> {
-  return new Promise<string | null>((resolve) => {
-    let startTime: string | null = null;
-    let firstEventTime: string | null = null;
-    let resolved = false;
-    let stream: fs.ReadStream;
+  let startTime: string | null = null;
+  let firstEventTime: string | null = null;
 
-    const finish = () => {
-      if (resolved) return;
-      resolved = true;
-      resolve(startTime ?? firstEventTime);
-    };
-
-    try {
-      stream = fs.createReadStream(eventsPath, { encoding: "utf8" });
-    } catch {
-      resolve(null);
-      return;
-    }
-
-    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-
-    rl.on("line", (line) => {
+  try {
+    await readJsonlFile(eventsPath, (line, control) => {
       if (startTime !== null) return;
       const event = parseLine(line);
       if (!event) return;
@@ -378,9 +301,7 @@ export async function readSessionStartOrFirstEventTime(
         const se = event as RawSessionStart;
         startTime = se.data?.startTime ?? se.timestamp ?? null;
         if (startTime !== null) {
-          rl.close();
-          stream.destroy();
-          finish();
+          control.stop();
         }
         return;
       }
@@ -390,9 +311,9 @@ export async function readSessionStartOrFirstEventTime(
         if (typeof ts === "string") firstEventTime = ts;
       }
     });
+  } catch {
+    return null;
+  }
 
-    rl.on("close", finish);
-    rl.on("error", finish);
-    stream.on("error", finish);
-  });
+  return startTime ?? firstEventTime;
 }
