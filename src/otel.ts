@@ -92,12 +92,12 @@ function resolvePowerShellProfile(): string | null {
 export function resolveProfileTarget(
   platform: NodeJS.Platform = process.platform,
   env: NodeJS.ProcessEnv = process.env,
-  homeDir: string = os.homedir()
+  homeDir: string = os.homedir(),
+  resolvePowerShellProfilePath: () => string | null = resolvePowerShellProfile
 ): ProfileTarget {
   if (platform === "win32") {
     const profilePath =
-      resolvePowerShellProfile() ??
-      path.join(homeDir, "Documents", "PowerShell", "profile.ps1");
+      resolvePowerShellProfilePath() ?? path.join(homeDir, "Documents", "PowerShell", "profile.ps1");
     return { shell: "powershell", profilePath };
   }
 

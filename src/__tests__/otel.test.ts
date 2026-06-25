@@ -85,10 +85,21 @@ describe("otel block transforms", () => {
 });
 
 describe("otel shell target resolution and block rendering", () => {
-  test("resolveProfileTarget returns a powershell target on win32", () => {
-    const target = resolveProfileTarget("win32", {}, "C:\\Temp\\home");
+  test("resolveProfileTarget uses detected powershell profile on win32", () => {
+    const target = resolveProfileTarget(
+      "win32",
+      {},
+      "C:\\Temp\\home",
+      () => "C:\\Users\\u\\Documents\\PowerShell\\profile.ps1"
+    );
     expect(target.shell).toBe("powershell");
-    expect(target.profilePath.length).toBeGreaterThan(0);
+    expect(target.profilePath).toBe("C:\\Users\\u\\Documents\\PowerShell\\profile.ps1");
+  });
+
+  test("resolveProfileTarget falls back when powershell profile cannot be resolved", () => {
+    const target = resolveProfileTarget("win32", {}, "C:\\Temp\\home", () => null);
+    expect(target.shell).toBe("powershell");
+    expect(target.profilePath).toBe(path.join("C:\\Temp\\home", "Documents", "PowerShell", "profile.ps1"));
   });
 
   test("resolveProfileTarget returns zsh/fish/bash profiles on non-win32", () => {
