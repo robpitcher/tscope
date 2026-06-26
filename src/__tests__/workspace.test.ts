@@ -90,6 +90,14 @@ describe("resolveClientName", () => {
     const stateDir = makeTmpDir();
     expect(resolveClientName(stateDir, "")).toBeUndefined();
   });
+
+  test("returns undefined for unsafe sessionId values", () => {
+    const stateDir = makeTmpDir();
+    writeWorkspaceYaml(path.join(stateDir, "safe-id"), "client_name: sdk\n");
+    for (const unsafeId of ["..", "../safe-id", "safe/id", "safe\\id", "/safe-id"]) {
+      expect(resolveClientName(stateDir, unsafeId)).toBeUndefined();
+    }
+  });
 });
 
 describe("enrichSessionsWithClient", () => {

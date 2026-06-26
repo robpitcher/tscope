@@ -19,6 +19,8 @@ import { NormalizedSession } from "./types";
 
 /** Matches a top-level `client_name:` line, capturing the (optionally quoted) value. */
 const CLIENT_NAME_RE = /^client_name:\s*(.+?)\s*$/m;
+/** Session IDs must be a single, safe folder name. */
+const SAFE_SESSION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 /**
  * Read the `client_name` from a session folder's `workspace.yaml`.
@@ -47,7 +49,7 @@ export function resolveClientName(
   sessionStateDir: string,
   sessionId: string
 ): string | undefined {
-  if (!sessionId) return undefined;
+  if (!SAFE_SESSION_ID_RE.test(sessionId)) return undefined;
   return readWorkspaceClientName(path.join(sessionStateDir, sessionId));
 }
 
