@@ -914,7 +914,7 @@ describe("HtmlRenderer", () => {
       return html.slice(idx, idx + 900);
     }
 
-    test("CLI client renders a 'CLI' badge", () => {
+    test("CLI client renders a 'Copilot CLI' badge", () => {
       const session: NormalizedSession = {
         ...SAMPLE_SESSION,
         sessionId: "client-cli-0000-1111-2222-333344445555",
@@ -926,7 +926,7 @@ describe("HtmlRenderer", () => {
       );
       const chips = cardSliceFor(html, session.sessionId);
       expect(chips).toContain("client-badge--github-cli");
-      expect(chips).toContain(">CLI<");
+      expect(chips).toContain(">Copilot CLI<");
     });
 
     test("autopilot client renders a 'Copilot App' badge", () => {

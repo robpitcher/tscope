@@ -497,7 +497,7 @@ function buildCreditsByModel(models: ModelEntry[], modelCosts: Record<string, nu
 
 /** Friendly labels for known workspace.yaml client_name values. */
 const CLIENT_LABELS: Record<string, string> = {
-  "github/cli": "CLI",
+  "github/cli": "Copilot CLI",
   "github/autopilot": "Copilot App",
   sdk: "SDK",
 };
@@ -1291,11 +1291,7 @@ a:hover { text-decoration: underline; }
   white-space: nowrap;
   border: 1px solid;
 }
-.source-badge--otel {
-  background: rgba(88,166,255,.12);
-  color: var(--accent-blue);
-  border-color: rgba(88,166,255,.25);
-}
+.source-badge--otel,
 .source-badge--logs {
   background: var(--bg-elevated);
   color: var(--text-muted);
@@ -1313,11 +1309,7 @@ a:hover { text-decoration: underline; }
   white-space: nowrap;
   border: 1px solid;
 }
-.client-badge--github-cli {
-  background: rgba(163,113,247,.12);
-  color: var(--accent-purple);
-  border-color: rgba(163,113,247,.25);
-}
+.client-badge--github-cli,
 .client-badge--github-autopilot {
   background: rgba(219,109,40,.12);
   color: #db6d28;
