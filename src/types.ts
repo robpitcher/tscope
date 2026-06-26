@@ -125,6 +125,14 @@ export interface NormalizedSession extends ParsedSession {
   totalCost?: number;
   /** Extended OTel-only metrics (v1: reasoning tokens, context window). */
   extended?: ExtendedMetrics;
+  /**
+   * Raw client identifier of the agentic surface that produced the session,
+   * read from the session folder's `workspace.yaml` `client_name` field
+   * (e.g. "github/cli", "github/autopilot", "sdk"). Undefined when the
+   * workspace.yaml is missing or has no client_name. Rendering maps known
+   * values to friendly labels.
+   */
+  clientName?: string;
 }
 
 /** Session where no shutdown event was found */

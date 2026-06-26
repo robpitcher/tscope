@@ -24,6 +24,7 @@ import { LogsDataSource } from "./sources/logsSource";
 import { OtelDataSource, isOtelAvailable } from "./sources/otelSource";
 import { mergeSessions, computeSourceCoverage, computeReportSource } from "./sources/merge";
 import { getSessionStateDir } from "./discovery";
+import { enrichSessionsWithClient } from "./workspace";
 
 const packageJson = createRequire(__filename)("../package.json") as { version: string };
 const VERSION = packageJson.version;
@@ -455,6 +456,11 @@ async function main(): Promise<void> {
     finalCompleted = selectMostRecentSessions(renderable, maxN);
     finalInProgress = [];
   }
+
+  // Attach the agentic surface ("client") to each completed session by reading
+  // workspace.yaml (keyed by sessionId). Source-agnostic and applied to the
+  // final rendered set so we only touch disk for sessions we actually show.
+  finalCompleted = enrichSessionsWithClient(finalCompleted, getSessionStateDir());
 
   const filterDescription = buildFilterDescription(args);
 

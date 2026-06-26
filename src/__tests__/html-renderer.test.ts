@@ -907,6 +907,82 @@ describe("HtmlRenderer", () => {
     });
   });
 
+  describe("per-session client badge on session cards", () => {
+    function cardSliceFor(html: string, sessionId: string): string {
+      const idx = html.indexOf(`class="session-card" data-session-id="${sessionId}"`);
+      expect(idx).toBeGreaterThan(-1);
+      return html.slice(idx, idx + 900);
+    }
+
+    test("CLI client renders a 'CLI' badge", () => {
+      const session: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        sessionId: "client-cli-0000-1111-2222-333344445555",
+        clientName: "github/cli",
+      };
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [session] },
+        "html-test-client-cli.html"
+      );
+      const chips = cardSliceFor(html, session.sessionId);
+      expect(chips).toContain("client-badge--github-cli");
+      expect(chips).toContain(">CLI<");
+    });
+
+    test("autopilot client renders a 'Copilot App' badge", () => {
+      const session: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        sessionId: "client-app-0000-1111-2222-333344445555",
+        clientName: "github/autopilot",
+      };
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [session] },
+        "html-test-client-app.html"
+      );
+      const chips = cardSliceFor(html, session.sessionId);
+      expect(chips).toContain("client-badge--github-autopilot");
+      expect(chips).toContain(">Copilot App<");
+    });
+
+    test("sdk client renders an 'SDK' badge", () => {
+      const session: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        sessionId: "client-sdk-0000-1111-2222-333344445555",
+        clientName: "sdk",
+      };
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [session] },
+        "html-test-client-sdk.html"
+      );
+      const chips = cardSliceFor(html, session.sessionId);
+      expect(chips).toContain("client-badge--sdk");
+      expect(chips).toContain(">SDK<");
+    });
+
+    test("omits the client badge when clientName is absent", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-client-absent.html"
+      );
+      const chips = cardSliceFor(html, SAMPLE_SESSION.sessionId);
+      expect(chips).not.toContain("client-badge");
+    });
+
+    test("omits the client badge for an unrecognized client value", () => {
+      const session: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        sessionId: "client-unknown-0000-1111-2222-333344445555",
+        clientName: "some/future-client",
+      };
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [session] },
+        "html-test-client-unknown.html"
+      );
+      const chips = cardSliceFor(html, session.sessionId);
+      expect(chips).not.toContain("client-badge");
+    });
+  });
+
   describe("cost unavailable chip on logs session cards", () => {
     test("logs session card shows chip-cost-unavail chip", () => {
       const html = renderToString(
