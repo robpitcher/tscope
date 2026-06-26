@@ -225,6 +225,9 @@ When `--source logs` (or OTel is not configured and no merge occurs), the output
 
 ## Per-Session Fields
 
+`sessions[]` is ordered by `startTime` descending (newest session first). Ties
+are broken by `sessionId` ascending for deterministic output.
+
 | Field | Type | Present when | Description |
 |---|---|---|---|
 | `sessionId` | `string` | Always | Session UUID. |

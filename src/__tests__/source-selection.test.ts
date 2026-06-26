@@ -162,6 +162,21 @@ describe("source-selection integration (subprocess)", () => {
       const { stderr } = runCli(["--source", "logs", "--all"], tmpHome);
       expect(stderr).not.toContain(FALLBACK_NOTICE);
     });
+
+    test("orders sessions newest-first even without --max", () => {
+      const sessionStateDir = path.join(tmpHome, ".copilot", "session-state");
+      writeLogsSession(sessionStateDir, "session-old", "2026-06-01T10:00:00.000Z");
+      writeLogsSession(sessionStateDir, "session-new", "2026-06-03T10:00:00.000Z");
+      writeLogsSession(sessionStateDir, "session-mid", "2026-06-02T10:00:00.000Z");
+
+      const { stdout } = runCli(["--source", "logs", "--all", "--json"], tmpHome);
+      const report = JSON.parse(stdout);
+      expect(report.sessions.map((s: { sessionId: string }) => s.sessionId)).toEqual([
+        "session-new",
+        "session-mid",
+        "session-old",
+      ]);
+    });
   });
 
   // ---------------------------------------------------------------------------

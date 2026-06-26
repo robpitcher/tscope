@@ -1,4 +1,4 @@
-import { selectMostRecentSessions } from "../filter";
+import { selectMostRecentSessions, sortSessionsByRecency } from "../filter";
 
 type S = { sessionId: string; startTime: string };
 
@@ -86,5 +86,45 @@ describe("selectMostRecentSessions", () => {
     const snapshot = input.map((x) => x.sessionId);
     selectMostRecentSessions(input, 1);
     expect(input.map((x) => x.sessionId)).toEqual(snapshot);
+  });
+});
+
+describe("sortSessionsByRecency", () => {
+  test("sorts valid timestamps newest-first", () => {
+    const input = [
+      s("a", "2026-06-01T10:00:00.000Z"),
+      s("b", "2026-06-03T10:00:00.000Z"),
+      s("c", "2026-06-02T10:00:00.000Z"),
+    ];
+    expect(sortSessionsByRecency(input).map((x) => x.sessionId)).toEqual(["b", "c", "a"]);
+  });
+
+  test("sorts unparseable startTime values to the end", () => {
+    const input = [
+      s("bad", "not-a-date"),
+      s("real", "2026-06-01T10:00:00.000Z"),
+    ];
+    expect(sortSessionsByRecency(input).map((x) => x.sessionId)).toEqual(["real", "bad"]);
+  });
+
+  test("breaks ties by sessionId ascending", () => {
+    const t = "2026-06-02T12:00:00.000Z";
+    const input = [s("zeta", t), s("alpha", t), s("mu", t)];
+    expect(sortSessionsByRecency(input).map((x) => x.sessionId)).toEqual([
+      "alpha",
+      "mu",
+      "zeta",
+    ]);
+  });
+
+  test("returns a new array without mutating input", () => {
+    const input = [
+      s("a", "2026-06-01T10:00:00.000Z"),
+      s("b", "2026-06-03T10:00:00.000Z"),
+    ];
+    const snapshot = [...input];
+    const out = sortSessionsByRecency(input);
+    expect(out).not.toBe(input);
+    expect(input).toEqual(snapshot);
   });
 });

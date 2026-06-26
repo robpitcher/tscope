@@ -4,6 +4,7 @@
  */
 
 import { JsonRenderer } from "../render/JsonRenderer";
+import { sortSessionsByRecency } from "../filter";
 import { Report, NormalizedSession, InProgressSession } from "../types";
 import {
   EMPTY_REPORT,
@@ -351,6 +352,23 @@ describe("JsonRenderer", () => {
       const out = captureJson(report);
       expect(out.sessions).toHaveLength(1);
       expect(out.sessions[0].inProgress).toBe(false);
+    });
+
+    test("sessions are emitted newest-first by startTime", () => {
+      const report: Report = {
+        ...EMPTY_REPORT,
+        sessions: sortSessionsByRecency([
+          { ...SAMPLE_SESSION, sessionId: "older", startTime: "2026-06-01T10:00:00.000Z" },
+          { ...SAMPLE_SESSION, sessionId: "newest", startTime: "2026-06-03T10:00:00.000Z" },
+          { ...SAMPLE_SESSION, sessionId: "middle", startTime: "2026-06-02T10:00:00.000Z" },
+        ]),
+      };
+      const out = captureJson(report);
+      expect(out.sessions.map((s: { sessionId: string }) => s.sessionId)).toEqual([
+        "newest",
+        "middle",
+        "older",
+      ]);
     });
   });
 

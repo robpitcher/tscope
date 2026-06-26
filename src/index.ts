@@ -13,6 +13,7 @@ import {
   isValidDateString,
   todayLocalDateString,
   localDateNDaysAgo,
+  sortSessionsByRecency,
   selectMostRecentSessions,
 } from "./filter";
 import { hasTokenData } from "./tokens";
@@ -446,6 +447,8 @@ async function main(): Promise<void> {
     );
   }
 
+  completedSessions = sortSessionsByRecency(completedSessions);
+
   // --- Apply --max (post-load recency slice) ---
   let finalCompleted: NormalizedSession[] = completedSessions;
   let finalInProgress: InProgressSession[] = inProgressSessions;
@@ -524,4 +527,3 @@ if (require.main === module) {
     process.exit(1);
   });
 }
-
