@@ -1,16 +1,18 @@
 ---
 description: |
   This workflow keeps docs synchronized with code changes.
-  Triggered on every push to main, it analyzes diffs to identify changed entities and
-  updates corresponding documentation. Maintains consistent style (precise, active voice,
-  plain English), ensures single source of truth, and creates draft PRs with documentation
-  updates. Also regenerates dashboard screenshots (docs/images/dashboard-light.png and
-  docs/images/dashboard-dark.png) via Playwright whenever dashboard-rendering code changes.
+  Runs on a daily schedule (06:00 UTC).
+  Before doing any work, it checks whether non-documentation files have changed since the
+  last successful run; if only documentation was modified it exits without creating a PR.
+  Analyzes diffs to identify changed entities and updates corresponding documentation.
+  Maintains consistent style (precise, active voice, plain English), ensures single source
+  of truth, and creates draft PRs with documentation updates. Also regenerates dashboard
+  screenshots (docs/images/dashboard-light.png and docs/images/dashboard-dark.png) via
+  Playwright whenever dashboard-rendering code changes.
   Supports documentation-as-code philosophy.
 
 on:
-  push:
-    branches: [main]
+  schedule: daily
   workflow_dispatch:
 
 # # This workflow runs often, so you can use a small model to keep costs down.
@@ -22,7 +24,7 @@ permissions: read-all
 network:
   allowed:
     - defaults
-    - "cdn.playwright.dev"
+    - playwright
 
 safe-outputs:
   create-pull-request:
@@ -72,9 +74,42 @@ Documentation‑as‑Code, transparency, single source of truth, continuous impr
 
 ### Your Workflow
 
+0. **Guard: Check for Non-Documentation Changes Since Last Run**
+
+   Before doing any work, determine whether there are any non-documentation code changes
+   since the last time this workflow ran successfully. This prevents the workflow from
+   running every day simply because the previous run proposed documentation changes.
+
+   **Steps:**
+
+   a. Find the timestamp of the last successful run of this workflow (excluding the current run)
+      using the GitHub API:
+      ```bash
+      gh run list --workflow=update-docs.md --branch=main --status=success --limit=1 --json createdAt
+      ```
+
+   b. List all commits to `main` since that timestamp:
+      ```bash
+      git log --since="<LAST_RUN_TIMESTAMP>" --name-only --pretty=format: -- .
+      ```
+
+   c. Filter the changed files to identify **non-documentation** changes — i.e., any file
+      that is NOT one of the following:
+      - `docs/**`
+      - `**/*.md`
+      - `**/*.mdx`
+      - `docs/images/**`
+
+   d. **If no non-documentation files have changed since the last successful run, exit
+      immediately without creating a PR or making any changes.** Add a brief summary note
+      explaining why the run was skipped (e.g., "No code changes since last run — only
+      documentation files were modified.").
+
+   e. If this is the first-ever run (no previous successful run found), proceed normally.
+
 1. **Analyze Repository Changes**
 
-   - On every push to the default branch, examine the diff to identify changed/added/removed entities
+   - On each scheduled run, examine the diff since the last successful run to identify changed/added/removed entities
    - Look for new APIs, functions, classes, configuration files, or significant code changes
    - Check existing documentation for accuracy and completeness
    - Identify documentation gaps like failing tests: a "red build" until fixed

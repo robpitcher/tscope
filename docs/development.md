@@ -12,9 +12,11 @@ tscope/
 │   ├── filter.ts             # Date filtering and recency limiting
 │   ├── tokens.ts             # Token math / aggregation helpers
 │   ├── types.ts              # TypeScript types
+│   ├── otel.ts               # `tscope otel` subcommand (enable/disable/status)
 │   ├── render/
 │   │   ├── Renderer.ts       # Renderer interface
 │   │   ├── index.ts          # Renderer registry and factory
+│   │   ├── style.ts          # ANSI text styling (bold/dim; respects NO_COLOR and TTY)
 │   │   ├── TextRenderer.ts   # Text output implementation
 │   │   ├── JsonRenderer.ts   # JSON output (schema v5)
 │   │   └── HtmlRenderer.ts   # HTML dashboard
@@ -104,6 +106,60 @@ await readJsonlFile(filePath, (line, control) => {
 
 `control.stop()` is used in `parser.ts` to terminate the scan early once the
 `session.start` timestamp has been found.
+
+### `tokens.ts` — token math helpers
+
+`tokens.ts` is the single source of truth for all token arithmetic across the renderers
+and the test suite. Import the functions you need:
+
+```typescript
+import {
+  tokenPartition,
+  totalTokens,
+  freshInputTokens,
+  emptyTokenCounts,
+  addTokenCounts,
+  hasTokenData,
+} from "./tokens";
+```
+
+**Key invariant** — Copilot's `inputTokens` is the grand total of all input and already
+**includes** `cacheReadTokens` and `cacheWriteTokens` as subsets (not separate additive
+buckets). The only non-overlapping session total is therefore `inputTokens + outputTokens`.
+
+#### `TokenPartition`
+
+The interface returned by `tokenPartition`:
+
+| Field | Type | Description |
+|---|---|---|
+| `freshInput` | `number` | `inputTokens − cacheRead − cacheWrite`, clamped at 0 — genuinely new (uncached) input. |
+| `cacheRead` | `number` | Cache-read tokens (subset of input). |
+| `cacheWrite` | `number` | Cache-write tokens (subset of input). |
+| `output` | `number` | Output tokens. |
+| `total` | `number` | `inputTokens + outputTokens` — the only non-double-counted grand total. |
+| `anomalous` | `boolean` | `true` when `cacheRead + cacheWrite` exceeds `inputTokens` beyond a 16-token rounding tolerance. |
+
+#### Functions
+
+| Function | Returns | Description |
+|---|---|---|
+| `totalTokens(t)` | `number` | `t.inputTokens + t.outputTokens` — the correct grand total. |
+| `freshInputTokens(t)` | `number` | `inputTokens − cacheRead − cacheWrite`, clamped at 0. |
+| `tokenPartition(t)` | `TokenPartition` | Splits usage into the disjoint `[freshInput, cacheRead, cacheWrite, output]` segments used by all renderers for stacked bars and totals. |
+| `emptyTokenCounts()` | `TokenCounts` | Returns a zeroed `TokenCounts` object — use as an accumulator seed. |
+| `addTokenCounts(a, b)` | `TokenCounts` | Field-by-field sum of two `TokenCounts`. |
+| `hasTokenData(models)` | `boolean` | Returns `true` when at least one model has non-zero `inputTokens` or `outputTokens`. Used by all three renderers to silently exclude zero-activity sessions. |
+
+**Example — accumulate totals across models:**
+
+```typescript
+import { emptyTokenCounts, addTokenCounts, tokenPartition } from "./tokens";
+
+const zero = emptyTokenCounts();
+const total = Object.values(session.models).reduce(addTokenCounts, zero);
+const { freshInput, cacheRead, cacheWrite, output, total: grand } = tokenPartition(total);
+```
 
 ## Writing Tests
 

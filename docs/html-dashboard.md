@@ -25,6 +25,7 @@ tscope --html report.html   # Generate dashboard at the specified path and open 
 - **Chronicle Insights** box — if any session ran `/chronicle tips` or `/chronicle cost-tips`, the most recent set of recommendations is parsed and shown in its own box, below the *Tokens Over Time* chart and above the session list (see below)
 - Per-session cards with:
   - **Source badge** — "OTel" (blue) or "log parser" (muted). For log-parser sessions with no cost data, the badge tooltip notes "cost data unavailable"; for those that do have cost (from `totalNanoAiu`), the tooltip omits the unavailable note.
+  - **Client badge** — the agentic surface that produced the session, read from the session folder's `workspace.yaml` `client_name`: "CLI" (`github/cli`), "Copilot App" (`github/autopilot`), or "SDK" (`sdk`). The badge is omitted when `workspace.yaml` is missing or the client is unrecognized. (Also exported as a `client` column in the CSV.)
   - **Credit chip** (green) — shows `X.XX credits` for the session's total cost. Present for OTel sessions (server-side billing) and log-parser sessions that include estimated credits from `totalNanoAiu` (Copilot CLI 1.0+). The chip tooltip distinguishes between "Server-side AI credits from OpenTelemetry billing data" (OTel) and "Estimated AI credits from event log data" (logs).
   - **Cost unavailable chip** (transparent "no cost data") — shown only for log-parser sessions where no `totalNanoAiu` field was recorded (older Copilot CLI sessions).
   - **Token Usage by Model** — stacked bar chart (fresh input / cacheRead / cacheWrite / output)
@@ -57,7 +58,7 @@ If any session within the report's scope contains a `/chronicle tips` or `/chron
 A toolbar above the session list provides two controls:
 
 - **Sort** — a segmented control with a **Sort by** dropdown (Session date / Token count / AI credits) and an ascending/descending toggle (▲ / ▼). Selecting a new field or toggling direction immediately reorders the session cards in the page. Default order is session date, newest first.
-- **Export CSV** — downloads all embedded sessions as a CSV file (`tscope-sessions-YYYY-MM-DD.csv`), useful for offline analysis in a spreadsheet.
+- **Export CSV** — downloads all embedded sessions as a CSV file (`tscope-sessions-YYYY-MM-DD.csv`), useful for offline analysis in a spreadsheet. Columns include `source` and `client` (the agentic surface) alongside token and cost fields.
 
 ### Notes
 

@@ -120,6 +120,7 @@ See [JSON Output](json-output.md) and [HTML Dashboard](html-dashboard.md) for de
 SESSION: 7d15eea1-4d69-49e9-bb21-8370594afd6a
 Date:    2026-06-02 22:58 (local)
 Path:    C:\Users\rober\.copilot\session-state\7d15eea1-...\events.jsonl
+Source:  log parser
 ───────────────────────────────────────────────────────────────────────────────
   claude-opus-4.7
     Fresh Input:            8    Output:          2,272
@@ -133,6 +134,7 @@ Path:    C:\Users\rober\.copilot\session-state\7d15eea1-...\events.jsonl
 ═══════════════════════════════════════════════════════════════════════════════
 
 SUMMARY: 1 session
+Source: event logs (historical) — cost data unavailable
 ```
 
 ### How tokens add up

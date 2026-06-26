@@ -495,6 +495,26 @@ function buildCreditsByModel(models: ModelEntry[], modelCosts: Record<string, nu
   return html;
 }
 
+/** Friendly labels for known workspace.yaml client_name values. */
+const CLIENT_LABELS: Record<string, string> = {
+  "github/cli": "CLI",
+  "github/autopilot": "Copilot App",
+  sdk: "SDK",
+};
+
+/**
+ * Render the client (agentic surface) badge for a session card. Maps known
+ * client_name values to friendly labels; returns "" for missing/unrecognized
+ * clients so the badge is simply omitted.
+ */
+function clientBadge(clientName: string | undefined): string {
+  if (!clientName) return "";
+  const label = CLIENT_LABELS[clientName];
+  if (!label) return "";
+  const slug = clientName.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+  return `<span class="client-badge client-badge--${esc(slug)}" title="Agentic surface: ${esc(clientName)}">${esc(label)}</span>`;
+}
+
 function buildSessionCard(session: NormalizedSession): string {
   const dateStr = toLocalDateTime(session.startTime);
   const modelEntries: ModelEntry[] = Object.entries(session.models).map(
@@ -522,6 +542,7 @@ function buildSessionCard(session: NormalizedSession): string {
       ${session.source === "otel"
         ? `<span class="source-badge source-badge--otel" title="Data source: OpenTelemetry">OTel</span>`
         : `<span class="source-badge source-badge--logs" title="Data source: event log parser${session.totalCost === undefined ? " — cost data unavailable" : ""}">log parser</span>`}
+      ${clientBadge(session.clientName)}
       ${session.apiDurationMs !== undefined ? `<span class="chip chip-duration" title="Cumulative model API time (compute only — excludes idle / user think time)">${esc(fmtDuration(session.apiDurationMs))} API</span>` : ""}
       <span class="chip chip-tokens">${fmtNum(totalTokensForCard)} tokens</span>
       ${session.totalCost !== undefined
@@ -1281,6 +1302,33 @@ a:hover { text-decoration: underline; }
   border-color: var(--border);
 }
 
+/* Client (agentic surface) badge */
+.client-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 20px;
+  padding: 3px 10px;
+  white-space: nowrap;
+  border: 1px solid;
+}
+.client-badge--github-cli {
+  background: rgba(163,113,247,.12);
+  color: var(--accent-purple);
+  border-color: rgba(163,113,247,.25);
+}
+.client-badge--github-autopilot {
+  background: rgba(219,109,40,.12);
+  color: #db6d28;
+  border-color: rgba(219,109,40,.25);
+}
+.client-badge--sdk {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+
 /* Coverage summary in header (mixed source reports) */
 .coverage-summary {
   display: inline-flex;
@@ -1517,7 +1565,7 @@ const JS = `
   var SESSIONS = DATA.sessions || [];
 
   var CSV_COLUMNS = [
-    'sessionId', 'startTime', 'label', 'source', 'inProgress', 'models',
+    'sessionId', 'startTime', 'label', 'source', 'client', 'inProgress', 'models',
     'totalTokens', 'totalCost', 'freshInputTokens', 'cacheReadTokens',
     'cacheWriteTokens', 'outputTokens', 'apiDurationMs'
   ];
@@ -1538,7 +1586,7 @@ const JS = `
       var s = list[i];
       var row = [
         csvCell(s.id), csvCell(s.start || ''), csvCell(s.label),
-        csvCell(s.source || ''), csvCell(s.inProgress ? 'true' : 'false'),
+        csvCell(s.source || ''), csvCell(s.client || ''), csvCell(s.inProgress ? 'true' : 'false'),
         csvCell((s.models || []).join(';')), csvCell(s.totalTokens),
         csvCell(s.totalCost == null ? '' : s.totalCost), csvCell(s.input),
         csvCell(s.cacheRead), csvCell(s.cacheWrite), csvCell(s.output),
@@ -1702,6 +1750,7 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
         start: session.startTime || null,
         label: session.sessionId.slice(0, 8),
         source: session.source,
+        client: session.clientName ?? null,
         totalCost: session.totalCost ?? null,
         models: Object.keys(session.models),
         totalTokens: total,
@@ -1718,6 +1767,7 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
       start: s.startTime || null,
       label: s.sessionId.slice(0, 8),
       source: "logs" as const,
+      client: null,
       totalCost: null,
       models: [],
       totalTokens: 0,
