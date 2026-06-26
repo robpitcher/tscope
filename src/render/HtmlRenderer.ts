@@ -1291,11 +1291,7 @@ a:hover { text-decoration: underline; }
   white-space: nowrap;
   border: 1px solid;
 }
-.source-badge--otel {
-  background: var(--bg-elevated);
-  color: var(--text-muted);
-  border-color: var(--border);
-}
+.source-badge--otel,
 .source-badge--logs {
   background: var(--bg-elevated);
   color: var(--text-muted);
@@ -1313,11 +1309,7 @@ a:hover { text-decoration: underline; }
   white-space: nowrap;
   border: 1px solid;
 }
-.client-badge--github-cli {
-  background: rgba(219,109,40,.12);
-  color: #db6d28;
-  border-color: rgba(219,109,40,.25);
-}
+.client-badge--github-cli,
 .client-badge--github-autopilot {
   background: rgba(219,109,40,.12);
   color: #db6d28;
