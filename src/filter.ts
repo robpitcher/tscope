@@ -120,6 +120,31 @@ export function makeRangeDateFilter(startDate: string, endDate: string) {
 }
 
 /**
+ * Returns a new array sorted by recency: startTime descending (newest first),
+ * with deterministic sessionId ascending tie-breaks. Sessions with
+ * unparseable startTime values are placed at the end.
+ */
+export function sortSessionsByRecency<T extends { startTime: string; sessionId: string }>(
+  sessions: T[]
+): T[] {
+  const compareSessionIds = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+  return [...sessions].sort((a, b) => {
+    const ta = Date.parse(a.startTime);
+    const tb = Date.parse(b.startTime);
+    const aValid = Number.isFinite(ta);
+    const bValid = Number.isFinite(tb);
+    if (!aValid && !bValid) {
+      return compareSessionIds(a.sessionId, b.sessionId);
+    }
+    if (!aValid) return 1;
+    if (!bValid) return -1;
+    if (tb !== ta) return tb - ta;
+    return compareSessionIds(a.sessionId, b.sessionId);
+  });
+}
+
+/**
  * Returns the `max` most recent ParsedSessions ordered by startTime
  * descending (most recent first). Ties (and sessions with unparseable
  * startTimes) are broken deterministically by sessionId ascending so output
@@ -133,20 +158,5 @@ export function selectMostRecentSessions<T extends { startTime: string; sessionI
   max: number
 ): T[] {
   if (max <= 0 || sessions.length === 0) return [];
-  const indices = sessions.map((_, i) => i);
-  indices.sort((a, b) => {
-    const ta = Date.parse(sessions[a].startTime);
-    const tb = Date.parse(sessions[b].startTime);
-    const aValid = Number.isFinite(ta);
-    const bValid = Number.isFinite(tb);
-    // Sessions with unparseable startTimes sort to the end.
-    if (!aValid && !bValid) {
-      return sessions[a].sessionId.localeCompare(sessions[b].sessionId);
-    }
-    if (!aValid) return 1;
-    if (!bValid) return -1;
-    if (tb !== ta) return tb - ta; // descending by time
-    return sessions[a].sessionId.localeCompare(sessions[b].sessionId);
-  });
-  return indices.slice(0, max).map((i) => sessions[i]);
+  return sortSessionsByRecency(sessions).slice(0, max);
 }

@@ -6,6 +6,7 @@
  */
 
 import { TextRenderer } from "../render/TextRenderer";
+import { sortSessionsByRecency } from "../filter";
 import { Report, NormalizedSession } from "../types";
 import {
   EMPTY_REPORT,
@@ -71,6 +72,16 @@ function captureText(report: Report): string {
     process.stdout.write = originalWrite;
   }
   return chunks.join("");
+}
+
+function toLocalDateMinute(utcIso: string): string {
+  const d = new Date(utcIso);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const hour = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day} ${hour}:${min}`;
 }
 
 /**
@@ -201,6 +212,20 @@ describe("TextRenderer", () => {
         sessions: [SAMPLE_SESSION, SECOND_SESSION],
       });
       expect(out).toContain("SUMMARY: 2 sessions\n");
+    });
+
+    test("renders pre-sorted sessions with the newest block first", () => {
+      const sessions = sortSessionsByRecency([
+        { ...SAMPLE_SESSION, sessionId: "older", startTime: "2026-06-01T10:00:00.000Z" },
+        { ...SAMPLE_SESSION, sessionId: "newest", startTime: "2026-06-03T10:00:00.000Z" },
+        { ...SAMPLE_SESSION, sessionId: "middle", startTime: "2026-06-02T10:00:00.000Z" },
+      ]);
+      const out = captureText({ ...EMPTY_REPORT, sessions });
+      const lines = out.split("\n");
+      const firstSessionLine = lines.find((line) => line.startsWith("SESSION: "));
+      expect(firstSessionLine).toBe("SESSION: newest");
+      const firstSessionIndex = lines.findIndex((line) => line === "SESSION: newest");
+      expect(lines[firstSessionIndex + 1]).toContain(toLocalDateMinute("2026-06-03T10:00:00.000Z"));
     });
   });
 

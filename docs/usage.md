@@ -83,9 +83,9 @@ tscope --all                          # All sessions (no date filter or default 
 
 ## Limiting Result Size
 
-`--max N` caps the report to the `N` most recent sessions within the matched
-set. Sessions are ordered by start time (newest first) before the cap is
-applied, so you always get the latest activity:
+Sessions are always ordered by start time (newest first) in all output modes.
+`--max N` additionally caps the report to the `N` most recent sessions within
+the matched set:
 
 ```bash
 tscope --lastdays 30 --max 10         # 10 most recent sessions in the last 30 days
