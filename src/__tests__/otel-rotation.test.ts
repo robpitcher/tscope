@@ -290,6 +290,43 @@ describe("rotateOtelFile", () => {
     expect(fs.existsSync(`${otelPath}.1`)).toBe(false);
   });
 
+  test("dryRun reports archives that would be pruned", () => {
+    const tmpDir = makeTmpDir();
+    const otelPath = path.join(tmpDir, "otel.jsonl");
+    fs.writeFileSync(otelPath, "current", "utf8");
+    fs.writeFileSync(`${otelPath}.1`, "archive1", "utf8");
+    fs.writeFileSync(`${otelPath}.2`, "archive2", "utf8");
+    fs.writeFileSync(`${otelPath}.3`, "archive3", "utf8");
+    fs.writeFileSync(`${otelPath}.4`, "archive4", "utf8");
+
+    const result = rotateOtelFile({
+      otelPath,
+      config: { maxSizeBytes: 1, keepArchives: 2, autoRotate: true },
+      dryRun: true,
+      force: true,
+    });
+
+    expect(result.reason).toBe("rotated_dry_run");
+    expect(result.prunedArchives).toEqual([`${otelPath}.3`, `${otelPath}.4`, `${otelPath}.5`]);
+    expect(fs.readFileSync(otelPath, "utf8")).toBe("current");
+    expect(fs.readFileSync(`${otelPath}.4`, "utf8")).toBe("archive4");
+
+    const underLimitDir = makeTmpDir();
+    const underLimitPath = path.join(underLimitDir, "otel.jsonl");
+    fs.writeFileSync(underLimitPath, "current", "utf8");
+    fs.writeFileSync(`${underLimitPath}.1`, "archive1", "utf8");
+
+    const underLimitResult = rotateOtelFile({
+      otelPath: underLimitPath,
+      config: { maxSizeBytes: 1, keepArchives: 3, autoRotate: true },
+      dryRun: true,
+      force: true,
+    });
+
+    expect(underLimitResult.reason).toBe("rotated_dry_run");
+    expect(underLimitResult.prunedArchives).toEqual([]);
+  });
+
   test("shifts existing archives correctly", () => {
     const tmpDir = makeTmpDir();
     const otelPath = path.join(tmpDir, "otel.jsonl");
@@ -347,6 +384,41 @@ describe("rotateOtelFile", () => {
 
     expect(result.prunedArchives).toContain(`${otelPath}.1`);
     expect(fs.existsSync(`${otelPath}.1`)).toBe(false);
+  });
+
+  test("does not shift archives when preflight current-file rename fails", () => {
+    const tmpDir = makeTmpDir();
+    const otelPath = path.join(tmpDir, "otel.jsonl");
+    const renameCalls: Array<[string, string]> = [];
+
+    const fsImpl = {
+      existsSync: (filePath: string) =>
+        filePath === otelPath || filePath === `${otelPath}.1` || filePath === `${otelPath}.2`,
+      statSync: () => ({ size: 100 }),
+      renameSync: (from: string, to: string) => {
+        renameCalls.push([from, to]);
+        if (from === otelPath) {
+          throw new Error("locked");
+        }
+      },
+      writeFileSync: jest.fn(),
+      unlinkSync: jest.fn(),
+    } as unknown as typeof fs;
+
+    const result = rotateOtelFile({
+      otelPath,
+      config: { maxSizeBytes: 1, keepArchives: 5, autoRotate: true },
+      force: true,
+      fsImpl,
+    });
+
+    const archiveRenameCalls = renameCalls.filter(
+      ([from, to]) => /\.\d+$/.test(from) && /\.\d+$/.test(to)
+    );
+    expect(result.reason).toBe("error");
+    expect(result.rotated).toBe(false);
+    expect(renameCalls).toEqual([[otelPath, `${otelPath}.rotating`]]);
+    expect(archiveRenameCalls).toEqual([]);
   });
 });
 

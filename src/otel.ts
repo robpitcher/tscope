@@ -241,7 +241,7 @@ export function otelStatus(): number {
       if (status.archiveSizes.length > 0) {
         const archiveInfo = status.archiveSizes
           .map((a: { path: string; sizeBytes: number; formatted: string }) =>
-            `${a.path.substring(a.path.lastIndexOf("/") + 1)} (${a.formatted})`
+            `${path.basename(a.path)} (${a.formatted})`
           )
           .join(", ");
         out(`  archive sizes: ${archiveInfo}`);
@@ -437,7 +437,7 @@ export async function otelPrune(
 
   // Import rotation functions (lazy-load to avoid circular dependency)
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { resolveRotationConfig, rotateOtelFile, getRotationStatus, parseSize } = require("./otelRotation");
+  const { resolveRotationConfig, rotateOtelFile, getRotationStatus } = require("./otelRotation");
 
   const otelPath = getOtelExportPath();
 
@@ -453,13 +453,11 @@ export async function otelPrune(
     return 0;
   }
 
-  // Resolve config with CLI flag overrides
-  const baseConfig = resolveRotationConfig(process.env);
-  const config = {
-    maxSizeBytes: maxSizeStr ? parseSize(maxSizeStr) ?? baseConfig.maxSizeBytes : baseConfig.maxSizeBytes,
-    keepArchives: keepStr ? Number(keepStr) : baseConfig.keepArchives,
-    autoRotate: baseConfig.autoRotate,
-  };
+  // Resolve config with CLI flag overrides (validation/precedence handled centrally).
+  const config = resolveRotationConfig(process.env, {
+    maxSize: maxSizeStr,
+    keep: keepStr,
+  });
 
   // Get rotation status for preview
   const status = getRotationStatus(otelPath, config);

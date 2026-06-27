@@ -99,15 +99,16 @@ export class OtelDataSource implements DataSource {
   }
 
   async loadSessions(predicate?: SessionDatePredicate): Promise<NormalizedSession[]> {
-    if (!fs.existsSync(this.otelPath)) {
+    // Load from current file and all archives (.1, .2, …)
+    // Archives are older, so read them first, then current (newest data wins).
+    // Reading is archive-aware: if the current file was just rotated away but
+    // archives remain, we still surface their data.
+    const filesToRead = listOtelFiles(this.otelPath).reverse(); // Oldest first
+    if (filesToRead.length === 0) {
       return [];
     }
 
     const sessionMap = new Map<string, SessionAccumulator>();
-
-    // Load from current file and all archives (.1, .2, …)
-    // Archives are older, so read them first, then current (newest data wins)
-    const filesToRead = listOtelFiles(this.otelPath).reverse(); // Oldest first
 
     for (const filePath of filesToRead) {
       await readJsonlFile(filePath, (trimmed) => {
@@ -265,16 +266,22 @@ export class OtelDataSource implements DataSource {
  */
 export function isOtelAvailable(otelPath?: string): boolean {
   const filePath = otelPath ?? getOtelExportPath();
+  let files: string[];
   try {
-    const files = listOtelFiles(filePath);
-    for (const file of files) {
-      const stat = fs.statSync(file);
-      if (stat.size > 0) {
-        return true;
-      }
-    }
-    return false;
+    files = listOtelFiles(filePath);
   } catch {
     return false;
   }
+  for (const file of files) {
+    try {
+      if (fs.statSync(file).size > 0) {
+        return true;
+      }
+    } catch {
+      // A single file may be mid-rotation or hit a transient fs error;
+      // skip it and keep checking the remaining files.
+      continue;
+    }
+  }
+  return false;
 }

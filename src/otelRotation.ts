@@ -237,15 +237,17 @@ export interface RotateOptions {
  * Steps:
  * 1. Check if the current file exists and its size.
  * 2. If size < threshold (and not forced), return "under_threshold".
- * 3. Prune archives > keep count (delete oldest ones).
- * 4. Shift existing archives: .2 → .3, .1 → .2, etc.
- * 5. Rename current → .1.
- * 6. Create a fresh empty current file.
+ * 3. Collect existing archives while the current file still exists.
+ * 4. Rename current → temporary ".rotating" file as a lock preflight.
+ * 5. Shift existing archives: .2 → .3, .1 → .2, etc.
+ * 6. Rename temporary file → .1.
+ * 7. Create a fresh empty current file.
+ * 8. Prune archives > keep count (delete oldest ones).
  *
  * All operations are safe with concurrent CLI writes:
  * - POSIX: rename is atomic; the CLI's fd keeps writing to the renamed inode.
- * - Windows: if rename fails (file in use), the entire operation is aborted and
- *   the error is reported (no partial state corruption).
+ * - Windows: the current file is renamed to a temporary path before any archive
+ *   is touched, so file-in-use failures abort before archive state changes.
  *
  * @returns RotationResult describing what happened.
  */
@@ -286,41 +288,56 @@ export function rotateOtelFile(opts: RotateOptions): RotationResult {
   }
 
   if (dryRun) {
+    const archivesBeforeRotation = listOtelFiles(otelPath, fsImpl).slice(1);
+    const totalAfterRotation = archivesBeforeRotation.length + 1;
+    const prunedArchives: string[] = [];
+    for (let n = config.keepArchives + 1; n <= totalAfterRotation; n++) {
+      prunedArchives.push(`${otelPath}.${n}`);
+    }
+
     return {
       rotated: true,
       reason: "rotated_dry_run",
       archivedTo: `${otelPath}.1`,
-      prunedArchives: [], // Would be calculated but we're simulating.
+      prunedArchives,
       sizeBytes: currentSize,
     };
   }
 
   try {
-    // Step 3: Collect existing archives.
+    // Step 3: Collect existing archives while the current file still exists.
     const archivesBeforeRotation = listOtelFiles(otelPath, fsImpl).slice(1); // Exclude current
+    const tempPath = `${otelPath}.rotating`;
 
-    // Step 4: Shift existing archives (.k → .k+1).
-    // Work backwards so we don't overwrite anything.
-    for (let i = archivesBeforeRotation.length - 1; i >= 0; i--) {
-      const oldPath = archivesBeforeRotation[i];
-      const match = oldPath.match(/\.(\d+)$/);
-      if (match) {
-        const oldNum = Number(match[1]);
-        const newNum = oldNum + 1;
-        const newPath = `${otelPath}.${newNum}`;
-        fsImpl.renameSync(oldPath, newPath);
+    // Step 4: Preflight current-file locking before touching archives.
+    fsImpl.renameSync(otelPath, tempPath);
+
+    // Step 5: Shift existing archives (.k → .k+1), working backwards to avoid overwrites.
+    try {
+      for (let i = archivesBeforeRotation.length - 1; i >= 0; i--) {
+        const oldPath = archivesBeforeRotation[i];
+        const match = oldPath.match(/\.(\d+)$/);
+        if (match) {
+          const newPath = `${otelPath}.${Number(match[1]) + 1}`;
+          fsImpl.renameSync(oldPath, newPath);
+        }
       }
+    } catch (shiftErr) {
+      try {
+        fsImpl.renameSync(tempPath, otelPath);
+      } catch {
+        // Surface the original archive-shift error below.
+      }
+      throw shiftErr;
     }
 
-    // Step 5: Rename current → .1.
-    fsImpl.renameSync(otelPath, `${otelPath}.1`);
+    // Step 6: Promote the temp file to .1.
+    fsImpl.renameSync(tempPath, `${otelPath}.1`);
 
-    // Step 6: Create a fresh empty file.
+    // Step 7: Create a fresh empty file.
     fsImpl.writeFileSync(otelPath, "", "utf8");
 
-    // Step 7: Prune archives that exceed the keep constraint.
-    // After rotation, we now have archivesBeforeRotation.length + 1 archives.
-    // We want to keep at most keepArchives archives.
+    // Step 8: Prune archives that exceed the keep constraint.
     const prunedArchives: string[] = [];
     const archivesAfterRotation = listOtelFiles(otelPath, fsImpl).slice(1);
     if (archivesAfterRotation.length > config.keepArchives) {
