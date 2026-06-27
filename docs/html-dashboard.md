@@ -16,7 +16,7 @@ tscope --html report.html   # Generate dashboard at the specified path and open 
 
 ## Features
 
-- **Coverage summary** — for merged reports (default `--source auto`), shows "N OTel · M logs" and explains cost availability. For single-source reports, shows a source badge (blue for OTel, muted for logs).
+- **Coverage summary** — for merged reports (default `--source auto`), shows "N OTel · M logs" and explains cost availability. For single-source reports, shows a source badge (muted for both OTel and logs).
 - **Per-session source badge** — every session card displays its own source badge ("OTel" or "log parser") so you always know which sessions have authoritative cost data.
 - **Total Tokens** summary stat card
 - **Total Credits** stat card — shows the sum of AI credits across OTel sessions only. For mixed reports, the subtitle notes "OTel sessions only". Absent for pure logs-only reports.
@@ -24,8 +24,8 @@ tscope --html report.html   # Generate dashboard at the specified path and open 
 - **Credits by Model** chart — OTel sessions only; shows AI credit totals grouped by model name
 - **Chronicle Insights** box — if any session ran `/chronicle tips` or `/chronicle cost-tips`, the most recent set of recommendations is parsed and shown in its own box, below the *Tokens Over Time* chart and above the session list (see below)
 - Per-session cards with:
-  - **Source badge** — "OTel" (blue) or "log parser" (muted). For log-parser sessions with no cost data, the badge tooltip notes "cost data unavailable"; for those that do have cost (from `totalNanoAiu`), the tooltip omits the unavailable note.
-  - **Client badge** — the agentic surface that produced the session, read from the session folder's `workspace.yaml` `client_name`: "CLI" (`github/cli`), "Copilot App" (`github/autopilot`), or "SDK" (`sdk`). The badge is omitted when `workspace.yaml` is missing or the client is unrecognized. (Also exported as a `client` column in the CSV.)
+  - **Source badge** — "OTel" (muted) or "log parser" (muted). For log-parser sessions with no cost data, the badge tooltip notes "cost data unavailable"; for those that do have cost (from `totalNanoAiu`), the tooltip omits the unavailable note.
+  - **Client badge** — the agentic surface that produced the session, read from the session folder's `workspace.yaml` `client_name`: "Copilot CLI" (`github/cli`), "Copilot App" (`github/autopilot`), or "SDK" (`sdk`). Both "Copilot CLI" and "Copilot App" badges use the same orange color for visual consistency. The badge is omitted when `workspace.yaml` is missing or the client is unrecognized. (Also exported as a `client` column in the CSV.)
   - **Credit chip** (green) — shows `X.XX credits` for the session's total cost. Present for OTel sessions (server-side billing) and log-parser sessions that include estimated credits from `totalNanoAiu` (Copilot CLI 1.0+). The chip tooltip distinguishes between "Server-side AI credits from OpenTelemetry billing data" (OTel) and "Estimated AI credits from event log data" (logs).
   - **Cost unavailable chip** (transparent "no cost data") — shown only for log-parser sessions where no `totalNanoAiu` field was recorded (older Copilot CLI sessions).
   - **Token Usage by Model** — stacked bar chart (fresh input / cacheRead / cacheWrite / output)
