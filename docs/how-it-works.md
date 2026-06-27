@@ -91,6 +91,23 @@ Because cache read/write are already part of input, the non-double-counted sessi
 
 A **resumed** session contains one `session.shutdown` per run and each run's metrics reset to zero, so `tscope` **sums** the per-model usage across every shutdown event to produce true cumulative totals. This applies to the log parser only; OTel spans accumulate naturally.
 
+## Client Enrichment
+
+Alongside token data, `tscope` identifies the **agentic surface** (client) that produced each session. This powers the client badge on HTML session cards and the `client` column in the CSV export.
+
+Each Copilot session folder contains a `workspace.yaml` file whose `client_name` field records the surface that wrote the session:
+
+| `client_name` value | Badge label |
+|---|---|
+| `github/cli` | Copilot CLI |
+| `github/autopilot` | Copilot App |
+| `sdk` | SDK |
+| _(other or absent)_ | _(badge omitted)_ |
+
+The lookup is **source-agnostic**: tscope reads the `workspace.yaml` for any session — whether its token data came from OTel or the log parser — because the session folder name (the UUID) matches the OTel `gen_ai.conversation.id`. This means client names are resolved consistently regardless of which data source produced the session.
+
+`workspace.yaml` is parsed with a lightweight regex (`client_name: <value>`) rather than a full YAML parser to keep the dependency footprint small. The `workspace.ts` module handles the lookup and enrichment.
+
 ## Sessions With No Token Data
 
 `tscope` silently excludes any session that has no billable token activity. This includes:

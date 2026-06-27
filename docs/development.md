@@ -13,6 +13,7 @@ tscope/
 │   ├── tokens.ts             # Token math / aggregation helpers
 │   ├── types.ts              # TypeScript types
 │   ├── otel.ts               # `tscope otel` subcommand (enable/disable/status)
+│   ├── workspace.ts          # workspace.yaml reader — resolves agentic surface (clientName)
 │   ├── render/
 │   │   ├── Renderer.ts       # Renderer interface
 │   │   ├── index.ts          # Renderer registry and factory

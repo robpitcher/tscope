@@ -29,6 +29,7 @@ The `--html` dashboard follows your system's light/dark theme:
 - 🔍 **Per-session breakdown** — view token usage by session and model
 - 💰 **Per-session cost** — when [OTel is enabled](#data-sources), shows server-side credits per session and per model; log-parser sessions show estimated AI credits when the `totalNanoAiu` event-log field is present, and "unavailable" only when it is absent
 - 📅 **Recent-by-default** — shows the 20 most recent sessions by default
+- 🏷️ **Session client badges** — each HTML session card shows the agentic surface that produced the session ("Copilot CLI", "Copilot App", or "SDK"), read from the session folder's `workspace.yaml`; also exported in the CSV download
 - 📈 **HTML dashboard** — sleek dashboard with token charts, sort controls (by date / tokens / credits, ascending/descending), an Export CSV button, and system light/dark theme
 - 💡 **Chronicle Insights** — if a session ran `/chronicle tips` or `/chronicle cost-tips`, the recommendations are surfaced in the HTML dashboard
 - 📤 **JSON output** — machine-readable schema (`tscope/report/v5`) for scripting
