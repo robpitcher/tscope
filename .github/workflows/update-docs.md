@@ -27,6 +27,8 @@ network:
     - playwright
 
 safe-outputs:
+  noop:
+    report-as-issue: false
   create-pull-request:
     draft: true
     protected-files:
