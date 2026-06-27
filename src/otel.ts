@@ -226,6 +226,33 @@ export function otelStatus(): number {
     const stat = fs.statSync(exportPath);
     out(`Export file:     ${exportPath}`);
     out(`  exists:        yes (${formatBytes(stat.size)}, modified ${stat.mtime.toISOString()})`);
+
+    // Show rotation status if rotation module is available
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { getRotationStatus, resolveRotationConfig } = require("./otelRotation");
+      const config = resolveRotationConfig(process.env);
+      const status = getRotationStatus(exportPath, config);
+
+      out();
+      out("Rotation/Pruning:");
+      out(`  threshold:     ${formatBytes(config.maxSizeBytes)}`);
+      out(`  archives:      ${status.archiveCount} file(s)`);
+      if (status.archiveSizes.length > 0) {
+        const archiveInfo = status.archiveSizes
+          .map((a: any) => `${a.path.substring(a.path.lastIndexOf("/") + 1)} (${a.sizeFormatted})`)
+          .join(", ");
+        out(`  archive sizes: ${archiveInfo}`);
+        out(`  total size:    ${status.totalSizeFormatted}`);
+      }
+      out(`  keep archives: ${config.keepArchives}`);
+      if (status.lastRotatedTime) {
+        out(`  last rotated:  ${status.lastRotatedTime.toISOString()}`);
+      }
+      out(`  auto-rotate:   ${config.autoRotate ? "enabled" : "disabled"}`);
+    } catch {
+      // Rotation module not available or error reading status — silently skip
+    }
   } catch {
     out(`Export file:     ${exportPath}`);
     out(`  exists:        no`);
