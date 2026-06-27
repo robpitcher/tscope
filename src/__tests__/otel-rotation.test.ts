@@ -394,7 +394,7 @@ describe("getRotationStatus", () => {
     expect(status.lastRotatedTime).toBeDefined();
     // Check if it's a valid Date-like object
     if (status.lastRotatedTime) {
-      expect(typeof (status.lastRotatedTime as any).getTime).toBe("function");
+      expect(typeof status.lastRotatedTime.getTime).toBe("function");
     }
   });
 

@@ -240,7 +240,9 @@ export function otelStatus(): number {
       out(`  archives:      ${status.archiveCount} file(s)`);
       if (status.archiveSizes.length > 0) {
         const archiveInfo = status.archiveSizes
-          .map((a: any) => `${a.path.substring(a.path.lastIndexOf("/") + 1)} (${a.sizeFormatted})`)
+          .map((a: { path: string; sizeBytes: number; formatted: string }) =>
+            `${a.path.substring(a.path.lastIndexOf("/") + 1)} (${a.formatted})`
+          )
           .join(", ");
         out(`  archive sizes: ${archiveInfo}`);
         out(`  total size:    ${status.totalSizeFormatted}`);
@@ -470,7 +472,7 @@ export async function otelPrune(
   out(`Threshold:        ${formatBytes(config.maxSizeBytes)}`);
   out(`Archives:         ${status.archiveCount} file(s)`);
   if (status.archiveSizes.length > 0) {
-    out(`Archive sizes:    ${status.archiveSizes.map((a: any) => `${path.basename(a.path)} (${a.sizeFormatted})`).join(", ")}`);
+    out(`Archive sizes:    ${status.archiveSizes.map((a: { path: string; sizeBytes: number; formatted: string }) => `${path.basename(a.path)} (${a.formatted})`).join(", ")}`);
   }
   out();
 
