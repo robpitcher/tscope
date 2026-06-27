@@ -20,6 +20,7 @@ import { hasTokenData } from "./tokens";
 import { Renderer, createRenderer } from "./render";
 import { runOtel } from "./otel";
 import { getOtelExportPath } from "./otel";
+import { maybeAutoRotate } from "./otelRotation";
 import { NormalizedSession, InProgressSession, Report, SessionDatePredicate } from "./types";
 import { LogsDataSource } from "./sources/logsSource";
 import { OtelDataSource, isOtelAvailable } from "./sources/otelSource";
@@ -384,6 +385,8 @@ async function main(): Promise<void> {
       );
       process.exit(1);
     }
+    // Opportunistically rotate before reading.
+    maybeAutoRotate();
     const otelSource = new OtelDataSource();
     completedSessions = await otelSource.loadSessions(predicate);
     inProgressSessions = [];
@@ -402,6 +405,8 @@ async function main(): Promise<void> {
     // auto: merge OTel + logs; OTel wins on overlap
     if (isOtelAvailable()) {
       otelActiveInAutoMode = true;
+      // Opportunistically rotate before reading.
+      maybeAutoRotate();
       const otelSource = new OtelDataSource();
       const otelSessions = await otelSource.loadSessions(predicate);
 
