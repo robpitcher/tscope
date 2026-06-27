@@ -65,6 +65,8 @@ SUBCOMMANDS
                       (previews, then prompts for confirmation)
   otel disable        Remove OTel file-export config from your shell profile
                       (previews, then prompts for confirmation)
+  otel prune          Rotate and prune the OTel export file to bound growth
+                      (previews, then prompts for confirmation)
 
 DESCRIPTION
   With no arguments, tscope discovers the 20 most recent Copilot CLI
