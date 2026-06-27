@@ -447,10 +447,10 @@ async function main(): Promise<void> {
     );
   }
 
-  completedSessions = sortSessionsByRecency(completedSessions);
-
   // --- Apply --max (post-load recency slice) ---
-  let finalCompleted: NormalizedSession[] = completedSessions;
+  let finalCompleted: NormalizedSession[] = args.max !== undefined
+    ? completedSessions
+    : sortSessionsByRecency(completedSessions);
   let finalInProgress: InProgressSession[] = inProgressSessions;
 
   if (args.max !== undefined) {

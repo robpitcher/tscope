@@ -117,6 +117,16 @@ describe("sortSessionsByRecency", () => {
     ]);
   });
 
+  test("uses locale-independent code-unit ordering for sessionId tie-breaks", () => {
+    const t = "2026-06-02T12:00:00.000Z";
+    const input = [s("a", t), s("B", t), s("á", t)];
+    expect(sortSessionsByRecency(input).map((x) => x.sessionId)).toEqual([
+      "B",
+      "a",
+      "á",
+    ]);
+  });
+
   test("returns a new array without mutating input", () => {
     const input = [
       s("a", "2026-06-01T10:00:00.000Z"),

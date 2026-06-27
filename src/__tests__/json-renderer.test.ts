@@ -354,7 +354,7 @@ describe("JsonRenderer", () => {
       expect(out.sessions[0].inProgress).toBe(false);
     });
 
-    test("sessions are emitted newest-first by startTime", () => {
+    test("preserves the provided session order", () => {
       const report: Report = {
         ...EMPTY_REPORT,
         sessions: sortSessionsByRecency([

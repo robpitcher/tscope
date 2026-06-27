@@ -127,18 +127,20 @@ export function makeRangeDateFilter(startDate: string, endDate: string) {
 export function sortSessionsByRecency<T extends { startTime: string; sessionId: string }>(
   sessions: T[]
 ): T[] {
+  const compareSessionIds = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
   return [...sessions].sort((a, b) => {
     const ta = Date.parse(a.startTime);
     const tb = Date.parse(b.startTime);
     const aValid = Number.isFinite(ta);
     const bValid = Number.isFinite(tb);
     if (!aValid && !bValid) {
-      return a.sessionId.localeCompare(b.sessionId);
+      return compareSessionIds(a.sessionId, b.sessionId);
     }
     if (!aValid) return 1;
     if (!bValid) return -1;
     if (tb !== ta) return tb - ta;
-    return a.sessionId.localeCompare(b.sessionId);
+    return compareSessionIds(a.sessionId, b.sessionId);
   });
 }
 

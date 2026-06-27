@@ -214,7 +214,7 @@ describe("TextRenderer", () => {
       expect(out).toContain("SUMMARY: 2 sessions\n");
     });
 
-    test("first rendered session block is the newest by startTime", () => {
+    test("renders pre-sorted sessions with the newest block first", () => {
       const sessions = sortSessionsByRecency([
         { ...SAMPLE_SESSION, sessionId: "older", startTime: "2026-06-01T10:00:00.000Z" },
         { ...SAMPLE_SESSION, sessionId: "newest", startTime: "2026-06-03T10:00:00.000Z" },
