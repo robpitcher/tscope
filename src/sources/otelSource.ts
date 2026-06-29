@@ -23,6 +23,7 @@ import {
   TokenCounts,
 } from "../types";
 import { getOtelExportPath } from "../otel";
+import { listOtelFiles } from "../otelRotation";
 import { addTokenCounts, hasTokenData } from "../tokens";
 import { utcToLocalDateString } from "../filter";
 import { readJsonlFile } from "../jsonlReader";
@@ -98,96 +99,103 @@ export class OtelDataSource implements DataSource {
   }
 
   async loadSessions(predicate?: SessionDatePredicate): Promise<NormalizedSession[]> {
-    if (!fs.existsSync(this.otelPath)) {
+    // Load from current file and all archives (.1, .2, …)
+    // Archives are older, so read them first, then current (newest data wins).
+    // Reading is archive-aware: if the current file was just rotated away but
+    // archives remain, we still surface their data.
+    const filesToRead = listOtelFiles(this.otelPath).reverse(); // Oldest first
+    if (filesToRead.length === 0) {
       return [];
     }
 
     const sessionMap = new Map<string, SessionAccumulator>();
 
-    await readJsonlFile(this.otelPath, (trimmed) => {
-      let record: unknown;
-      try {
-        record = JSON.parse(trimmed);
-      } catch {
-        return; // skip malformed lines silently
-      }
+    for (const filePath of filesToRead) {
+      await readJsonlFile(filePath, (trimmed) => {
+        let record: unknown;
+        try {
+          record = JSON.parse(trimmed);
+        } catch {
+          return; // skip malformed lines silently
+        }
 
-      if (
-        typeof record !== "object" ||
-        record === null ||
-        (record as { type?: string }).type !== "span"
-      ) {
-        return;
-      }
+        if (
+          typeof record !== "object" ||
+          record === null ||
+          (record as { type?: string }).type !== "span"
+        ) {
+          return;
+        }
 
-      const span = record as OtelSpanRecord;
+        const span = record as OtelSpanRecord;
 
-      // Only process "chat <model>" spans — these are the authoritative per-request
-      // token source. invoke_agent spans duplicate their child chat spans; skip them.
-      if (typeof span.name !== "string" || !span.name.startsWith("chat ")) return;
-      if (!Array.isArray(span.startTime) || span.startTime.length < 2) return;
+        // Only process "chat <model>" spans — these are the authoritative per-request
+        // token source. invoke_agent spans duplicate their child chat spans; skip them.
+        if (typeof span.name !== "string" || !span.name.startsWith("chat ")) return;
+        if (!Array.isArray(span.startTime) || span.startTime.length < 2) return;
 
-      const attrs = span.attributes ?? {};
-      const conversationId = attrs["gen_ai.conversation.id"];
-      if (typeof conversationId !== "string" || !conversationId) return;
+        const attrs = span.attributes ?? {};
+        const conversationId = attrs["gen_ai.conversation.id"];
+        if (typeof conversationId !== "string" || !conversationId) return;
 
-      // Get or create accumulator for this session
-      let acc = sessionMap.get(conversationId);
-      if (!acc) {
-        acc = {
-          sessionId: conversationId,
-          models: {},
-          modelCosts: {},
-          earliestStartTimeMs: Infinity,
-          lastContextWindowSample: null,
+        // Get or create accumulator for this session
+        let acc = sessionMap.get(conversationId);
+        if (!acc) {
+          acc = {
+            sessionId: conversationId,
+            models: {},
+            modelCosts: {},
+            earliestStartTimeMs: Infinity,
+            lastContextWindowSample: null,
+          };
+          sessionMap.set(conversationId, acc);
+        }
+
+        // Track earliest span start time as the session start time
+        const spanMs = otelTimeToMs(span.startTime as [number, number]);
+        if (spanMs < acc.earliestStartTimeMs) {
+          acc.earliestStartTimeMs = spanMs;
+        }
+
+        // Model name: prefer response model (set after the call completes) over request model
+        const model =
+          (typeof attrs["gen_ai.response.model"] === "string" && attrs["gen_ai.response.model"]) ||
+          (typeof attrs["gen_ai.request.model"] === "string" && attrs["gen_ai.request.model"]) ||
+          "unknown";
+
+        // Accumulate token counts (same semantics as events.jsonl: input includes cache subsets)
+        const counts: TokenCounts = {
+          inputTokens: numAttr(attrs, "gen_ai.usage.input_tokens"),
+          outputTokens: numAttr(attrs, "gen_ai.usage.output_tokens"),
+          cacheReadTokens: numAttr(attrs, "gen_ai.usage.cache_read_input_tokens"),
+          cacheWriteTokens: numAttr(attrs, "gen_ai.usage.cache_creation_input_tokens"),
+          reasoningTokens: numAttr(attrs, "gen_ai.usage.reasoning_output_tokens"),
         };
-        sessionMap.set(conversationId, acc);
-      }
+        acc.models[model] = acc.models[model]
+          ? addTokenCounts(acc.models[model], counts)
+          : counts;
 
-      // Track earliest span start time as the session start time
-      const spanMs = otelTimeToMs(span.startTime as [number, number]);
-      if (spanMs < acc.earliestStartTimeMs) {
-        acc.earliestStartTimeMs = spanMs;
-      }
+        // Accumulate server-side cost in credits (nano_aiu ÷ 1e9)
+        const nanoAiu = attrs["github.copilot.nano_aiu"];
+        if (typeof nanoAiu === "number" && nanoAiu > 0) {
+          acc.modelCosts[model] = (acc.modelCosts[model] ?? 0) + nanoAiu / 1e9;
+        }
 
-      // Model name: prefer response model (set after the call completes) over request model
-      const model =
-        (typeof attrs["gen_ai.response.model"] === "string" && attrs["gen_ai.response.model"]) ||
-        (typeof attrs["gen_ai.request.model"] === "string" && attrs["gen_ai.request.model"]) ||
-        "unknown";
-
-      // Accumulate token counts (same semantics as events.jsonl: input includes cache subsets)
-      const counts: TokenCounts = {
-        inputTokens: numAttr(attrs, "gen_ai.usage.input_tokens"),
-        outputTokens: numAttr(attrs, "gen_ai.usage.output_tokens"),
-        cacheReadTokens: numAttr(attrs, "gen_ai.usage.cache_read_input_tokens"),
-        cacheWriteTokens: numAttr(attrs, "gen_ai.usage.cache_creation_input_tokens"),
-        reasoningTokens: numAttr(attrs, "gen_ai.usage.reasoning_output_tokens"),
-      };
-      acc.models[model] = acc.models[model]
-        ? addTokenCounts(acc.models[model], counts)
-        : counts;
-
-      // Accumulate server-side cost in credits (nano_aiu ÷ 1e9)
-      const nanoAiu = attrs["github.copilot.nano_aiu"];
-      if (typeof nanoAiu === "number" && nanoAiu > 0) {
-        acc.modelCosts[model] = (acc.modelCosts[model] ?? 0) + nanoAiu / 1e9;
-      }
-
-      // Context window utilization from span events (bonus signal).
-      // Keep only the most recent sample — earlier samples are stale and
-      // retaining all of them wastes memory for large otel.jsonl files.
-      if (Array.isArray(span.events)) {
-        for (const evt of span.events) {
-          const ea = evt.attributes ?? {};
-          const used = ea["github.copilot.current_tokens"];
-          const limit = ea["github.copilot.token_limit"];
-          if (typeof used === "number" && typeof limit === "number" && limit > 0) {
-            acc.lastContextWindowSample = { used, limit };
+        // Context window utilization from span events (bonus signal).
+        // Keep only the most recent sample — earlier samples are stale and
+        // retaining all of them wastes memory for large otel.jsonl files.
+        if (Array.isArray(span.events)) {
+          for (const evt of span.events) {
+            const ea = evt.attributes ?? {};
+            const used = ea["github.copilot.current_tokens"];
+            const limit = ea["github.copilot.token_limit"];
+            if (typeof used === "number" && typeof limit === "number" && limit > 0) {
+              acc.lastContextWindowSample = { used, limit };
+            }
           }
         }
-      }
-    });
+      });
+    }
 
     // Build NormalizedSessions, applying the date predicate and filtering zero-token sessions
     const sessions: NormalizedSession[] = [];
@@ -251,15 +259,29 @@ export class OtelDataSource implements DataSource {
 }
 
 /**
- * Returns true if the OTel export file exists and is non-empty.
+ * Returns true if the OTel export file (current or any archive) exists and is non-empty.
  * Used by the auto source-selection logic in index.ts.
+ * This ensures that after rotation, we still detect OTel data is available
+ * (newly created current file is empty, but .1 has data).
  */
 export function isOtelAvailable(otelPath?: string): boolean {
   const filePath = otelPath ?? getOtelExportPath();
+  let files: string[];
   try {
-    const stat = fs.statSync(filePath);
-    return stat.size > 0;
+    files = listOtelFiles(filePath);
   } catch {
     return false;
   }
+  for (const file of files) {
+    try {
+      if (fs.statSync(file).size > 0) {
+        return true;
+      }
+    } catch {
+      // A single file may be mid-rotation or hit a transient fs error;
+      // skip it and keep checking the remaining files.
+      continue;
+    }
+  }
+  return false;
 }

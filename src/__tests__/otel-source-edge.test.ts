@@ -71,6 +71,24 @@ describe("OtelDataSource — edge cases (Phase 4)", () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Archive-only loading
+  // ---------------------------------------------------------------------------
+
+  describe("archive-only otel.jsonl", () => {
+    test("loads sessions from an archive when the current file is missing", async () => {
+      const p = path.join(tmpDir, "otel.jsonl");
+      writeLine(`${p}.1`, chatSpan("archived-sess", "gpt-4", 100, 50, 1_000_000_000));
+
+      const sessions = await new OtelDataSource(p).loadSessions();
+
+      expect(fs.existsSync(p)).toBe(false);
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0].sessionId).toBe("archived-sess");
+      expect(sessions[0].models["gpt-4"].inputTokens).toBe(100);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Multi-session interleaving
   // ---------------------------------------------------------------------------
 

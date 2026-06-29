@@ -20,6 +20,7 @@ import { hasTokenData } from "./tokens";
 import { Renderer, createRenderer } from "./render";
 import { runOtel } from "./otel";
 import { getOtelExportPath } from "./otel";
+import { maybeAutoRotate } from "./otelRotation";
 import { NormalizedSession, InProgressSession, Report, SessionDatePredicate } from "./types";
 import { LogsDataSource } from "./sources/logsSource";
 import { OtelDataSource, isOtelAvailable } from "./sources/otelSource";
@@ -64,6 +65,8 @@ SUBCOMMANDS
                       (previews, then prompts for confirmation)
   otel disable        Remove OTel file-export config from your shell profile
                       (previews, then prompts for confirmation)
+  otel prune          Rotate and prune the OTel export file to bound growth
+                      (previews, then prompts for confirmation)
 
 DESCRIPTION
   With no arguments, tscope discovers the 20 most recent Copilot CLI
@@ -96,14 +99,27 @@ EXAMPLES
   tscope --source logs                    Force events.jsonl log parser
 
 DATA SOURCE
-  OTel (preferred): ~/.copilot/tscope/otel.jsonl
+  OTel (preferred): ~/.copilot/tscope/otel.jsonl + numbered archives (.1, .2, …)
   Logs (fallback):  ~/.copilot/session-state/<session-id>/events.jsonl
+
+ROTATION & PRUNING
+  The OTel export file automatically rotates when it exceeds 20 MB (configurable).
+  Older data is archived (.1, .2, …) for historical reports, and old archives are
+  pruned to keep only 5 (configurable). Auto-rotation runs opportunistically during
+  'tscope' reads and can be manually triggered with 'tscope otel prune'.
+
+  Configuration:
+    TSCOPE_OTEL_MAX_SIZE    Rotation threshold (default: 20MB)
+    TSCOPE_OTEL_KEEP        Archive retention count (default: 5)
+    TSCOPE_OTEL_AUTOROTATE  Enable auto-rotation (default: true; set to 0 to disable)
 
 NOTES
   • Sessions are bucketed by their start date, so a session continued from a
     previous day appears under the day it started (not today).
   • Sessions with no token data (in-progress sessions and sessions with empty
     or all-zero token metrics) are silently excluded from all output formats.
+  • Use 'tscope otel prune' to manually rotate and prune archives, and
+    'tscope otel status' to check rotation configuration and file sizes.
 `.trim();
 
 type FilterMode = "today" | "date" | "range" | "lastdays" | "all";
@@ -384,6 +400,8 @@ async function main(): Promise<void> {
       );
       process.exit(1);
     }
+    // Opportunistically rotate before reading.
+    maybeAutoRotate();
     const otelSource = new OtelDataSource();
     completedSessions = await otelSource.loadSessions(predicate);
     inProgressSessions = [];
@@ -402,6 +420,8 @@ async function main(): Promise<void> {
     // auto: merge OTel + logs; OTel wins on overlap
     if (isOtelAvailable()) {
       otelActiveInAutoMode = true;
+      // Opportunistically rotate before reading.
+      maybeAutoRotate();
       const otelSource = new OtelDataSource();
       const otelSessions = await otelSource.loadSessions(predicate);
 
