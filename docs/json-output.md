@@ -7,13 +7,13 @@ tscope --json | jq '.summary'
 tscope --all --json | jq '.sessions[].totals'
 ```
 
-## Schema: `tscope/report/v5`
+## Schema: `tscope/report/v6`
 
 ### Mixed report (OTel + logs merged, default `--source auto`)
 
 ```json
 {
-  "schema": "tscope/report/v5",
+  "schema": "tscope/report/v6",
   "generatedAt": "2026-06-10T20:00:00.000Z",
   "source": "mixed",
   "costAvailable": true,
@@ -38,6 +38,7 @@ tscope --all --json | jq '.sessions[].totals'
       "inProgress": false,
       "apiDurationMs": null,
       "source": "otel",
+      "client": "github/cli",
       "totalCost": 2.34,
       "modelCosts": {
         "claude-opus-4.7": 2.34
@@ -106,7 +107,7 @@ tscope --all --json | jq '.sessions[].totals'
 
 ```json
 {
-  "schema": "tscope/report/v5",
+  "schema": "tscope/report/v6",
   "generatedAt": "2026-06-10T20:00:00.000Z",
   "source": "otel",
   "costAvailable": true,
@@ -131,6 +132,7 @@ tscope --all --json | jq '.sessions[].totals'
       "inProgress": false,
       "apiDurationMs": null,
       "source": "otel",
+      "client": "github/cli",
       "totalCost": 2.34,
       "modelCosts": {
         "claude-opus-4.7": 2.34
@@ -180,7 +182,7 @@ When `--source logs` (or OTel is not configured and no merge occurs), the output
 
 ```json
 {
-  "schema": "tscope/report/v5",
+  "schema": "tscope/report/v6",
   "source": "logs",
   "costAvailable": false,
   "coverage": {
@@ -203,7 +205,7 @@ When `--source logs` (or OTel is not configured and no merge occurs), the output
 
 | Field | Type | Description |
 |---|---|---|
-| `schema` | `string` | Schema version identifier. Currently `"tscope/report/v5"`. |
+| `schema` | `string` | Schema version identifier. Currently `"tscope/report/v6"`. |
 | `generatedAt` | `string` | ISO 8601 UTC timestamp when the report was generated. |
 | `source` | `"otel"` \| `"logs"` \| `"mixed"` | Which data source produced the report. `"mixed"` when `--source auto` merges OTel and logs. |
 | `costAvailable` | `boolean` | `true` when at least one OTel session is present (OTel source or mixed with OTel sessions). `false` for logs-only reports. Note: individual log-parser sessions may still include `totalCost` from `totalNanoAiu` even when `costAvailable` is `false`. |
@@ -238,6 +240,7 @@ are broken by `sessionId` ascending for deterministic output. Sessions whose
 | `inProgress` | `false` | Always | Always `false` (in-progress sessions are excluded). |
 | `apiDurationMs` | `number \| null` | Always | Cumulative model API duration in ms across resumed runs, or `null` if not recorded. |
 | `source` | `"otel"` \| `"logs"` | Always | Which source produced this session. Use this for per-session provenance badges in the UI. |
+| `client` | `string` | OTel and logs sessions when `workspace.yaml` is readable | Raw `client_name` from `workspace.yaml`. Known values: `"github/cli"` (Copilot CLI), `"github/autopilot"` (Copilot App), `"sdk"`. Unrecognized values are passed through as-is. **Absent** when `workspace.yaml` is missing or has no `client_name` field. |
 | `totalCost` | `number` | OTel sessions, and log-parser sessions with `totalNanoAiu` | Total AI credits for this session. For OTel sessions, summed from per-span `github.copilot.nano_aiu` (server-side billing). For log-parser sessions, derived from `session.shutdown.data.totalNanoAiu / 1e9` (estimated; present in Copilot CLI 1.0+). |
 | `modelCosts` | `Record<string, number>` | OTel only | Per-model AI credit breakdown. Keys match `models[].modelName`. |
 | `extended` | `object` | OTel only (when present) | Extended metrics — see below. |
@@ -255,6 +258,17 @@ The `extended` object is only present on OTel sessions, and only when at least o
 | `extended.contextWindow.limitTokens` | `number` | Context window size limit (tokens). |
 | `extended.contextWindow.utilizationRatio` | `number` | `usedTokens / limitTokens` — a value in `[0, 1]` under normal conditions. |
 
+### Model Usage Fields (`models[].usage`)
+
+| Field | Type | Present when | Description |
+|---|---|---|---|
+| `input` | `number` | Always | Total input tokens (includes cache read/write). |
+| `output` | `number` | Always | Output tokens. |
+| `cacheRead` | `number` | Always | Cache read tokens (subset of `input`). |
+| `cacheWrite` | `number` | Always | Cache write tokens (subset of `input`). |
+| `reasoning` | `number` | Always | Reasoning tokens. |
+| `anomalous` | `true` | When detected | Present (and `true`) when the server reported more cache tokens than total input tokens — indicates inconsistent source data. `freshInput` is clamped to `0` in this case. Absent in normal sessions. |
+
 ## Token Totals
 
 `summary.totalTokens` and each session's `totals.total` are computed as **`input + output`** (cache buckets are already part of `input`, so they are not added again). The per-bucket fields (`input`, `output`, `cacheRead`, `cacheWrite`, `reasoning`) are still reported individually for reference.
@@ -267,9 +281,20 @@ Completed sessions whose `session.shutdown` event recorded no token activity (em
 
 ## Schema History
 
-- **v5** *(current)* — OTel-primary pivot with merge support. Added top-level `source` (`"otel"` | `"logs"` | `"mixed"`) and `coverage` object. Per-session source badges and mixed-report cost indicators. OTel sessions include optional `totalCost`, `modelCosts`, and `extended`; log-parser sessions include `totalCost` when `totalNanoAiu` is present (Copilot CLI 1.0+). All v4 fields preserved — changes are additive.
+- **v6** *(current)* — OTel-enriched metadata gaps closed. Added optional per-session `client` field (raw `client_name` from `workspace.yaml`; present for both OTel and log-parser sessions when resolvable). Added optional `anomalous: true` in model `usage` objects when `tokenPartition()` detects inconsistent cache vs. input token counts. All v5 fields preserved — changes are additive.
+- **v5** — OTel-primary pivot with merge support. Added top-level `source` (`"otel"` | `"logs"` | `"mixed"`) and `coverage` object. Per-session source badges and mixed-report cost indicators. OTel sessions include optional `totalCost`, `modelCosts`, and `extended`; log-parser sessions include `totalCost` when `totalNanoAiu` is present (Copilot CLI 1.0+). All v4 fields preserved — changes are additive.
 - **v4** — removed the per-session `premiumRequests` field. `tscope` no longer surfaces Copilot's `totalPremiumRequests` value because it's a legacy request-count metric with no actionable use in this tool.
 - **v3** — switched `summary.totalTokens` and per-session `totals.total` to `input + output` only (cache read/write are subsets of input, so adding them would double-count).
+
+## v5 → v6 Migration Note
+
+v6 is **additive** — all v5 fields are present and unchanged. Consumers can continue to read v5 fields without modification. What changes:
+
+1. `schema` is now `"tscope/report/v6"`. Consumers that pin on the exact schema string `"tscope/report/v5"` must update their guard.
+2. New optional per-session field: `client` — raw `client_name` string from `workspace.yaml`. **Absent** (not `null`) when `workspace.yaml` is missing or has no `client_name` field. Safe to read with `session.client ?? null`.
+3. New optional field in each `models[].usage` object: `anomalous: true` — present only when `tokenPartition()` detects that reported cache tokens exceed total input tokens. Absent in normal sessions. Safe to read with `usage.anomalous ?? false`.
+
+Minimal migration: update the schema version check from `"tscope/report/v5"` to `"tscope/report/v6"`. No existing field was removed or renamed.
 
 ## v4 → v5 Migration Note
 

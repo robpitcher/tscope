@@ -1,6 +1,6 @@
 /**
  * Tests for JsonRenderer — verifies JSON shape, field types, and edge cases.
- * Schema: tscope/report/v5 (adds source provenance + costAvailable; v4 fields intact)
+ * Schema: tscope/report/v6 (adds client + anomalous; v5 fields intact)
  */
 
 import { JsonRenderer } from "../render/JsonRenderer";
@@ -29,9 +29,9 @@ describe("JsonRenderer", () => {
   });
 
   describe("top-level schema fields", () => {
-    test("includes schema field with v5 value", () => {
+    test("includes schema field with v6 value", () => {
       const out = captureJson(EMPTY_REPORT);
-      expect(out.schema).toBe("tscope/report/v5");
+      expect(out.schema).toBe("tscope/report/v6");
     });
 
     test("includes source field matching report.source", () => {
@@ -550,6 +550,70 @@ describe("JsonRenderer", () => {
       expect(out.sessions).toHaveLength(1);
       expect(out.sessions[0].sessionId).toBe(SAMPLE_SESSION.sessionId);
       expect(out.summary.completedCount).toBe(1);
+    });
+  });
+
+  describe("client field serialization", () => {
+    test("client field is included when session has clientName", () => {
+      const sessionWithClient: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        clientName: "github/cli",
+      };
+      const report: Report = { ...EMPTY_REPORT, sessions: [sessionWithClient] };
+      const out = captureJson(report);
+      expect(out.sessions[0].client).toBe("github/cli");
+    });
+
+    test("client field reflects github/autopilot", () => {
+      const sessionWithClient: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        clientName: "github/autopilot",
+      };
+      const report: Report = { ...EMPTY_REPORT, sessions: [sessionWithClient] };
+      const out = captureJson(report);
+      expect(out.sessions[0].client).toBe("github/autopilot");
+    });
+
+    test("client field passes through unrecognized client names", () => {
+      const sessionWithClient: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        clientName: "some/future-surface",
+      };
+      const report: Report = { ...EMPTY_REPORT, sessions: [sessionWithClient] };
+      const out = captureJson(report);
+      expect(out.sessions[0].client).toBe("some/future-surface");
+    });
+
+    test("client field is absent when session has no clientName", () => {
+      const report: Report = { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] };
+      const out = captureJson(report);
+      expect(out.sessions[0].client).toBeUndefined();
+    });
+  });
+
+  describe("anomalous flag in model usage", () => {
+    test("anomalous is absent for normal sessions", () => {
+      const report: Report = { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] };
+      const out = captureJson(report);
+      expect(out.sessions[0].models[0].usage.anomalous).toBeUndefined();
+    });
+
+    test("anomalous is true when cacheRead+cacheWrite exceeds inputTokens", () => {
+      const anomalousSession: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        models: {
+          "claude-opus-4.7": {
+            inputTokens: 100,
+            outputTokens: 50,
+            cacheReadTokens: 90,
+            cacheWriteTokens: 80,
+            reasoningTokens: 0,
+          },
+        },
+      };
+      const report: Report = { ...EMPTY_REPORT, sessions: [anomalousSession] };
+      const out = captureJson(report);
+      expect(out.sessions[0].models[0].usage.anomalous).toBe(true);
     });
   });
 });

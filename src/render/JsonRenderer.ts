@@ -1,20 +1,21 @@
 import { Report, NormalizedSession } from "../types";
 import { Renderer } from "./Renderer";
-import { hasTokenData } from "../tokens";
+import { hasTokenData, tokenPartition } from "../tokens";
 
 /**
- * Schema version — bumped to v5.
- * v5 adds: `source` provenance field at the top level ("otel", "logs", or
- * "mixed" for merged auto-mode reports), `costAvailable` signal, `coverage`
- * object (per-source session counts + costCoverage indicator), and optional
- * per-session `totalCost` (OTel or logs totalNanoAiu) / `modelCosts` (OTel only).
- * All v4 fields are preserved and additive.
+ * Schema version — bumped to v6.
+ * v6 adds: optional `client` field per session (raw `clientName` from
+ * `workspace.yaml`, e.g. "github/cli", "github/autopilot", "sdk") and optional
+ * `anomalous: true` in a model's `usage` block when `tokenPartition()` detects
+ * that the server reported more cache tokens than total input tokens.
+ * All v5 fields are preserved and additive.
  *
- * (v4 history: removed per-session `premiumRequests` field.
+ * (v5 history: `source` provenance, `costAvailable`, `coverage`, optional
+ * per-session `totalCost` / `modelCosts`.
  *  v3: `summary.totalTokens` and per-session `totals.total` switched to
  *  `input + output` only. v2: removed credit estimation entirely.)
  */
-const SCHEMA_VERSION = "tscope/report/v5";
+const SCHEMA_VERSION = "tscope/report/v6";
 
 /** Convert UTC ISO string to local "YYYY-MM-DD HH:MM" or null if invalid */
 function toLocalDateTime(utcIso: string): string | null {
@@ -41,6 +42,7 @@ function serializeCompletedSession(session: NormalizedSession) {
     totalCacheRead += tokens.cacheReadTokens;
     totalCacheWrite += tokens.cacheWriteTokens;
     totalReasoning += tokens.reasoningTokens;
+    const part = tokenPartition(tokens);
     return {
       modelName,
       usage: {
@@ -49,6 +51,7 @@ function serializeCompletedSession(session: NormalizedSession) {
         cacheRead: tokens.cacheReadTokens,
         cacheWrite: tokens.cacheWriteTokens,
         reasoning: tokens.reasoningTokens,
+        ...(part.anomalous ? { anomalous: true as const } : {}),
       },
     };
   });
@@ -61,6 +64,7 @@ function serializeCompletedSession(session: NormalizedSession) {
     inProgress: false as const,
     apiDurationMs: session.apiDurationMs ?? null,
     source: session.source,
+    ...(session.clientName !== undefined ? { client: session.clientName } : {}),
     ...(session.totalCost !== undefined ? { totalCost: session.totalCost } : {}),
     ...(session.modelCosts !== undefined ? { modelCosts: session.modelCosts } : {}),
     ...(session.extended !== undefined ? { extended: session.extended } : {}),
@@ -82,7 +86,7 @@ function serializeCompletedSession(session: NormalizedSession) {
  *
  * Stdout receives only valid JSON (pipeable to jq, etc.).
  *
- * ## Schema: tscope/report/v5
+ * ## Schema: tscope/report/v6
  * Top-level fields:
  *   schema         — stable identifier, bump on breaking changes
  *   generatedAt    — ISO 8601 UTC timestamp of report generation
@@ -105,9 +109,13 @@ function serializeCompletedSession(session: NormalizedSession) {
  *     sessionId, path, startTime (ISO UTC string), localDateTime (YYYY-MM-DD HH:MM string),
  *     inProgress (always false), apiDurationMs (cumulative model API ms across
  *     runs, or null when no shutdown reported it), source ("otel"|"logs"),
+ *     client (optional — raw client_name from workspace.yaml, e.g. "github/cli",
+ *     "github/autopilot", "sdk"; absent when workspace.yaml unreadable),
  *     totalCost (AI credits, when available), modelCosts (OTel only,
  *     per-model credits), models[], totals
- *   models[]       — modelName, usage{input,output,cacheRead,cacheWrite,reasoning}
+ *   models[]       — modelName, usage{input,output,cacheRead,cacheWrite,reasoning,
+ *                    anomalous? (true when server reported more cache tokens than
+ *                    total input tokens, indicating inconsistent source data)}
  *   totals         — summed token counts; `total` = input+output (cacheRead and
  *                    cacheWrite are subsets of input, not added on top)
  */

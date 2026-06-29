@@ -600,4 +600,80 @@ describe("TextRenderer", () => {
       expect(out).not.toContain("estimated credits for some log sessions");
     });
   });
+
+  describe("client display in session block", () => {
+    test("Client: line shows friendly label for github/cli", () => {
+      const session: NormalizedSession = { ...SAMPLE_SESSION, clientName: "github/cli" };
+      const out = captureText({ ...EMPTY_REPORT, sessions: [session] });
+      expect(out).toContain("Client:  Copilot CLI");
+    });
+
+    test("Client: line shows friendly label for github/autopilot", () => {
+      const session: NormalizedSession = { ...SAMPLE_SESSION, clientName: "github/autopilot" };
+      const out = captureText({ ...EMPTY_REPORT, sessions: [session] });
+      expect(out).toContain("Client:  Copilot App");
+    });
+
+    test("Client: line shows friendly label for sdk", () => {
+      const session: NormalizedSession = { ...SAMPLE_SESSION, clientName: "sdk" };
+      const out = captureText({ ...EMPTY_REPORT, sessions: [session] });
+      expect(out).toContain("Client:  SDK");
+    });
+
+    test("Client: line falls back to raw name for unknown surface", () => {
+      const session: NormalizedSession = { ...SAMPLE_SESSION, clientName: "some/future-surface" };
+      const out = captureText({ ...EMPTY_REPORT, sessions: [session] });
+      expect(out).toContain("Client:  some/future-surface");
+    });
+
+    test("Client: line is absent when clientName is not set", () => {
+      const out = captureText({ ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] });
+      expect(out).not.toContain("Client:");
+    });
+
+    test("Client: line appears after Source: line in session block", () => {
+      const session: NormalizedSession = { ...SAMPLE_SESSION, clientName: "github/cli" };
+      const out = captureText({ ...EMPTY_REPORT, sessions: [session] });
+      const sourceIdx = out.indexOf("Source:");
+      const clientIdx = out.indexOf("Client:");
+      expect(sourceIdx).toBeGreaterThanOrEqual(0);
+      expect(clientIdx).toBeGreaterThan(sourceIdx);
+    });
+  });
+
+  describe("per-model cost breakdown in session block", () => {
+    test("shows per-model cost lines when modelCosts is present", () => {
+      const session: NormalizedSession = {
+        ...OTEL_SESSION,
+        totalCost: 3.5,
+        modelCosts: { "claude-opus-4.7": 2.1, "claude-sonnet-4-5": 1.4 },
+      };
+      const out = captureText({ ...EMPTY_REPORT, sessions: [session] });
+      expect(out).toContain("claude-opus-4.7");
+      expect(out).toContain("2.10");
+      expect(out).toContain("claude-sonnet-4-5");
+      expect(out).toContain("1.40");
+      expect(out).toContain(" cr");
+    });
+
+    test("per-model costs appear after the Cost: total line", () => {
+      const session: NormalizedSession = {
+        ...OTEL_SESSION,
+        totalCost: 2.0,
+        modelCosts: { "claude-opus-4.7": 2.0 },
+      };
+      const out = captureText({ ...EMPTY_REPORT, sessions: [session] });
+      const costIdx = out.indexOf("Cost:");
+      const modelCostIdx = out.indexOf("claude-opus-4.7");
+      expect(costIdx).toBeGreaterThanOrEqual(0);
+      expect(modelCostIdx).toBeGreaterThan(costIdx);
+    });
+
+    test("no per-model cost lines when modelCosts is absent", () => {
+      const session: NormalizedSession = { ...OTEL_SESSION, totalCost: 1.0, modelCosts: undefined };
+      const out = captureText({ ...EMPTY_REPORT, sessions: [session] });
+      // Per-model lines end with " cr" (not "credits"); "credits" only appears on the Cost: total.
+      expect(out).not.toMatch(/\d+\.\d{2}\s+cr\n/);
+    });
+  });
 });
