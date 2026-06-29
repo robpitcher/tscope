@@ -180,7 +180,7 @@ describe("listOtelFiles", () => {
     expect(files).toEqual([otelPath, `${otelPath}.1`, `${otelPath}.2`]);
   });
 
-  test("stops at the first missing archive (no gaps)", () => {
+  test("includes archives after a gap (gap-tolerant)", () => {
     const tmpDir = makeTmpDir();
     const otelPath = path.join(tmpDir, "otel.jsonl");
 
@@ -190,7 +190,20 @@ describe("listOtelFiles", () => {
     fs.writeFileSync(`${otelPath}.3`, "archive3", "utf8");
 
     const files = listOtelFiles(otelPath);
-    expect(files).toEqual([otelPath, `${otelPath}.1`]);
+    expect(files).toEqual([otelPath, `${otelPath}.1`, `${otelPath}.3`]);
+  });
+
+  test("lists archives mid-rotation when current and .1 are absent", () => {
+    const tmpDir = makeTmpDir();
+    const otelPath = path.join(tmpDir, "otel.jsonl");
+
+    // Simulate the transient rotation window: no current file, no .1,
+    // but higher-numbered archives still present.
+    fs.writeFileSync(`${otelPath}.2`, "archive2", "utf8");
+    fs.writeFileSync(`${otelPath}.3`, "archive3", "utf8");
+
+    const files = listOtelFiles(otelPath);
+    expect(files).toEqual([`${otelPath}.2`, `${otelPath}.3`]);
   });
 
   test("returns empty array if current file doesn't exist", () => {

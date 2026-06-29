@@ -16,6 +16,14 @@
 import * as fs from "fs";
 
 /**
+ * Hard cap on archive numbers scanned by listOtelFiles. Acts as a safety bound;
+ * the realistic archive count is governed by keepArchives. The full range is
+ * scanned (gaps tolerated) so reads/status stay correct during the brief
+ * mid-rotation window where .1 is temporarily absent while .2+ exist.
+ */
+const MAX_OTEL_ARCHIVES = 999;
+
+/**
  * Parse a human-readable size string: "10MB", "1GB", "1024" (bare bytes),
  * case-insensitive. Returns null for invalid input.
  *
@@ -145,8 +153,10 @@ export function resolveRotationConfig(
 }
 
 /**
- * List OTel files in rotation order: current file first, then archives .1, .2, … in order.
- * Returns only files that actually exist.
+ * List existing OTel files in rotation order: current file first, then archives
+ * in ascending number order. Gaps are tolerated so reads/status stay correct
+ * during the brief mid-rotation window where current and .1 can be absent while
+ * .2+ still exist.
  */
 export function listOtelFiles(otelPath: string, fsImpl = fs): string[] {
   const result: string[] = [];
@@ -156,15 +166,15 @@ export function listOtelFiles(otelPath: string, fsImpl = fs): string[] {
     result.push(otelPath);
   }
 
-  // Archives .1, .2, …
-  let archiveNum = 1;
-  while (archiveNum <= 999) {
+  // Archives .1 .. .MAX_OTEL_ARCHIVES. Scan the full range without breaking on
+  // the first missing number: during rotation there is a transient window where
+  // .1 is absent while .2+ still exist (current has been moved to .rotating and
+  // not yet promoted). Breaking early there would make reads/status report
+  // "no OTel data" mid-rotation.
+  for (let archiveNum = 1; archiveNum <= MAX_OTEL_ARCHIVES; archiveNum++) {
     const archivePath = `${otelPath}.${archiveNum}`;
     if (fsImpl.existsSync(archivePath)) {
       result.push(archivePath);
-      archiveNum += 1;
-    } else {
-      break;
     }
   }
 
