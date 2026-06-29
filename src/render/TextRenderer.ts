@@ -2,6 +2,7 @@ import { Report, NormalizedSession, TokenCounts } from "../types";
 import { tokenPartition, totalTokens, hasTokenData } from "../tokens";
 import { Renderer } from "./Renderer";
 import { ansiEnabled, bold, dim } from "./style";
+import { resolveClientLabel } from "../workspace";
 
 const HEAVY = "═".repeat(79);
 const LIGHT = "─".repeat(79);
@@ -100,6 +101,10 @@ function renderSessionBlock(session: NormalizedSession, styled: boolean): string
   }
   lines.push(dim(`Path:    ${session.eventsPath}`, styled));
   lines.push(`Source:  ${session.source === "otel" ? "OTel" : "log parser"}`);
+  if (session.clientName !== undefined) {
+    const label = resolveClientLabel(session.clientName) ?? session.clientName;
+    lines.push(`Client:  ${label}`);
+  }
   lines.push(LIGHT);
 
   const modelEntries = Object.entries(session.models);
@@ -135,6 +140,12 @@ function renderSessionBlock(session: NormalizedSession, styled: boolean): string
   if (session.totalCost !== undefined) {
     const numStr = session.totalCost.toFixed(2).padStart(12);
     lines.push(`    ${"Cost:".padEnd(14)}${numStr} credits`);
+    if (session.modelCosts !== undefined) {
+      for (const [model, cost] of Object.entries(session.modelCosts)) {
+        const costStr = cost.toFixed(2).padStart(12);
+        lines.push(`      ${model.padEnd(12)}${costStr} cr`);
+      }
+    }
   }
   if (session.extended?.contextWindow) {
     const cw = session.extended.contextWindow;
