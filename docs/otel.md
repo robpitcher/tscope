@@ -174,7 +174,7 @@ export TSCOPE_OTEL_AUTOROTATE=0  # Disable auto-rotation
 - `tscope` catches this, leaves files untouched, and reports the error gracefully
 - Explicit `tscope otel prune` exits with guidance; auto-rotation stays silent
 
-
+## How OTel Export Works
 
 `tscope otel enable` sets a single environment variable:
 
