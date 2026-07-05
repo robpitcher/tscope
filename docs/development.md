@@ -12,7 +12,9 @@ tscope/
 │   ├── filter.ts             # Date filtering and recency limiting
 │   ├── tokens.ts             # Token math / aggregation helpers
 │   ├── types.ts              # TypeScript types
-│   ├── otel.ts               # `tscope otel` subcommand (enable/disable/status)
+│   ├── otel.ts               # `tscope otel` subcommand (enable/disable/status/prune)
+│   ├── otelRotation.ts       # OTel file rotation/pruning logic and config resolution
+│   ├── workspace.ts          # workspace.yaml reader; resolves client badge per session
 │   ├── render/
 │   │   ├── Renderer.ts       # Renderer interface
 │   │   ├── index.ts          # Renderer registry and factory
@@ -211,6 +213,31 @@ import { captureText, renderHtml, captureJson } from "./helpers/render";
 - `captureText(report)` — captures `TextRenderer` stdout output as a string
 - `renderHtml(report, filename)` — renders HTML to a temp file and returns its content
 - `captureJson(report)` — captures `JsonRenderer` stdout and parses as JSON
+
+### Testing the `otelRotation` module
+
+`src/otelRotation.ts` performs file I/O (stat, rename, write, unlink) to rotate and prune the OTel export file. All filesystem operations are injectable via an optional `fsImpl` parameter, making rotation logic fully unit-testable with in-memory stubs.
+
+The rotation functions accept `fsImpl = fs` as their last argument:
+
+```typescript
+rotateOtelFile({ otelPath, config, fsImpl: mockFs });
+listOtelFiles(otelPath, mockFs);
+getRotationStatus(otelPath, config, configSources, mockFs);
+```
+
+`resolveRotationConfig` accepts an `env` parameter (defaults to `process.env`) and an `overrides` object for flag-level values, so tests can exercise env-var and override precedence in isolation:
+
+```typescript
+// Env var overrides default
+resolveRotationConfig({ TSCOPE_OTEL_MAX_SIZE: '50MB' });
+
+// Flag override wins over env var
+resolveRotationConfig({ TSCOPE_OTEL_MAX_SIZE: '50MB' }, { maxSize: '10MB' });
+
+// Disable auto-rotation via env
+resolveRotationConfig({ TSCOPE_OTEL_AUTOROTATE: '0' });
+```
 
 ### Testing the `otel` module
 
