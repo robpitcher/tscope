@@ -423,11 +423,12 @@ async function main(): Promise<void> {
       // Opportunistically rotate before reading.
       maybeAutoRotate();
       const otelSource = new OtelDataSource();
-      const otelSessions = await otelSource.loadSessions(predicate);
-
       const sessionStateDir = getSessionStateDir();
       const logsSource = new LogsDataSource(sessionStateDir);
-      const { completed: logsSessions, inProgress } = await logsSource.loadAll(predicate);
+      const [otelSessions, { completed: logsSessions, inProgress }] = await Promise.all([
+        otelSource.loadSessions(predicate),
+        logsSource.loadAll(predicate),
+      ]);
 
       completedSessions = mergeSessions(otelSessions, logsSessions);
       inProgressSessions = inProgress;
@@ -521,7 +522,7 @@ async function main(): Promise<void> {
     format = "text";
   }
 
-  const renderer: Renderer = createRenderer(format, htmlPath);
+  const renderer: Renderer = await createRenderer(format, htmlPath);
   renderer.render(report);
 
   if (args.html && htmlPath) {
