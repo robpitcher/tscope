@@ -21,6 +21,7 @@ import { parseEventsFile, readSessionStartOrFirstEventTime } from "../parser";
 import { utcToLocalDateString } from "../filter";
 
 const FILTER_CONCURRENCY = 16;
+const PARSE_CONCURRENCY = 16;
 
 /**
  * Resolve a session's local date string for date filtering.
@@ -70,6 +71,42 @@ async function filterRefsByDate(
   return refs.filter((_, i) => keep[i]);
 }
 
+type ParsedResult =
+  | { ok: true; ref: SessionRef; parsed: Awaited<ReturnType<typeof parseEventsFile>> }
+  | { ok: false };
+
+/** Parse session files concurrently using a worker pool, preserving input order. */
+async function parseSessionsConcurrently(
+  refs: SessionRef[],
+  concurrency: number
+): Promise<ParsedResult[]> {
+  if (refs.length === 0) return [];
+
+  const results = new Array<ParsedResult>(refs.length);
+  const workerCount = Math.min(Math.max(1, concurrency), refs.length);
+  let nextIndex = 0;
+
+  async function worker(): Promise<void> {
+    while (nextIndex < refs.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      const ref = refs[index];
+      try {
+        const parsed = await parseEventsFile(ref.sessionId, ref.eventsPath);
+        results[index] = { ok: true, ref, parsed };
+      } catch (err) {
+        process.stderr.write(
+          `Warning: failed to parse session ${ref.sessionId}: ${String(err)}\n`
+        );
+        results[index] = { ok: false };
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
+
 export class LogsDataSource implements DataSource {
   private sessionStateDir?: string;
 
@@ -86,18 +123,10 @@ export class LogsDataSource implements DataSource {
       : allRefs;
 
     const sessions: NormalizedSession[] = [];
-    for (const ref of filteredRefs) {
-      let parsed;
-      try {
-        parsed = await parseEventsFile(ref.sessionId, ref.eventsPath);
-      } catch (err) {
-        process.stderr.write(
-          `Warning: failed to parse session ${ref.sessionId}: ${String(err)}\n`
-        );
-        continue;
-      }
-      if (!parsed.inProgress) {
-        sessions.push({ ...parsed, source: "logs" });
+    const parsed = await parseSessionsConcurrently(filteredRefs, PARSE_CONCURRENCY);
+    for (const result of parsed) {
+      if (result.ok && !result.parsed.inProgress) {
+        sessions.push({ ...result.parsed, source: "logs" });
       }
     }
     return sessions;
@@ -112,18 +141,10 @@ export class LogsDataSource implements DataSource {
       : allRefs;
 
     const inProgress: InProgressSession[] = [];
-    for (const ref of filteredRefs) {
-      let parsed;
-      try {
-        parsed = await parseEventsFile(ref.sessionId, ref.eventsPath);
-      } catch (err) {
-        process.stderr.write(
-          `Warning: failed to parse session ${ref.sessionId}: ${String(err)}\n`
-        );
-        continue;
-      }
-      if (parsed.inProgress) {
-        inProgress.push(parsed as InProgressSession);
+    const parsed = await parseSessionsConcurrently(filteredRefs, PARSE_CONCURRENCY);
+    for (const result of parsed) {
+      if (result.ok && result.parsed.inProgress) {
+        inProgress.push(result.parsed as InProgressSession);
       }
     }
     return inProgress;
@@ -148,20 +169,13 @@ export class LogsDataSource implements DataSource {
     const completed: NormalizedSession[] = [];
     const inProgress: InProgressSession[] = [];
 
-    for (const ref of filteredRefs) {
-      let parsed;
-      try {
-        parsed = await parseEventsFile(ref.sessionId, ref.eventsPath);
-      } catch (err) {
-        process.stderr.write(
-          `Warning: failed to parse session ${ref.sessionId}: ${String(err)}\n`
-        );
-        continue;
-      }
-      if (parsed.inProgress) {
-        inProgress.push(parsed as InProgressSession);
+    const parsed = await parseSessionsConcurrently(filteredRefs, PARSE_CONCURRENCY);
+    for (const result of parsed) {
+      if (!result.ok) continue;
+      if (result.parsed.inProgress) {
+        inProgress.push(result.parsed as InProgressSession);
       } else {
-        completed.push({ ...parsed, source: "logs" });
+        completed.push({ ...result.parsed, source: "logs" });
       }
     }
 

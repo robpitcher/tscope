@@ -28,25 +28,25 @@ describe("createRenderer", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  test("throws a clear error for unknown renderer format", () => {
-    expect(() => createRenderer("markdown")).toThrow(
+  test("throws a clear error for unknown renderer format", async () => {
+    await expect(createRenderer("markdown")).rejects.toThrow(
       'Unknown renderer format: "markdown". Supported: text, json, html'
     );
   });
 
-  test("html renderer writes to an explicit output path when provided", () => {
+  test("html renderer writes to an explicit output path when provided", async () => {
     const outputPath = path.join(tmpDir, "explicit-report.html");
-    const renderer = createRenderer("html", outputPath);
+    const renderer = await createRenderer("html", outputPath);
     renderer.render(EMPTY_REPORT);
     expect(fs.existsSync(outputPath)).toBe(true);
   });
 
-  test("html renderer falls back to ./tscope-report.html when no path is provided", () => {
+  test("html renderer falls back to ./tscope-report.html when no path is provided", async () => {
     const testCwd = path.join(tmpDir, "cwd");
     fs.mkdirSync(testCwd, { recursive: true });
     process.chdir(testCwd);
     const defaultHtml = path.resolve(process.cwd(), "tscope-report.html");
-    const renderer = createRenderer("html");
+    const renderer = await createRenderer("html");
     renderer.render(EMPTY_REPORT);
     expect(fs.existsSync(defaultHtml)).toBe(true);
   });
