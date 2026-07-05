@@ -267,7 +267,7 @@ The `extended` object is only present on OTel sessions, and only when at least o
 | `cacheRead` | `number` | Always | Cache read tokens (subset of `input`). |
 | `cacheWrite` | `number` | Always | Cache write tokens (subset of `input`). |
 | `reasoning` | `number` | Always | Reasoning tokens. |
-| `anomalous` | `true` | When detected | Present (and `true`) when the server reported more cache tokens than total input tokens — indicates inconsistent source data. `freshInput` is clamped to `0` in this case. Absent in normal sessions. |
+| `anomalous` | `true` | When detected | Present (and `true`) when reported cache tokens exceed total input tokens by more than the 16-token rounding tolerance — indicates inconsistent source data. `freshInput` is clamped to `0` in this case. Absent in normal sessions. |
 
 ## Token Totals
 
@@ -292,7 +292,7 @@ v6 is **additive** — all v5 fields are present and unchanged. Consumers can co
 
 1. `schema` is now `"tscope/report/v6"`. Consumers that pin on the exact schema string `"tscope/report/v5"` must update their guard.
 2. New optional per-session field: `client` — raw `client_name` string from `workspace.yaml`. **Absent** (not `null`) when `workspace.yaml` is missing or has no `client_name` field. Safe to read with `session.client ?? null`.
-3. New optional field in each `models[].usage` object: `anomalous: true` — present only when `tokenPartition()` detects that reported cache tokens exceed total input tokens. Absent in normal sessions. Safe to read with `usage.anomalous ?? false`.
+3. New optional field in each `models[].usage` object: `anomalous: true` — present only when `tokenPartition()` detects that reported cache tokens exceed total input tokens by more than the 16-token rounding tolerance. Absent in normal sessions. Safe to read with `usage.anomalous ?? false`.
 
 Minimal migration: update the schema version check from `"tscope/report/v5"` to `"tscope/report/v6"`. No existing field was removed or renamed.
 

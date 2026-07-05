@@ -7,7 +7,8 @@ import { hasTokenData, tokenPartition } from "../tokens";
  * v6 adds: optional `client` field per session (raw `clientName` from
  * `workspace.yaml`, e.g. "github/cli", "github/autopilot", "sdk") and optional
  * `anomalous: true` in a model's `usage` block when `tokenPartition()` detects
- * that the server reported more cache tokens than total input tokens.
+ * that cache tokens exceed total input tokens by more than the 16-token
+ * rounding tolerance.
  * All v5 fields are preserved and additive.
  *
  * (v5 history: `source` provenance, `costAvailable`, `coverage`, optional
@@ -114,8 +115,9 @@ function serializeCompletedSession(session: NormalizedSession) {
  *     totalCost (AI credits, when available), modelCosts (OTel only,
  *     per-model credits), models[], totals
  *   models[]       — modelName, usage{input,output,cacheRead,cacheWrite,reasoning,
- *                    anomalous? (true when server reported more cache tokens than
- *                    total input tokens, indicating inconsistent source data)}
+ *                    anomalous? (true when cache tokens exceed total input tokens
+ *                    by more than the 16-token rounding tolerance, indicating
+ *                    inconsistent source data)}
  *   totals         — summed token counts; `total` = input+output (cacheRead and
  *                    cacheWrite are subsets of input, not added on top)
  */
