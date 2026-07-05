@@ -1,6 +1,13 @@
 /**
  * Renderer registry and factory — the extension point for output formats.
  *
+ * JsonRenderer and HtmlRenderer are intentionally not re-exported from this
+ * barrel. Re-exporting those runtime values would eagerly load their modules
+ * at import time and defeat createRenderer()'s lazy-loading behavior.
+ * Consumers that need a specific renderer class should import it directly
+ * from "./render/JsonRenderer" or "./render/HtmlRenderer" (or the equivalent
+ * dist path when consuming the published package).
+ *
  * ## How to add a phase-2 renderer (e.g. JSON, HTML)
  *   1. Create `src/render/JsonRenderer.ts` (or `HtmlRenderer.ts`) that
  *      implements the `Renderer` interface: `render(report: Report): void`.
@@ -18,7 +25,8 @@ type RendererFactory = (outputPath?: string) => Promise<import("./Renderer").Ren
  * Registry of available output-format renderers keyed by format name.
  * Phase 1: 'text' only.  Phase 2: 'json' and 'html'.
  *
- * Note: 'html' requires an outputPath — pass it via createRenderer's second arg.
+ * Note: 'html' accepts an optional outputPath (defaults to
+ * './tscope-report.html') — pass it via createRenderer's second arg.
  *
  * Factories use dynamic import() so renderer modules are only loaded when
  * the format is actually requested, keeping startup cost low for commands
@@ -34,7 +42,8 @@ const RENDERER_REGISTRY = new Map<string, RendererFactory>([
  * Returns a `Renderer` for the requested format.
  *
  * @param format      One of 'text', 'json', 'html'.
- * @param outputPath  Required for 'html' — path to write the .html file.
+ * @param outputPath  Optional output path for 'html' (defaults to
+ *                    './tscope-report.html'); ignored for other formats.
  * @throws {Error} if `format` is not registered
  */
 export async function createRenderer(format: string, outputPath?: string): Promise<import("./Renderer").Renderer> {
