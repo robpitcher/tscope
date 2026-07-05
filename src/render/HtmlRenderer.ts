@@ -21,6 +21,7 @@ import * as fs from "fs";
 import { Report, ParsedSession, InProgressSession, TokenCounts, ChronicleTip, NormalizedSession } from "../types";
 import { tokenPartition, totalTokens, hasTokenData } from "../tokens";
 import { Renderer } from "./Renderer";
+import { resolveClientLabel } from "../workspace";
 
 /** Public repository URL, surfaced in the header logo link and footer. */
 const REPO_URL = "https://github.com/robpitcher/tscope";
@@ -495,13 +496,6 @@ function buildCreditsByModel(models: ModelEntry[], modelCosts: Record<string, nu
   return html;
 }
 
-/** Friendly labels for known workspace.yaml client_name values. */
-const CLIENT_LABELS: Record<string, string> = {
-  "github/cli": "Copilot CLI",
-  "github/autopilot": "Copilot App",
-  sdk: "SDK",
-};
-
 /**
  * Render the client (agentic surface) badge for a session card. Maps known
  * client_name values to friendly labels; returns "" for missing/unrecognized
@@ -509,7 +503,7 @@ const CLIENT_LABELS: Record<string, string> = {
  */
 function clientBadge(clientName: string | undefined): string {
   if (!clientName) return "";
-  const label = CLIENT_LABELS[clientName];
+  const label = resolveClientLabel(clientName);
   if (!label) return "";
   const slug = clientName.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
   return `<span class="client-badge client-badge--${esc(slug)}" title="Agentic surface: ${esc(clientName)}">${esc(label)}</span>`;

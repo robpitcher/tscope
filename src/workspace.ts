@@ -54,6 +54,25 @@ export function resolveClientName(
 }
 
 /**
+ * Friendly display labels for known `client_name` values from `workspace.yaml`.
+ * Shared by all renderers so Text, JSON, and HTML display consistent names.
+ */
+export const CLIENT_LABELS: Record<string, string> = {
+  "github/cli": "Copilot CLI",
+  "github/autopilot": "Copilot App",
+  sdk: "SDK",
+};
+
+/**
+ * Map a raw `clientName` to its friendly display label.
+ * Returns `undefined` for unknown / unrecognized values so callers can
+ * fall back to the raw string or omit the field.
+ */
+export function resolveClientLabel(clientName: string): string | undefined {
+  return CLIENT_LABELS[clientName];
+}
+
+/**
  * Return a copy of the sessions with `clientName` populated where it can be
  * resolved from `workspace.yaml`. Sessions whose client cannot be resolved are
  * returned unchanged (no `clientName`). Source-agnostic: works for OTel and
