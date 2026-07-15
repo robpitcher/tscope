@@ -1,4 +1,4 @@
-import { buildFilterDescription, parseArgs } from "../index";
+import { buildFilterDescription, parseArgs } from "../args";
 
 describe("CLI default filter behavior", () => {
   test("no args defaults to the 20 most recent sessions", () => {

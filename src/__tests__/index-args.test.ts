@@ -1,4 +1,4 @@
-import { buildFilterDescription, parseArgs } from "../index";
+import { buildFilterDescription, parseArgs } from "../args";
 
 describe("parseArgs", () => {
   test("parses help/version/json flags", () => {
