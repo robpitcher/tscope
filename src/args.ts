@@ -207,20 +207,20 @@ export function buildDatePredicate(args: ParsedArgs): SessionDatePredicate | und
   const today = todayLocalDateString();
 
   if (args.filterMode === "today") {
-    return (localDate) => localDate === today;
+    return (localDate, _sessionId) => localDate === today;
   }
   if (args.filterMode === "date") {
     const d = args.filterDate!;
-    return (localDate) => localDate === d;
+    return (localDate, _sessionId) => localDate === d;
   }
   if (args.filterMode === "range") {
     const start = args.filterStart!;
     const end = args.filterEnd!;
-    return (localDate) => localDate >= start && localDate <= end;
+    return (localDate, _sessionId) => localDate >= start && localDate <= end;
   }
   if (args.filterMode === "lastdays") {
     const startDate = localDateNDaysAgo(Number(args.filterLastDays!) - 1);
-    return (localDate) => localDate >= startDate && localDate <= today;
+    return (localDate, _sessionId) => localDate >= startDate && localDate <= today;
   }
   return undefined;
 }
