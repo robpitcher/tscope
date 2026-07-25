@@ -29,6 +29,14 @@ move **only** by upgrading the gh-aw CLI and recompiling.
 upgrade the pinned gh-aw version in `aw-compile-check.yml`, run `gh aw compile`, and
 commit the regenerated files together.
 
+**Gotcha:** `.github/aw/actions-lock.json` is the compiler's `repo@version -> sha`
+resolver cache. If it lacks an entry, the compiler resolves the tag over the network;
+if that resolution fails — e.g. SAML enforcement blocks your token on the `github` org —
+it silently emits an unpinned tag instead of a SHA, and your local output diverges from
+CI. When bumping the gh-aw version, add the matching
+`github/gh-aw-actions/{setup,setup-cli}@<version>` entries to the lock file before
+compiling.
+
 ---
 
 ## Squad Framework Removal (2026-07-25)
