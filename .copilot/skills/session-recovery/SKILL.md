@@ -12,7 +12,7 @@ tools:
 
 ## Context
 
-Squad agents run in Copilot CLI sessions that can be interrupted — terminal crashes, network drops, machine restarts, or accidental window closes. When this happens, in-progress work may be left in a partially-completed state: branches with uncommitted changes, issues marked in-progress with no active agent, or checkpoints that were never finalized.
+Agents run in Copilot CLI sessions that can be interrupted — terminal crashes, network drops, machine restarts, or accidental window closes. When this happens, in-progress work may be left in a partially-completed state: branches with uncommitted changes, issues marked in-progress with no active agent, or checkpoints that were never finalized.
 
 Copilot CLI stores session history in a SQLite database called `session_store` (read-only, accessed via the `sql` tool with `database: "session_store"`). This skill teaches agents how to query that store to detect interrupted sessions and resume work.
 

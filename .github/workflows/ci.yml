@@ -6,7 +6,6 @@ on:
       - '**/*.md'
       - 'docs/**'
       - '.changeset/**'
-      - '.squad/**'
       - 'LICENSE'
   workflow_dispatch:
 

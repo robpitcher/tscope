@@ -12,5 +12,6 @@ Comprehensive documentation for `tscope` — the GitHub Copilot session token us
 - [OTel Setup](otel.md) — Enable, disable, and inspect the OpenTelemetry file exporter
 - [Development](development.md) — Build, test, lint, project structure
 - [Contributing](contributing.md) — Reporting issues, roadmap, license
+- [Decisions](decisions.md) — Architecture and design decision log ([archive](decisions-archive.md))
 
 For a quick overview, see the [project README](../README.md).
