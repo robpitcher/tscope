@@ -300,14 +300,14 @@ describe("OtelDataSource — edge cases (Phase 4)", () => {
       expect(cw?.utilizationRatio).toBeCloseTo(16000 / 128000);
     });
 
-    test("uses the last context window sample when a span has multiple events", async () => {
+    test("uses the highest context window sample when a span has multiple events", async () => {
       const p = path.join(tmpDir, "otel.jsonl");
       writeLine(
         p,
         chatSpan("sess-1", "claude-3", 12500, 500, 3_000_000_000, {
           events: [
-            contextWindowEvent(5000, 128000),  // earlier sample
-            contextWindowEvent(12500, 128000), // later sample — should win
+            contextWindowEvent(5000, 128000),  // lower sample
+            contextWindowEvent(12500, 128000), // higher sample — should win
           ],
         })
       );
@@ -346,7 +346,32 @@ describe("OtelDataSource — edge cases (Phase 4)", () => {
       expect(sessions[0].extended?.contextWindow).toBeUndefined();
     });
 
-    test("context window from later span overwrites earlier span's sample", async () => {
+    test("context window reflects peak usage across spans, not the last sample", async () => {
+      const p = path.join(tmpDir, "otel.jsonl");
+      // First span: high usage (near capacity)
+      writeLine(
+        p,
+        chatSpan("sess-1", "claude-3", 5000, 200, 1_000_000_000, {
+          startTimeSec: 1748908800,
+          events: [contextWindowEvent(121600, 128000)], // 95% — the peak
+        })
+      );
+      // Second span: lower usage (conversation wound down)
+      writeLine(
+        p,
+        chatSpan("sess-1", "claude-3", 8000, 300, 2_000_000_000, {
+          startTimeSec: 1748908860,
+          events: [contextWindowEvent(76800, 128000)], // 60% — should NOT win
+        })
+      );
+
+      const sessions = await new OtelDataSource(p).loadSessions();
+
+      // Peak (121600) must be reported, not the final/last sample (76800)
+      expect(sessions[0].extended?.contextWindow?.usedTokens).toBe(121600);
+    });
+
+    test("context window uses highest sample across spans when later span is higher", async () => {
       const p = path.join(tmpDir, "otel.jsonl");
       // First span with context window sample
       writeLine(
@@ -367,7 +392,7 @@ describe("OtelDataSource — edge cases (Phase 4)", () => {
 
       const sessions = await new OtelDataSource(p).loadSessions();
 
-      // The last sample across all spans should be used (13000)
+      // The peak sample across all spans should be used (13000 > 5000)
       expect(sessions[0].extended?.contextWindow?.usedTokens).toBe(13000);
     });
   });

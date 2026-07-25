@@ -258,6 +258,8 @@ interface SessionTokenSummary {
   start: string | null;
   label: string;
   source: "otel" | "logs" | null;
+  /** Raw client identifier (e.g. "github/cli"), or null when not available. */
+  client: string | null;
   totalCost: number | null;
   models: string[];
   totalTokens: number;
@@ -267,6 +269,14 @@ interface SessionTokenSummary {
   output: number;
   /** Cumulative model API time (ms) summed across runs; null when unknown. */
   apiDurationMs: number | null;
+  /** Total reasoning tokens across all models; null when not available (non-OTel or no reasoning). */
+  reasoningTokens: number | null;
+  /** Context window used tokens; null when not available. */
+  contextWindowUsed: number | null;
+  /** Context window limit tokens; null when not available. */
+  contextWindowLimit: number | null;
+  /** Pre-computed context window utilisation 0–100 float; null when not available. */
+  contextWindowPct: number | null;
   inProgress: boolean;
 }
 
@@ -525,8 +535,12 @@ function buildSessionCard(session: NormalizedSession): string {
   }
   const totalTokensForCard = totalFreshInput + totalCacheRead + totalCacheWrite + totalOutput;
 
+  const cwPct = session.extended?.contextWindow
+    ? (clamp01(session.extended.contextWindow.utilizationRatio) * 100).toFixed(1)
+    : "";
+
   return `
-<article class="session-card" data-session-id="${esc(session.sessionId)}" data-sort-start="${esc(session.startTime || '')}" data-sort-tokens="${totalTokensForCard}" data-sort-cost="${session.totalCost !== undefined ? session.totalCost : ''}">
+<article class="session-card" data-session-id="${esc(session.sessionId)}" data-sort-start="${esc(session.startTime || '')}" data-sort-tokens="${totalTokensForCard}" data-sort-cost="${session.totalCost !== undefined ? session.totalCost : ''}" data-sort-ctx="${cwPct}">
   <div class="session-header">
     <div class="session-meta">
       <span class="session-id">${esc(session.sessionId)}</span>
@@ -578,6 +592,9 @@ function buildSessionCard(session: NormalizedSession): string {
     <span class="token-total-item"><span class="token-dot" style="background:${TOKEN_COLORS.cacheRead}"></span>Cache Read: ${fmtNum(totalCacheRead)}</span>
     <span class="token-total-item"><span class="token-dot" style="background:${TOKEN_COLORS.cacheWrite}"></span>Cache Write: ${fmtNum(totalCacheWrite)}</span>
     <span class="token-total-item"><span class="token-dot" style="background:${TOKEN_COLORS.output}"></span>Output: ${fmtNum(totalOutput)}</span>
+    ${session.extended?.reasoningTokens !== undefined && session.extended.reasoningTokens > 0
+      ? `<span class="token-total-item" title="Chain-of-thought reasoning tokens (OTel only)"><span class="token-dot" style="background:var(--accent-amber)"></span>Reasoning: ${fmtNum(session.extended.reasoningTokens)}</span>`
+      : ""}
   </div>
   ` : ""}
 
@@ -1553,7 +1570,8 @@ const JS = `
   var CSV_COLUMNS = [
     'sessionId', 'startTime', 'label', 'source', 'client', 'inProgress', 'models',
     'totalTokens', 'totalCost', 'freshInputTokens', 'cacheReadTokens',
-    'cacheWriteTokens', 'outputTokens', 'apiDurationMs'
+    'cacheWriteTokens', 'outputTokens', 'apiDurationMs',
+    'reasoningTokens', 'contextWindowUsed', 'contextWindowLimit', 'contextWindowPct'
   ];
 
   function csvCell(v) {
@@ -1576,7 +1594,11 @@ const JS = `
         csvCell((s.models || []).join(';')), csvCell(s.totalTokens),
         csvCell(s.totalCost == null ? '' : s.totalCost), csvCell(s.input),
         csvCell(s.cacheRead), csvCell(s.cacheWrite), csvCell(s.output),
-        csvCell(s.apiDurationMs == null ? '' : s.apiDurationMs)
+        csvCell(s.apiDurationMs == null ? '' : s.apiDurationMs),
+        csvCell(s.reasoningTokens == null ? '' : s.reasoningTokens),
+        csvCell(s.contextWindowUsed == null ? '' : s.contextWindowUsed),
+        csvCell(s.contextWindowLimit == null ? '' : s.contextWindowLimit),
+        csvCell(s.contextWindowPct == null ? '' : s.contextWindowPct)
       ];
       lines.push(row.join(','));
     }
@@ -1645,6 +1667,16 @@ const JS = `
         if (!aHas) return 1;
         if (!bHas) return -1;
         return (parseFloat(bC) - parseFloat(aC)) * dir;
+      }
+      if (by === 'ctx') {
+        var aCx = a.getAttribute('data-sort-ctx');
+        var bCx = b.getAttribute('data-sort-ctx');
+        var aHasCx = aCx !== null && aCx !== '';
+        var bHasCx = bCx !== null && bCx !== '';
+        if (!aHasCx && !bHasCx) return 0;
+        if (!aHasCx) return 1;
+        if (!bHasCx) return -1;
+        return (parseFloat(bCx) - parseFloat(aCx)) * dir;
       }
       return 0;
     });
@@ -1731,6 +1763,8 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
         output += p.output;
         total += p.total;
       }
+      const cw = session.extended?.contextWindow ?? null;
+      const cwPct = cw !== null ? clamp01(cw.utilizationRatio) * 100 : null;
       return {
         id: session.sessionId,
         start: session.startTime || null,
@@ -1745,6 +1779,10 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
         cacheWrite,
         output,
         apiDurationMs: session.apiDurationMs ?? null,
+        reasoningTokens: session.extended?.reasoningTokens ?? null,
+        contextWindowUsed: cw !== null ? cw.usedTokens : null,
+        contextWindowLimit: cw !== null ? cw.limitTokens : null,
+        contextWindowPct: cwPct,
         inProgress: false,
       };
     }),
@@ -1762,6 +1800,10 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
       cacheWrite: 0,
       output: 0,
       apiDurationMs: null,
+      reasoningTokens: null,
+      contextWindowUsed: null,
+      contextWindowLimit: null,
+      contextWindowPct: null,
       inProgress: true,
     })),
   ];
@@ -1852,6 +1894,7 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
         <option value="date">Session date</option>
         <option value="tokens">Token count</option>
         <option value="credits">AI credits</option>
+        <option value="ctx">Context window %</option>
       </select>
       <button class="sort-dir-btn" id="sort-direction" type="button" aria-label="Sort descending">&#x25BC;</button>
     </div>

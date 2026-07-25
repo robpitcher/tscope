@@ -15,6 +15,7 @@ import {
   EMPTY_REPORT,
   SAMPLE_SESSION,
   SAMPLE_IN_PROGRESS,
+  OTEL_SESSION,
 } from "./helpers/fixtures";
 
 /** Write to a file path in cwd, read back contents, delete the file */
@@ -1310,6 +1311,134 @@ describe("HtmlRenderer", () => {
       const html = renderToString(EMPTY_REPORT, "html-test-ctx-css.html");
       expect(html).toContain(".ctx-window-wrap");
       expect(html).toContain(".ctx-window-fill");
+    });
+
+    test("session card carries data-sort-ctx with formatted pct when context window present", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION_WITH_CTX] },
+        "html-test-ctx-sort-attr.html"
+      );
+      // The article element should have data-sort-ctx with a non-empty float
+      expect(html).toMatch(/data-sort-ctx="9\.\d+"/);
+    });
+
+    test("session card data-sort-ctx is empty when extended.contextWindow is absent", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-ctx-sort-attr-absent.html"
+      );
+      expect(html).toContain('data-sort-ctx=""');
+    });
+  });
+
+  describe("extended metrics — reasoning tokens display", () => {
+    test("renders reasoning token count in token-totals-row when > 0", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", sessions: [OTEL_SESSION] },
+        "html-test-reasoning-tokens.html"
+      );
+      // OTEL_SESSION has extended.reasoningTokens = 150
+      expect(html).toContain("Reasoning: 150");
+    });
+
+    test("does not render reasoning row when extended is absent", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-no-reasoning.html"
+      );
+      // SAMPLE_SESSION has no extended field
+      expect(html).not.toContain("Reasoning:");
+    });
+
+    test("does not render reasoning row when reasoningTokens is zero", () => {
+      const session: NormalizedSession = {
+        ...OTEL_SESSION,
+        extended: { reasoningTokens: 0 },
+      };
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [session] },
+        "html-test-reasoning-zero.html"
+      );
+      expect(html).not.toContain("Reasoning:");
+    });
+  });
+
+  describe("extended metrics — CSV columns and payload fields", () => {
+    function extractPayload(html: string): { sessions: Array<Record<string, unknown>> } {
+      const m = html.match(
+        /<script id="tscope-data" type="application\/json">([\s\S]*?)<\/script>/
+      );
+      if (!m) throw new Error("data payload script not found");
+      return JSON.parse(m[1]);
+    }
+
+    test("CSV_COLUMNS includes reasoningTokens, contextWindowUsed, contextWindowLimit, contextWindowPct", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [OTEL_SESSION] },
+        "html-test-csv-ext-cols.html"
+      );
+      expect(html).toContain("'reasoningTokens'");
+      expect(html).toContain("'contextWindowUsed'");
+      expect(html).toContain("'contextWindowLimit'");
+      expect(html).toContain("'contextWindowPct'");
+    });
+
+    test("allSummaries payload includes reasoningTokens for OTel session with reasoning", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", sessions: [OTEL_SESSION] },
+        "html-test-payload-reasoning.html"
+      );
+      const data = extractPayload(html);
+      const s = data.sessions[0] as Record<string, unknown>;
+      // OTEL_SESSION has extended.reasoningTokens = 150
+      expect(s.reasoningTokens).toBe(150);
+    });
+
+    test("allSummaries payload includes contextWindowUsed, contextWindowLimit, contextWindowPct for OTel session", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, source: "otel", sessions: [OTEL_SESSION] },
+        "html-test-payload-ctx-window.html"
+      );
+      const data = extractPayload(html);
+      const s = data.sessions[0] as Record<string, unknown>;
+      // OTEL_SESSION: usedTokens=12500, limitTokens=128000, utilizationRatio=0.0977
+      expect(s.contextWindowUsed).toBe(12500);
+      expect(s.contextWindowLimit).toBe(128000);
+      expect(typeof s.contextWindowPct).toBe("number");
+      expect(s.contextWindowPct as number).toBeCloseTo(9.77, 0);
+    });
+
+    test("allSummaries payload has null for reasoning/context fields when extended is absent", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-payload-no-ext.html"
+      );
+      const data = extractPayload(html);
+      const s = data.sessions[0] as Record<string, unknown>;
+      expect(s.reasoningTokens).toBeNull();
+      expect(s.contextWindowUsed).toBeNull();
+      expect(s.contextWindowLimit).toBeNull();
+      expect(s.contextWindowPct).toBeNull();
+    });
+  });
+
+  describe("sort dropdown — context window % option", () => {
+    test("sort select includes Context window % option with value 'ctx'", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-sort-ctx-option.html"
+      );
+      expect(html).toContain(">Context window %<");
+      expect(html).toContain('value="ctx"');
+    });
+
+    test("applySort case 'ctx' is defined in the inline JS", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-sort-ctx-js.html"
+      );
+      expect(html).toContain("'ctx'");
+      expect(html).toContain("data-sort-ctx");
     });
   });
 });
