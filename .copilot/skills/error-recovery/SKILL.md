@@ -1,6 +1,6 @@
 ---
 name: "error-recovery"
-description: "Standard recovery patterns for all squad agents. When something fails, adapt — don't just report the failure."
+description: "Standard recovery patterns for agents. When something fails, adapt — don't just report the failure."
 domain: "reliability, agent-coordination"
 confidence: "high"
 license: MIT
@@ -8,7 +8,7 @@ license: MIT
 
 # Error Recovery Patterns
 
-Standard recovery patterns for all squad agents. When something fails, **adapt** — don't just report the failure.
+Standard recovery patterns for agents. When something fails, **adapt** — don't just report the failure.
 
 ---
 

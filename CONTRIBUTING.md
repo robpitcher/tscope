@@ -42,8 +42,6 @@ See [docs/usage.md](docs/usage.md) for CLI flags and examples.
 
 [Open an issue on GitHub](https://github.com/robpitcher/tscope/issues). Bug reports and feature requests both welcome — use the issue templates if you can, they ask for the right details.
 
-Issues get the `squad` label by default, which triggers Lead triage. Once triaged, a `squad:{member}` label routes the issue to the right team member. You'll see these labels appear automatically — that's just the team workflow, nothing to worry about.
-
 ## Submitting pull requests
 
 1. Fork the repo and create a branch.
