@@ -22,8 +22,8 @@ All repo-relative paths in this skill are relative to that root.
 ### Decision Recording
 
 After making a decision that affects how the project is built — architecture, data
-model, tooling, workflow ownership — append an entry to `docs/decisions.md` under
-`## Active Decisions`, newest first:
+model, tooling, workflow ownership — add an entry at the top of the
+`## Active Decisions` section of `docs/decisions.md`, so the newest is first:
 
 ```
 ## {decision title} ({date})
@@ -47,6 +47,6 @@ original author shouldn't silently re-submit the same artifact.
 
 ## Anti-Patterns
 
-- Don't rewrite or reorder existing entries in `docs/decisions.md` — append only
+- Don't rewrite or reorder existing entries in `docs/decisions.md` — only add new ones
 - Don't assume CWD is the repo root — resolve it with git
 - Don't record a decision that only affects one file; use a code comment instead
