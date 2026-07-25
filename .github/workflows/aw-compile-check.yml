@@ -42,6 +42,9 @@ jobs:
             echo "::error title=Stale Agentic Workflow compile outputs::Detected generated workflow changes after 'gh aw compile'."
             echo "::error::Run 'gh aw compile' locally and commit updated .lock.yml / agentics-maintenance.yml files."
             echo "Changed generated files:"
-            git --no-pager diff --name-only -- '.github/workflows/*.lock.yml' .github/workflows/agentics-maintenance.yml
+            git --no-pager diff --stat -- '.github/workflows/*.lock.yml' .github/workflows/agentics-maintenance.yml
+            echo "::group::Full diff"
+            git --no-pager diff -- '.github/workflows/*.lock.yml' .github/workflows/agentics-maintenance.yml
+            echo "::endgroup::"
             exit 1
           fi
