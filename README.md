@@ -1,5 +1,12 @@
 # tscope
 
+[![npm version](https://img.shields.io/npm/v/tscope?style=flat-square&logo=npm&logoColor=white&color=cb3837)](https://www.npmjs.com/package/tscope)
+[![CI status](https://img.shields.io/github/actions/workflow/status/robpitcher/tscope/ci.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=CI)](https://github.com/robpitcher/tscope/actions/workflows/ci.yml)
+[![Node.js version](https://img.shields.io/node/v/tscope?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![npm provenance](https://img.shields.io/badge/provenance-SLSA%20v1-brightgreen?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/tscope#provenance)
+[![License: MIT](https://img.shields.io/github/license/robpitcher/tscope?style=flat-square&color=blue)](LICENSE)
+
 **GitHub Copilot session token usage analyzer.**
 
 `tscope` is a command-line tool that reads your local Copilot CLI session files, measures tokens used per model (input, output, cache read, cache write), and displays a clear report — in the terminal, as JSON, or as an interactive HTML dashboard.
