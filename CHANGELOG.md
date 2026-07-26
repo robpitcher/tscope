@@ -1,5 +1,22 @@
 # tscope
 
+## 0.7.0
+
+### Minor Changes
+
+- b14c6d2: Add automatic rotation and pruning for the OTel export file to bound unbounded growth. The live file is automatically rotated to numbered archives (.1, .2, ...) when it exceeds 20 MB (configurable), and old archives are pruned to keep only the 5 most recent (configurable). Archives are seamlessly read for historical reports. Features include:
+
+  - **Auto-rotation (opportunistic)**: Rotates during normal `tscope` reads; disable with `TSCOPE_OTEL_AUTOROTATE=0`
+  - **Manual control**: Use `tscope otel prune` with options like `--max-size`, `--keep`, `--force`, `--dry-run`, `-y`
+  - **Configuration**: Environment variables `TSCOPE_OTEL_MAX_SIZE`, `TSCOPE_OTEL_KEEP`
+  - **Status reporting**: `tscope otel status` now shows rotation configuration and file/archive sizes
+  - **Concurrency-safe**: Atomic rename on POSIX; graceful error handling on Windows
+
+### Patch Changes
+
+- a85c5d1: Guarantee deterministic newest-first session ordering across all filter modes and output formats. Matched sessions are now sorted by start time before applying `--max`, so filtered reports consistently return the most recent sessions first.
+- fc20e30: Tighten the published npm package surface. `ParsedArgs`, `parseArgs`, and `buildFilterDescription` were accidentally exported from the CLI entry point (`dist/index.d.ts`) with no library use case; they are now internal to a new `src/args.ts` module and no longer part of the public API. Added an `"exports"` field to `package.json` that restricts consumers to the root entry point, blocking deep imports like `tscope/dist/sources/merge`. Also removed the dead `.npmignore` (superseded by the `"files"` whitelist) and disabled `declarationMap` (unused since `src/` is not published).
+
 ## 0.6.1
 
 ### Patch Changes
