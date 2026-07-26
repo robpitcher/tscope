@@ -14,3 +14,22 @@ updates:
       - dependency-name: "github/gh-aw-actions"         # Managed by gh aw compile. Version-locked to the gh-aw compiler; do not bump.
       - dependency-name: "github/gh-aw-actions/setup"
       - dependency-name: "github/gh-aw-actions/setup-cli"
+  # Dev toolchain only — the published package has no runtime dependencies. Grouped into
+  # one weekly PR and capped at minor/patch: majors here are breaking migrations (eslint
+  # flat config, jest 30 vs ts-jest 29, TS 6/7), and @types/node must track the lowest
+  # supported runtime (engines: node >=18), not npm `latest`. `allow` + `update-types` is
+  # used rather than `ignore` because `update-types` is documented to constrain only
+  # version updates, leaving security updates unaffected.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    allow:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-patch
+    groups:
+      dev-dependencies:
+        patterns:
+          - "*"
