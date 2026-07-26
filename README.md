@@ -2,10 +2,16 @@
 
 **GitHub Copilot session token usage analyzer.**
 
-> [!WARNING]
-> **Alpha software** — tscope is early-stage and may have bugs. Behavior, output format, and JSON schema are subject to change. Use at your own discretion, and please [report any issues](https://github.com/robpitcher/tscope/issues) you find! 🙏
-
 `tscope` is a command-line tool that reads your local Copilot CLI session files, measures tokens used per model (input, output, cache read, cache write), and displays a clear report — in the terminal, as JSON, or as an interactive HTML dashboard.
+
+## Quick Start
+
+```bash
+npm install -g tscope
+tscope --html # generate and open an HTML dashboard
+```
+
+Requires **Node.js 18+**.
 
 ## HTML Dashboard Preview
 
@@ -51,15 +57,6 @@ Run 'tscope otel enable' to use OTel.
 ```
 
 OTel data is read entirely from disk — **no network calls** are made.
-
-## Quick Start
-
-```bash
-npm install -g tscope
-tscope --html # generate and open an HTML dashboard
-```
-
-Requires **Node.js 18+**.
 
 ## Command-Line Parameters
 
