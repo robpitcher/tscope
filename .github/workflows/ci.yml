@@ -1,6 +1,16 @@
 name: CI
 
 on:
+  # Push runs on main keep the README CI badge (?branch=main) reporting a real status;
+  # pull_request runs are not attributed to the main branch.
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.changeset/**'
+      - 'LICENSE'
   pull_request:
     paths-ignore:
       - '**/*.md'
