@@ -18,7 +18,7 @@ tscope/
 │   │   ├── index.ts          # Renderer registry and factory
 │   │   ├── style.ts          # ANSI text styling (bold/dim; respects NO_COLOR and TTY)
 │   │   ├── TextRenderer.ts   # Text output implementation
-│   │   ├── JsonRenderer.ts   # JSON output (schema v5)
+│   │   ├── JsonRenderer.ts   # JSON output (schema v6)
 │   │   └── HtmlRenderer.ts   # HTML dashboard
 │   ├── sources/
 │   │   ├── logsSource.ts     # Log-file data source (events.jsonl)

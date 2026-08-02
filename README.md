@@ -44,7 +44,7 @@ The `--html` dashboard follows your system's light/dark theme:
 - 📅 **Recent-by-default** — shows the 20 most recent sessions by default
 - 📈 **HTML dashboard** — sleek dashboard with token charts, sort controls (by date / tokens / credits, ascending/descending), an Export CSV button, and system light/dark theme
 - 💡 **Chronicle Insights** — if a session ran `/chronicle tips` or `/chronicle cost-tips`, the recommendations are surfaced in the HTML dashboard
-- 📤 **JSON output** — machine-readable schema (`tscope/report/v5`) for scripting
+- 📤 **JSON output** — machine-readable schema (`tscope/report/v6`) for scripting
 
 ## Data Sources
 
@@ -73,7 +73,7 @@ OTel data is read entirely from disk — **no network calls** are made.
 | `--date` | `YYYY-MM-DD` | Show sessions that started on the given local date. | No |
 | `--help`, `-h` | _(none)_ | Show usage and options, then exit. | No |
 | `--html` | `[FILE]` (optional path) | Write a self-contained HTML dashboard to `FILE` (or a default filename) and open it. | No |
-| `--json` | _(none)_ | Emit the report as JSON (`tscope/report/v5`) to stdout instead of formatted text. | No |
+| `--json` | _(none)_ | Emit the report as JSON (`tscope/report/v6`) to stdout instead of formatted text. | No |
 | `--lastdays` | `N` (positive integer) | Show sessions from the last `N` days (today plus the previous `N − 1`). | No |
 | `--max` | `N` (positive integer) | After date filtering, keep only the `N` most recent sessions (ordered by start time, newest first). | No |
 | `--range` | `START END` (two `YYYY-MM-DD` values) | Show sessions in the given local-date range, inclusive. | No |
@@ -89,7 +89,7 @@ Full documentation lives in the [`docs/`](docs/) folder:
 - [Installation](docs/installation.md)
 - [Usage](docs/usage.md) — CLI flags, date filtering, output formats, sample output
 - [How It Works](docs/how-it-works.md) — session discovery, token accounting, resumed sessions
-- [JSON Output](docs/json-output.md) — `tscope/report/v5` schema reference
+- [JSON Output](docs/json-output.md) — `tscope/report/v6` schema reference
 - [HTML Dashboard](docs/html-dashboard.md) — dashboard features, Chronicle Insights, sort controls, CSV export
 - [OTel Setup](docs/otel.md) — enable, disable, and inspect the OpenTelemetry file exporter
 - [Development](docs/development.md) — build, test, lint, project structure
