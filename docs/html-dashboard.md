@@ -49,6 +49,7 @@ Click (or keyboard-activate with **Enter** / **Space**) any bar in the *Tokens O
 If any session within the report's scope contains a `/chronicle tips` or `/chronicle cost-tips` invocation, `tscope` extracts the assistant's resulting recommendations and renders them in a dedicated **Chronicle Insights** box, positioned between the *Tokens Over Time* chart and the session list.
 
 - Tips are detected by matching the `/chronicle tips` / `/chronicle cost-tips` command in each session's `events.jsonl`, then pairing it with the final assistant response via the shared `interactionId` (robust against the intermediate tool and system events in between).
+- OTel does not include message content. In the default `--source auto` mode, an OTel-primary session receives Chronicle Insights from its matching event log; strict `--source otel` reports cannot show them.
 - If multiple sessions (or multiple invocations) contain tips, only the **most recent** one is shown. The box notes its variant, local timestamp, and source session id.
 - The box is **collapsible and closed by default**: a caret to the left of the heading and a summary note indicate that a `/chronicle` run was detected within the report's session scope; clicking it expands the full recommendations.
 - The Markdown is converted to safe HTML (headings, lists, bold, inline code); all content is HTML-escaped, and links are rendered as plain text so the report keeps its "only links point to the project repository" guarantee.

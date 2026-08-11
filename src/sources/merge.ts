@@ -3,8 +3,8 @@
  * unified NormalizedSession[].
  *
  * Dedup rule: if a session ID appears in both sources, OTel remains the base
- * record for tokens and extended detail, while exact shutdown metrics from
- * the log record enrich cost and API duration.
+ * record for tokens and extended detail, while the log record enriches exact
+ * shutdown metrics and message-derived Chronicle insights.
  *
  * These helpers are stateless pure functions; all IO is the caller's
  * responsibility.
@@ -15,7 +15,8 @@ import { NormalizedSession, ReportSourceKind, SourceCoverage } from "../types";
 /**
  * Merge OTel and log-parser sessions into a single unified array.
  * OTel sessions remain the primary record on overlap. Log shutdown metrics
- * take priority for total/per-model credits and API duration when available.
+ * take priority for total/per-model credits and API duration when available,
+ * and Chronicle tips come from the log because OTel has no message content.
  */
 export function mergeSessions(
   otelSessions: NormalizedSession[],
@@ -37,6 +38,7 @@ export function mergeSessions(
 
     return {
       ...otel,
+      chronicleTips: [...logs.chronicleTips],
       ...(totalCost !== undefined ? { totalCost } : {}),
       ...(costSource !== undefined ? { costSource } : {}),
       ...(modelCosts !== undefined ? { modelCosts: { ...modelCosts } } : { modelCosts: undefined }),

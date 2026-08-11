@@ -115,6 +115,33 @@ describe("mergeSessions", () => {
     expect(merged.apiDurationSource).toBe("logs");
   });
 
+  test("overlap: Chronicle tips from logs enrich the OTel record", () => {
+    const logs = logsSession("shared");
+    logs.chronicleTips = [
+      {
+        variant: "tips",
+        timestamp: "2026-06-10T12:10:00.000Z",
+        markdown: "First recommendation",
+      },
+      {
+        variant: "cost-tips",
+        timestamp: "2026-06-10T12:20:00.000Z",
+        markdown: "Latest cost recommendation",
+      },
+    ];
+
+    const [merged] = mergeSessions([otelSession("shared")], [logs]);
+
+    expect(merged.source).toBe("otel");
+    expect(merged.chronicleTips).toEqual(logs.chronicleTips);
+    expect(merged.chronicleTips).not.toBe(logs.chronicleTips);
+  });
+
+  test("overlap: empty log Chronicle tips keep the merged record tip-free", () => {
+    const [merged] = mergeSessions([otelSession("shared")], [logsSession("shared")]);
+    expect(merged.chronicleTips).toEqual([]);
+  });
+
   test("overlap: incomplete OTel cost falls back when logs have no cost", () => {
     const [merged] = mergeSessions([otelSession("shared")], [logsSession("shared")]);
     expect(merged.totalCost).toBe(1.23);

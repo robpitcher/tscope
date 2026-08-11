@@ -38,7 +38,7 @@ In `auto` mode (default, recommended), tscope **merges** OTel and log-parser ses
 
 1. Load OTel sessions from `~/.copilot/tscope/otel.jsonl` (if present and non-empty).
 2. Load log-parser sessions from `~/.copilot/session-state/`.
-3. Merge: deduplicate by session ID. On overlap, OTel remains the primary record for token and trace detail, while complete shutdown credits and exact API time enrich it from the matching event log. Values are never added across sources.
+3. Merge: deduplicate by session ID. On overlap, OTel remains the primary record for token and trace detail, while complete shutdown credits, exact API time, and message-derived Chronicle insights enrich it from the matching event log. Values are never added across sources.
 
 If OTel is unavailable (file missing/empty), `auto` falls back gracefully to logs-only and prints:
 
@@ -48,6 +48,11 @@ Run 'tscope otel enable' to use OTel.
 ```
 
 **Single-source overrides:** Use `--source otel` or `--source logs` to skip merging and read only one source.
+
+OTel spans do not contain `/chronicle tips` or `/chronicle cost-tips` message
+content. Chronicle Insights therefore appear for an OTel-primary session only
+in `auto` mode when its matching event log is available. Strict `--source otel`
+reports remain telemetry-only and do not show Chronicle Insights.
 
 ## OTel Token Extraction
 
