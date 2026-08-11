@@ -1,5 +1,11 @@
 # tscope
 
+## 0.7.1
+
+### Patch Changes
+
+- 6cba3cf: Restore Chronicle Insights in auto-mode dashboards by enriching overlapping OTel sessions with tips parsed from their matching event logs.
+
 ## 0.7.0
 
 ### Minor Changes
