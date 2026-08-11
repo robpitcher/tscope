@@ -7,13 +7,13 @@ tscope --json | jq '.summary'
 tscope --all --json | jq '.sessions[].totals'
 ```
 
-## Schema: `tscope/report/v6`
+## Schema: `tscope/report/v7`
 
 ### Mixed report (OTel + logs merged, default `--source auto`)
 
 ```json
 {
-  "schema": "tscope/report/v6",
+  "schema": "tscope/report/v7",
   "generatedAt": "2026-06-10T20:00:00.000Z",
   "source": "mixed",
   "costAvailable": true,
@@ -107,7 +107,7 @@ tscope --all --json | jq '.sessions[].totals'
 
 ```json
 {
-  "schema": "tscope/report/v6",
+  "schema": "tscope/report/v7",
   "generatedAt": "2026-06-10T20:00:00.000Z",
   "source": "otel",
   "costAvailable": true,
@@ -182,7 +182,7 @@ When `--source logs` (or OTel is not configured and no merge occurs), the output
 
 ```json
 {
-  "schema": "tscope/report/v6",
+  "schema": "tscope/report/v7",
   "source": "logs",
   "costAvailable": false,
   "coverage": {
@@ -205,10 +205,10 @@ When `--source logs` (or OTel is not configured and no merge occurs), the output
 
 | Field | Type | Description |
 |---|---|---|
-| `schema` | `string` | Schema version identifier. Currently `"tscope/report/v6"`. |
+| `schema` | `string` | Schema version identifier. Currently `"tscope/report/v7"`. |
 | `generatedAt` | `string` | ISO 8601 UTC timestamp when the report was generated. |
 | `source` | `"otel"` \| `"logs"` \| `"mixed"` | Which data source produced the report. `"mixed"` when `--source auto` merges OTel and logs. |
-| `costAvailable` | `boolean` | `true` when at least one OTel session is present (OTel source or mixed with OTel sessions). `false` for logs-only reports. Note: individual log-parser sessions may still include `totalCost` from `totalNanoAiu` even when `costAvailable` is `false`. |
+| `costAvailable` | `boolean` | `true` when at least one session has cost data. |
 | `coverage` | `SourceCoverage` | Breakdown of session sources and cost availability (see below). |
 | `filter.description` | `string` | Human-readable description of the active date filter. |
 | `filter.reportDate` | `string` | The local date (`YYYY-MM-DD`) at generation time. |
@@ -223,7 +223,7 @@ When `--source logs` (or OTel is not configured and no merge occurs), the output
 |---|---|---|
 | `otelCount` | `number` | Number of sessions whose `source` is `"otel"` in this report. |
 | `logsCount` | `number` | Number of sessions whose `source` is `"logs"` in this report. |
-| `costCoverage` | `"all"` \| `"partial"` \| `"none"` | OTel cost-data coverage across the report. `"all"` = pure OTel (all sessions have authoritative server-side cost). `"partial"` = mixed report with OTel + logs. `"none"` = no OTel sessions. Note: log-parser sessions may independently carry `totalCost` from `totalNanoAiu` regardless of this field. |
+| `costCoverage` | `"all"` \| `"partial"` \| `"none"` | Actual cost-data coverage: all sessions, some sessions, or no sessions have `totalCost`. |
 
 ## Per-Session Fields
 
@@ -239,10 +239,12 @@ are broken by `sessionId` ascending for deterministic output. Sessions whose
 | `localDateTime` | `string \| null` | Always | Local `YYYY-MM-DD HH:MM` representation. |
 | `inProgress` | `false` | Always | Always `false` (in-progress sessions are excluded). |
 | `apiDurationMs` | `number \| null` | Always | Cumulative model API duration in ms across resumed runs, or `null` if not recorded. |
+| `apiDurationSource` | `"logs"` \| `"otel"` | When `apiDurationMs` has explicit provenance | Source of the API-duration value. Auto-mode OTel sessions use `"logs"` when enriched from shutdown data. |
 | `source` | `"otel"` \| `"logs"` | Always | Which source produced this session. Use this for per-session provenance badges in the UI. |
 | `client` | `string` | OTel and logs sessions when `workspace.yaml` is readable | Raw `client_name` from `workspace.yaml`. Known values: `"github/cli"` (Copilot CLI), `"github/autopilot"` (Copilot App), `"sdk"`. Unrecognized values are passed through as-is. **Absent** when `workspace.yaml` is missing or has no `client_name` field. |
-| `totalCost` | `number` | OTel sessions, and log-parser sessions with `totalNanoAiu` | Total AI credits for this session. For OTel sessions, summed from per-span `github.copilot.nano_aiu` (server-side billing). For log-parser sessions, derived from `session.shutdown.data.totalNanoAiu / 1e9` (estimated; present in Copilot CLI 1.0+). |
-| `modelCosts` | `Record<string, number>` | OTel only | Per-model AI credit breakdown. Keys match `models[].modelName`. |
+| `totalCost` | `number` | When either source reports credits | Total AI credits. In auto mode, matching shutdown `totalNanoAiu` takes precedence over incomplete per-span OTel cost. |
+| `costSource` | `"logs"` \| `"otel"` | When `totalCost` has explicit provenance | Source of the selected total. |
+| `modelCosts` | `Record<string, number>` | When a per-model breakdown reconciles to `totalCost` | Per-model AI credit breakdown. Keys match `models[].modelName`. |
 | `extended` | `object` | OTel only (when present) | Extended metrics — see below. |
 | `models[]` | `array` | Always | Per-model token breakdown. |
 | `totals` | `object` | Always | Session-level token totals. |
@@ -281,10 +283,23 @@ Completed sessions whose `session.shutdown` event recorded no token activity (em
 
 ## Schema History
 
-- **v6** *(current)* — OTel-enriched metadata gaps closed. Added optional per-session `client` field (raw `client_name` from `workspace.yaml`; present for both OTel and log-parser sessions when resolvable). Added optional `anomalous: true` in model `usage` objects when `tokenPartition()` detects inconsistent cache vs. input token counts. All v5 fields preserved — changes are additive.
+- **v7** *(current)* — Added field-level `costSource` and `apiDurationSource` provenance. Auto-mode overlap now keeps OTel token/detail data while using complete shutdown cost and exact API-time fields when available. `costCoverage` now reflects actual cost presence.
+- **v6** — OTel-enriched metadata gaps closed. Added optional per-session `client` field (raw `client_name` from `workspace.yaml`; present for both OTel and log-parser sessions when resolvable). Added optional `anomalous: true` in model `usage` objects when `tokenPartition()` detects inconsistent cache vs. input token counts. All v5 fields preserved — changes are additive.
 - **v5** — OTel-primary pivot with merge support. Added top-level `source` (`"otel"` | `"logs"` | `"mixed"`) and `coverage` object. Per-session source badges and mixed-report cost indicators. OTel sessions include optional `totalCost`, `modelCosts`, and `extended`; log-parser sessions include `totalCost` when `totalNanoAiu` is present (Copilot CLI 1.0+). All v4 fields preserved — changes are additive.
 - **v4** — removed the per-session `premiumRequests` field. `tscope` no longer surfaces Copilot's `totalPremiumRequests` value because it's a legacy request-count metric with no actionable use in this tool.
 - **v3** — switched `summary.totalTokens` and per-session `totals.total` to `input + output` only (cache read/write are subsets of input, so adding them would double-count).
+
+## v6 → v7 Migration Note
+
+v7 is additive. Existing token and session-source fields are unchanged.
+
+1. `schema` is now `"tscope/report/v7"`.
+2. `costSource` identifies whether the selected credit total came from `"otel"` or `"logs"`.
+3. `apiDurationSource` identifies the source of a non-null API duration.
+4. `modelCosts` may now come from shutdown logs and is emitted only when it reconciles to `totalCost`.
+5. `costAvailable` and `coverage.costCoverage` reflect actual cost presence rather than OTel session presence.
+
+Minimal migration: update the schema version guard and use the optional provenance fields when labeling metrics.
 
 ## v5 → v6 Migration Note
 

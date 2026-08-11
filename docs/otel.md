@@ -6,7 +6,7 @@
 
 | Without OTel | With OTel |
 |---|---|
-| Token counts from `events.jsonl`; estimated session-level AI credits for Copilot CLI 1.0+ sessions when `totalNanoAiu` is present; no per-model cost breakdown | Token counts **and** authoritative server-side AI credits per session **and per model** (from `github.copilot.nano_aiu`) |
+| Token counts, complete shutdown credits, and exact API time when available | Token/trace detail plus per-span credits; auto mode reconciles complete cost/API fields from matching shutdown logs |
 | Historical sessions available | Historical sessions **plus** new sessions captured live |
 | `--source logs` behavior | `--source auto` (default) merges both |
 
@@ -190,4 +190,4 @@ The managed block is delimited by `# >>> tscope otel (managed) >>>` markers so i
 
 OTel coverage is **forward-only**: only sessions started after `tscope otel enable` was run (and a new terminal opened) produce OTel data. Sessions before that are still available via the log parser.
 
-In the default `--source auto` mode, `tscope` merges both sources automatically — OTel sessions take priority on overlap, log-parser sessions fill in the historical gaps. See [How It Works](how-it-works.md) for full details on the merge logic.
+In the default `--source auto` mode, `tscope` merges both sources automatically. OTel remains the session source for token and trace detail; matching event logs supply complete session/per-model credits and exact API time when available. See [How It Works](how-it-works.md).

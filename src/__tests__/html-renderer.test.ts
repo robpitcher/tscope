@@ -1054,6 +1054,7 @@ describe("HtmlRenderer", () => {
       sessionId: "logs-with-cost-0000-1111-2222-333344445555",
       source: "logs",
       totalCost: 1.23,
+      costSource: "logs",
     };
 
     test("logs session with totalCost shows chip-credits and not chip-cost-unavail", () => {
@@ -1076,7 +1077,7 @@ describe("HtmlRenderer", () => {
         { ...EMPTY_REPORT, sessions: [LOGS_SESSION_WITH_COST] },
         "html-test-logs-cost-credits-title.html"
       );
-      expect(html).toContain('title="Estimated AI credits from event log data"');
+      expect(html).toContain('title="AI credits from the session shutdown event log"');
       expect(html).not.toContain("Server-side AI credits from OpenTelemetry billing data");
     });
 
@@ -1120,7 +1121,7 @@ describe("HtmlRenderer", () => {
       expect(logsCardIdx).toBeGreaterThan(-1);
       const logsChips = html.slice(logsCardIdx, logsCardIdx + 800);
       expect(logsChips).toContain("chip-credits");
-      expect(logsChips).toContain("Estimated AI credits from event log data");
+      expect(logsChips).toContain("AI credits from the session shutdown event log");
       expect(logsChips).not.toContain("chip-cost-unavail");
     });
   });
@@ -1133,28 +1134,26 @@ describe("HtmlRenderer", () => {
       modelCosts: { "claude-sonnet-4-5": 3.14 },
     };
 
-    test("pure OTel report still shows 'AI billing credits' subtitle", () => {
+    test("pure OTel report shows complete cost-coverage subtitle", () => {
       const html = renderToString(
         { ...EMPTY_REPORT, source: "otel", costAvailable: true, sessions: [OTEL_SESSION] },
         "html-test-otel-credits-subtitle.html"
       );
-      expect(html).toContain("AI billing credits");
-      expect(html).not.toContain("OTel sessions only");
+      expect(html).toContain("All sessions with cost data");
     });
 
-    test("mixed report shows 'OTel sessions only' subtitle on Total Credits card", () => {
+    test("partial-cost report uses a neutral subtitle", () => {
       const html = renderToString(
         {
           ...EMPTY_REPORT,
           source: "mixed",
           costAvailable: true,
           coverage: { otelCount: 1, logsCount: 2, costCoverage: "partial" },
-          sessions: [OTEL_SESSION],
+          sessions: [OTEL_SESSION, SAMPLE_SESSION],
         },
         "html-test-mixed-credits-subtitle.html"
       );
-      expect(html).toContain("OTel sessions only");
-      expect(html).not.toContain("AI billing credits");
+      expect(html).toContain("Sessions with cost data");
     });
   });
 
@@ -1190,7 +1189,7 @@ describe("HtmlRenderer", () => {
         "html-test-credits-stat-card.html"
       );
       expect(html).toContain("Total Credits");
-      expect(html).toContain("AI billing credits");
+      expect(html).toContain("All sessions with cost data");
     });
 
     test("does not show 'Total Credits' stat card for logs report", () => {
@@ -1199,7 +1198,7 @@ describe("HtmlRenderer", () => {
         "html-test-no-credits-stat.html"
       );
       expect(html).not.toContain("Total Credits");
-      expect(html).not.toContain("AI billing credits");
+      expect(html).not.toContain("All sessions with cost data");
     });
 
     test("shows Credits by Model section when modelCosts is present", () => {

@@ -1,6 +1,6 @@
 /**
  * Tests for JsonRenderer — verifies JSON shape, field types, and edge cases.
- * Schema: tscope/report/v6 (adds client + anomalous; v5 fields intact)
+ * Schema: tscope/report/v7 (adds metric provenance; v6 fields intact)
  */
 
 import { JsonRenderer } from "../render/JsonRenderer";
@@ -29,9 +29,9 @@ describe("JsonRenderer", () => {
   });
 
   describe("top-level schema fields", () => {
-    test("includes schema field with v6 value", () => {
+    test("includes schema field with v7 value", () => {
       const out = captureJson(EMPTY_REPORT);
-      expect(out.schema).toBe("tscope/report/v6");
+      expect(out.schema).toBe("tscope/report/v7");
     });
 
     test("includes source field matching report.source", () => {
@@ -247,10 +247,19 @@ describe("JsonRenderer", () => {
     test("session apiDurationMs is preserved when set on the source session", () => {
       const withDuration: Report = {
         ...EMPTY_REPORT,
-        sessions: [{ ...SAMPLE_SESSION, apiDurationMs: 4669 }],
+        sessions: [{ ...SAMPLE_SESSION, apiDurationMs: 4669, apiDurationSource: "logs" }],
       };
       const result = captureJson(withDuration);
       expect(result.sessions[0].apiDurationMs).toBe(4669);
+      expect(result.sessions[0].apiDurationSource).toBe("logs");
+    });
+
+    test("session preserves cost provenance", () => {
+      const report: Report = {
+        ...EMPTY_REPORT,
+        sessions: [{ ...SAMPLE_SESSION, totalCost: 1.23, costSource: "logs" }],
+      };
+      expect(captureJson(report).sessions[0].costSource).toBe("logs");
     });
 
     test("session does not include a premiumRequests field", () => {

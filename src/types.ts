@@ -6,6 +6,9 @@
 /** Which data source produced a single session. */
 export type DataSourceKind = "otel" | "logs";
 
+/** Which source supplied an individual normalized metric. */
+export type MetricSourceKind = DataSourceKind;
+
 /**
  * Report-level provenance. "mixed" means the report contains sessions from
  * both OTel and the log parser (the default `--source auto` merged case).
@@ -92,6 +95,8 @@ export interface ParsedSession {
    * the most defensible "how much AI work happened" measure available.
    */
   apiDurationMs?: number;
+  /** Source of `apiDurationMs` when present. */
+  apiDurationSource?: MetricSourceKind;
   /**
    * Total session AI credits (billing credit units).
    * For log-sourced sessions, derived from `session.shutdown.data.totalNanoAiu / 1e9`.
@@ -100,6 +105,14 @@ export interface ParsedSession {
    * Undefined when no source reported cost data.
    */
   totalCost?: number;
+  /** Source of `totalCost` when present. */
+  costSource?: MetricSourceKind;
+  /**
+   * Per-model AI credits, keyed by model name.
+   * Log sessions derive these from `modelMetrics[model].totalNanoAiu`; OTel
+   * sessions derive them from per-span `github.copilot.nano_aiu`.
+   */
+  modelCosts?: Record<string, number>;
   /** /chronicle tips insights captured in this session (chronological) */
   chronicleTips: ChronicleTip[];
   inProgress: false;
@@ -113,16 +126,6 @@ export interface ParsedSession {
 export interface NormalizedSession extends ParsedSession {
   /** Which data source produced this session. */
   source: DataSourceKind;
-  /**
-   * Per-model estimated AI credits (OTel only, from github.copilot.nano_aiu ÷ 1e9).
-   * Undefined for log-sourced sessions.
-   * Key = model name, matching the keys in `models`.
-   */
-  modelCosts?: Record<string, number>;
-  /**
-   * Total session AI credits (OTel, or logs via summed totalNanoAiu).
-   */
-  totalCost?: number;
   /** Extended OTel-only metrics (v1: reasoning tokens, context window). */
   extended?: ExtendedMetrics;
   /**
@@ -159,9 +162,9 @@ export interface SourceCoverage {
   logsCount: number;
   /**
    * Cost-data availability across the report:
-   *   "all"     — every session has authoritative cost data (pure OTel)
-   *   "partial" — some sessions have cost data (OTel + logs mixed)
-   *   "none"    — no sessions have cost data (pure logs or empty)
+   *   "all"     — every session has cost data
+   *   "partial" — some sessions have cost data
+   *   "none"    — no sessions have cost data
    */
   costCoverage: "all" | "partial" | "none";
 }
@@ -182,8 +185,7 @@ export interface Report {
    */
   source: ReportSourceKind;
   /**
-   * Whether cost data is present for at least the OTel subset of this report.
-   * true when source is "otel" or "mixed" (otelCount > 0).
+   * Whether at least one completed session has cost data.
    */
   costAvailable: boolean;
   /**

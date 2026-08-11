@@ -238,24 +238,53 @@ describe("parser", () => {
     test("captures totalNanoAiu from a single shutdown as AI credits", async () => {
       const withNanoAiu = {
         ...shutdownEvent,
-        data: { ...shutdownEvent.data, totalNanoAiu: 1_500_000_000 },
+        data: {
+          ...shutdownEvent.data,
+          totalNanoAiu: 1_500_000_000,
+          modelMetrics: {
+            "claude-opus-4.7": {
+              ...shutdownEvent.data.modelMetrics["claude-opus-4.7"],
+              totalNanoAiu: 1_500_000_000,
+            },
+          },
+        },
       };
       const eventsPath = writeTempEvents(tmpDir, [sessionStart, withNanoAiu]);
       const session = await parseEventsFile("cost-single", eventsPath);
       expect(session.inProgress).toBe(false);
       if (session.inProgress) return;
       expect(session.totalCost).toBe(1.5);
+      expect(session.costSource).toBe("logs");
+      expect(session.modelCosts).toEqual({ "claude-opus-4.7": 1.5 });
     });
 
     test("sums totalNanoAiu across multiple shutdowns", async () => {
       const run1 = {
         ...shutdownEvent,
-        data: { ...shutdownEvent.data, totalNanoAiu: 1_250_000_000 },
+        data: {
+          ...shutdownEvent.data,
+          totalNanoAiu: 1_250_000_000,
+          modelMetrics: {
+            "claude-opus-4.7": {
+              ...shutdownEvent.data.modelMetrics["claude-opus-4.7"],
+              totalNanoAiu: 1_250_000_000,
+            },
+          },
+        },
         timestamp: "2026-06-02T23:06:01.000Z",
       };
       const run2 = {
         ...shutdownEvent,
-        data: { ...shutdownEvent.data, totalNanoAiu: 750_000_000 },
+        data: {
+          ...shutdownEvent.data,
+          totalNanoAiu: 750_000_000,
+          modelMetrics: {
+            "claude-opus-4.7": {
+              ...shutdownEvent.data.modelMetrics["claude-opus-4.7"],
+              totalNanoAiu: 750_000_000,
+            },
+          },
+        },
         timestamp: "2026-06-02T23:06:02.000Z",
       };
       const eventsPath = writeTempEvents(tmpDir, [sessionStart, run1, run2]);
@@ -263,6 +292,7 @@ describe("parser", () => {
       expect(session.inProgress).toBe(false);
       if (session.inProgress) return;
       expect(session.totalCost).toBe(2);
+      expect(session.modelCosts).toEqual({ "claude-opus-4.7": 2 });
     });
 
     test("totalCost is undefined when no shutdown reports totalNanoAiu", async () => {
@@ -271,6 +301,8 @@ describe("parser", () => {
       expect(session.inProgress).toBe(false);
       if (session.inProgress) return;
       expect(session.totalCost).toBeUndefined();
+      expect(session.costSource).toBeUndefined();
+      expect(session.modelCosts).toBeUndefined();
     });
 
     test("ignores negative and non-numeric totalNanoAiu values", async () => {
@@ -297,6 +329,49 @@ describe("parser", () => {
       expect(session.inProgress).toBe(false);
       if (session.inProgress) return;
       expect(session.totalCost).toBe(0.25);
+    });
+
+    test("keeps per-model costs when the session total is absent", async () => {
+      const withModelCost = {
+        ...shutdownEvent,
+        data: {
+          ...shutdownEvent.data,
+          modelMetrics: {
+            "claude-opus-4.7": {
+              ...shutdownEvent.data.modelMetrics["claude-opus-4.7"],
+              totalNanoAiu: 900_000_000,
+            },
+          },
+        },
+      };
+      const eventsPath = writeTempEvents(tmpDir, [sessionStart, withModelCost]);
+      const session = await parseEventsFile("model-cost-only", eventsPath);
+      expect(session.inProgress).toBe(false);
+      if (session.inProgress) return;
+      expect(session.totalCost).toBeUndefined();
+      expect(session.modelCosts).toEqual({ "claude-opus-4.7": 0.9 });
+    });
+
+    test("omits per-model costs when they do not reconcile to the session total", async () => {
+      const inconsistent = {
+        ...shutdownEvent,
+        data: {
+          ...shutdownEvent.data,
+          totalNanoAiu: 1_500_000_000,
+          modelMetrics: {
+            "claude-opus-4.7": {
+              ...shutdownEvent.data.modelMetrics["claude-opus-4.7"],
+              totalNanoAiu: 900_000_000,
+            },
+          },
+        },
+      };
+      const eventsPath = writeTempEvents(tmpDir, [sessionStart, inconsistent]);
+      const session = await parseEventsFile("cost-mismatch", eventsPath);
+      expect(session.inProgress).toBe(false);
+      if (session.inProgress) return;
+      expect(session.totalCost).toBe(1.5);
+      expect(session.modelCosts).toBeUndefined();
     });
   });
 

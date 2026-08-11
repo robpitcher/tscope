@@ -54,7 +54,12 @@ export function writeLogsSession(
   sessionId: string,
   startTimeISO: string,
   inputTokens = 500,
-  outputTokens = 200
+  outputTokens = 200,
+  metrics?: {
+    totalNanoAiu?: number;
+    modelNanoAiu?: number;
+    totalApiDurationMs?: number;
+  }
 ): void {
   const sessionDir = path.join(sessionStateDir, sessionId);
   fs.mkdirSync(sessionDir, { recursive: true });
@@ -69,6 +74,9 @@ export function writeLogsSession(
       data: {
         modelMetrics: {
           "gpt-4": {
+            ...(metrics?.modelNanoAiu !== undefined
+              ? { totalNanoAiu: metrics.modelNanoAiu }
+              : {}),
             usage: {
               inputTokens,
               outputTokens,
@@ -78,7 +86,10 @@ export function writeLogsSession(
             },
           },
         },
-        totalApiDurationMs: 1000,
+        totalApiDurationMs: metrics?.totalApiDurationMs ?? 1000,
+        ...(metrics?.totalNanoAiu !== undefined
+          ? { totalNanoAiu: metrics.totalNanoAiu }
+          : {}),
       },
     }),
   ];
