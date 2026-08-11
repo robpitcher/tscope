@@ -29,7 +29,7 @@ describe("JsonRenderer", () => {
   });
 
   describe("top-level schema fields", () => {
-    test("includes schema field with v6 value", () => {
+    test("includes schema field with v7 value", () => {
       const out = captureJson(EMPTY_REPORT);
       expect(out.schema).toBe("tscope/report/v7");
     });

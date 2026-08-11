@@ -90,7 +90,7 @@ describe("Text: mixed report where logsCount=0", () => {
     filterDescription: "all time",
     source: "mixed",
     costAvailable: true,
-    coverage: { otelCount: 3, logsCount: 0, costCoverage: "partial" },
+    coverage: { otelCount: 3, logsCount: 0, costCoverage: "all" },
   };
 
   test("renders without throwing when logsCount=0 and source='mixed'", () => {
@@ -102,9 +102,9 @@ describe("Text: mixed report where logsCount=0", () => {
     expect(out).toContain("Sources: 3 OTel, 0 logs");
   });
 
-  test("footer describes partial cost coverage when logsCount=0", () => {
+  test("footer describes full cost coverage when logsCount=0", () => {
     const out = captureText(ZERO_LOGS_MIXED);
-    expect(out).toContain("cost available for some sessions");
+    expect(out).toContain("cost available for all sessions");
   });
 });
 

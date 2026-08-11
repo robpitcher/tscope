@@ -177,7 +177,7 @@ export class OtelDataSource implements DataSource {
 
         // Accumulate server-side cost in credits (nano_aiu ÷ 1e9)
         const nanoAiu = attrs["github.copilot.nano_aiu"];
-        if (typeof nanoAiu === "number" && nanoAiu > 0) {
+        if (typeof nanoAiu === "number" && Number.isFinite(nanoAiu) && nanoAiu > 0) {
           acc.modelCosts[model] = (acc.modelCosts[model] ?? 0) + nanoAiu / 1e9;
         }
 
@@ -233,8 +233,11 @@ export class OtelDataSource implements DataSource {
       const hasExtended = extended.reasoningTokens !== undefined || extended.contextWindow !== undefined;
 
       // Total cost across all models
-      const totalCost = Object.values(acc.modelCosts).reduce((sum, c) => sum + c, 0);
-      const hasCost = Object.keys(acc.modelCosts).length > 0;
+      const modelCosts = Object.fromEntries(
+        Object.entries(acc.modelCosts).filter(([, cost]) => Number.isFinite(cost) && cost >= 0)
+      );
+      const totalCost = Object.values(modelCosts).reduce((sum, cost) => sum + cost, 0);
+      const hasCost = Object.keys(modelCosts).length > 0 && Number.isFinite(totalCost);
 
       sessions.push({
         sessionId: acc.sessionId,
@@ -245,7 +248,7 @@ export class OtelDataSource implements DataSource {
         chronicleTips: [],
         inProgress: false,
         source: "otel",
-        modelCosts: hasCost ? { ...acc.modelCosts } : undefined,
+        modelCosts: hasCost ? modelCosts : undefined,
         totalCost: hasCost ? totalCost : undefined,
         costSource: hasCost ? "otel" : undefined,
         extended: hasExtended ? extended : undefined,

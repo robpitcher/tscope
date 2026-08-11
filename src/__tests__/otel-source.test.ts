@@ -166,6 +166,20 @@ describe("OtelDataSource", () => {
     expect(sessions[0].modelCosts?.["gpt-4"]).toBeCloseTo(2.0);
   });
 
+  test("ignores non-finite nano_aiu values", async () => {
+    const p = path.join(tmpDir, "otel.jsonl");
+    const span = JSON.stringify(chatSpan("sess-1", "gpt-4", 1000, 200, 0))
+      .replace('"github.copilot.nano_aiu":0', '"github.copilot.nano_aiu":1e309');
+    fs.writeFileSync(p, `${span}\n`);
+
+    const sessions = await new OtelDataSource(p).loadSessions();
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].totalCost).toBeUndefined();
+    expect(sessions[0].modelCosts).toBeUndefined();
+    expect(sessions[0].costSource).toBeUndefined();
+  });
+
   test("filters sessions by date predicate", async () => {
     const p = path.join(tmpDir, "otel.jsonl");
     // 2026-06-01 00:00 UTC (1748736000)
