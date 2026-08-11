@@ -253,6 +253,25 @@ describe("merge integration (subprocess)", () => {
       expect(report.sessions.every((s: { source: string }) => s.source === "otel")).toBe(true);
     });
 
+    test("--source otel does not read matching logs for API time or replacement cost", () => {
+      const sessionId = "otel-source-stays-isolated";
+      const otelDir = path.join(tmpHome, ".copilot", "tscope");
+      writeOtelSpan(otelDir, sessionId, OTEL_DATE_SEC, 500_000_000);
+      const ssDir = path.join(tmpHome, ".copilot", "session-state");
+      writeLogsSession(ssDir, sessionId, SHARED_ISO, 500, 200, {
+        totalNanoAiu: 1_500_000_000,
+        modelNanoAiu: 1_500_000_000,
+        totalApiDurationMs: 4669,
+      });
+
+      const { stdout } = runCli(["--source", "otel", "--all", "--json"], tmpHome);
+      const session = JSON.parse(stdout).sessions[0];
+      expect(session.totalCost).toBe(0.5);
+      expect(session.costSource).toBe("otel");
+      expect(session.apiDurationMs).toBeNull();
+      expect(session.apiDurationSource).toBeUndefined();
+    });
+
     test("--source logs: every session in output has source='logs'", () => {
       const otelDir = path.join(tmpHome, ".copilot", "tscope");
       writeOtelSpan(otelDir, "otel-dropped-m", OTEL_DATE_SEC, 1_000_000_000);
@@ -271,6 +290,33 @@ describe("merge integration (subprocess)", () => {
   // ---------------------------------------------------------------------------
 
   describe("JSON provenance propagation", () => {
+    test("auto mode enriches an overlapping OTel session with exact log cost and API time", () => {
+      const sessionId = "shared-enriched-session";
+      const otelDir = path.join(tmpHome, ".copilot", "tscope");
+      writeOtelSpan(otelDir, sessionId, OTEL_DATE_SEC, 500_000_000);
+
+      const ssDir = path.join(tmpHome, ".copilot", "session-state");
+      writeLogsSession(ssDir, sessionId, SHARED_ISO, 500, 200, {
+        totalNanoAiu: 1_500_000_000,
+        modelNanoAiu: 1_500_000_000,
+        totalApiDurationMs: 4669,
+      });
+
+      const { stdout } = runCli(["--all", "--json"], tmpHome);
+      const report = JSON.parse(stdout);
+      const session = report.sessions.find((entry: { sessionId: string }) =>
+        entry.sessionId === sessionId
+      );
+      expect(session.source).toBe("otel");
+      expect(session.totalCost).toBe(1.5);
+      expect(session.costSource).toBe("logs");
+      expect(session.modelCosts).toEqual({ "gpt-4": 1.5 });
+      expect(session.apiDurationMs).toBe(4669);
+      expect(session.apiDurationSource).toBe("logs");
+      expect(session.totals.input).toBe(100);
+      expect(session.totals.output).toBe(50);
+    });
+
     test("mixed report: every session has a 'source' field ('otel' or 'logs')", () => {
       const otelDir = path.join(tmpHome, ".copilot", "tscope");
       writeOtelSpan(otelDir, "otel-prov-n", OTEL_DATE_SEC, 1_000_000_000);

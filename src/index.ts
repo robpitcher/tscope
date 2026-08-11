@@ -262,7 +262,7 @@ async function main(): Promise<void> {
     reportDate: today,
     filterDescription,
     source: reportSource,
-    costAvailable: coverage.otelCount > 0,
+    costAvailable: finalCompleted.some((session) => session.totalCost !== undefined),
     coverage,
   };
 

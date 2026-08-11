@@ -20,7 +20,7 @@ tscope --version    # Show version
 tscope now merges data sources intelligently. Use `--source` to control the behavior:
 
 ```bash
-tscope --source auto   # Default: merge OTel + logs; OTel wins overlap; shows cost for OTel sessions
+tscope --source auto   # Default: OTel detail enriched with exact shutdown cost/API time
 tscope --source otel   # Force OTel only; exits with error if otel.jsonl is absent
 tscope --source logs   # Force log-parser only (pre-merge behavior)
 ```
@@ -29,7 +29,7 @@ tscope --source logs   # Force log-parser only (pre-merge behavior)
 
 | Mode | Behavior |
 |---|---|
-| `auto` | Loads both OTel (`~/.copilot/tscope/otel.jsonl`) and log-parser sessions (`~/.copilot/session-state/`), then merges them. Sessions that appear in both sources are deduplicated — the OTel record is retained (authoritative), logs duplicate dropped. OTel spans cover recent activity; logs provide historical context. If OTel is not available (file missing/empty), falls back to logs-only and prints the notice below. |
+| `auto` | Loads both OTel and log-parser sessions, then merges matching IDs field by field. OTel supplies tokens and extended detail; shutdown logs supply complete credits and exact API time when present. If OTel is unavailable, falls back to logs-only. |
 | `otel` | Loads OTel only. Exits with a non-zero code and a helpful message if `otel.jsonl` is absent or empty. |
 | `logs` | Loads log-parser sessions only. Works exactly as tscope did before OTel support. |
 
@@ -60,11 +60,11 @@ The process exits with code 0 — the hint is advisory, not an error.
 
 | Source | Cost shown |
 |---|---|
-| OTel (merged report or pure OTel) | Server-side AI credits per session and per model (from `github.copilot.nano_aiu`). |
-| Log parser (merged report) | Estimated AI credits per session when `session.shutdown.data.totalNanoAiu` is present (Copilot CLI 1.0+); "no cost data" for older sessions. Per-session source badges identify provenance. |
-| Log parser (pure logs) | Estimated AI credits per session when `session.shutdown.data.totalNanoAiu` is present (Copilot CLI 1.0+); "no cost data" for older sessions. |
+| OTel in auto mode with matching log | Complete session/per-model credits from shutdown data; OTel tokens and trace detail are retained. |
+| OTel without matching log | Per-span credits from `github.copilot.nano_aiu`; delegated-agent cost may be incomplete when the producer omits the attribute. |
+| Log parser | Session/per-model credits from shutdown `totalNanoAiu`; "no cost data" for older sessions. |
 
-> **Note:** OTel provides authoritative server-side billing including a per-model breakdown (`modelCosts`). Log-parser cost is a session-level estimate derived from the `totalNanoAiu` field written by Copilot CLI 1.0+. Older sessions that predate this field show "no cost data".
+> **API time:** OTel cards show API time only when a matching event log provides exact `totalApiDurationMs`. tscope does not estimate it from OTel span wall time.
 
 ### Interaction with date filters
 

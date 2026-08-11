@@ -102,9 +102,9 @@ describe("Text: mixed report where logsCount=0", () => {
     expect(out).toContain("Sources: 3 OTel, 0 logs");
   });
 
-  test("footer still mentions OTel sessions only for cost when logsCount=0", () => {
+  test("footer describes partial cost coverage when logsCount=0", () => {
     const out = captureText(ZERO_LOGS_MIXED);
-    expect(out).toContain("OTel sessions only");
+    expect(out).toContain("cost available for some sessions");
   });
 });
 

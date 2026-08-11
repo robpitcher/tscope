@@ -551,10 +551,10 @@ function buildSessionCard(session: NormalizedSession): string {
         ? `<span class="source-badge source-badge--otel" title="Data source: OpenTelemetry">OTel</span>`
         : `<span class="source-badge source-badge--logs" title="Data source: event log parser${session.totalCost === undefined ? " — cost data unavailable" : ""}">log parser</span>`}
       ${clientBadge(session.clientName)}
-      ${session.apiDurationMs !== undefined ? `<span class="chip chip-duration" title="Cumulative model API time (compute only — excludes idle / user think time)">${esc(fmtDuration(session.apiDurationMs))} API</span>` : ""}
+      ${session.apiDurationMs !== undefined ? `<span class="chip chip-duration" title="Cumulative model API time from ${session.apiDurationSource === "logs" ? "the event log" : "the source session"} (compute only — excludes idle / user think time)">${esc(fmtDuration(session.apiDurationMs))} API</span>` : ""}
       <span class="chip chip-tokens">${fmtNum(totalTokensForCard)} tokens</span>
       ${session.totalCost !== undefined
-        ? `<span class="chip chip-credits" title="${session.source === "otel" ? "Server-side AI credits from OpenTelemetry billing data" : "Estimated AI credits from event log data"}">${session.totalCost.toFixed(2)} credits</span>`
+        ? `<span class="chip chip-credits" title="${session.costSource === "logs" ? "AI credits from the session shutdown event log" : "Server-side AI credits from OpenTelemetry billing data"}">${session.totalCost.toFixed(2)} credits</span>`
         : session.source === "logs"
         ? `<span class="chip chip-cost-unavail" title="Cost data unavailable — run &#x27;tscope otel enable&#x27; to get billing data">no cost data</span>`
         : ""}
@@ -1712,7 +1712,7 @@ const JS = `
 // ---------------------------------------------------------------------------
 
 function buildHtml(report: Report, generatedAt: string, generatedAtIso: string): string {
-  const { sessions, inProgressSessions, filterDescription, reportDate, source, costAvailable } = report;
+  const { sessions, inProgressSessions, filterDescription, reportDate, costAvailable } = report;
 
   const completedCount = sessions.length;
   const inProgressCount = inProgressSessions.length;
@@ -1726,6 +1726,8 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
     }
     if (session.totalCost !== undefined) grandTotalCredits += session.totalCost;
   }
+  const allSessionsHaveCost =
+    sessions.length > 0 && sessions.every((session) => session.totalCost !== undefined);
 
   const statCards = `
 <div class="summary-strip container">
@@ -1733,7 +1735,7 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
   <div class="stat-card">
     <div class="stat-label">Total Credits</div>
     <div class="stat-value accent-green" id="stat-credits-value">${grandTotalCredits.toFixed(2)}</div>
-    <div class="stat-sub" id="stat-credits-sub">${source === "mixed" ? "OTel sessions only" : "AI billing credits"}</div>
+    <div class="stat-sub" id="stat-credits-sub">${allSessionsHaveCost ? "All sessions with cost data" : "Sessions with cost data"}</div>
   </div>` : ""}
   <div class="stat-card">
     <div class="stat-label">Total Tokens</div>

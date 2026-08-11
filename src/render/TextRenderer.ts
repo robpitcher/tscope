@@ -97,7 +97,8 @@ function renderSessionBlock(session: NormalizedSession, styled: boolean): string
   lines.push(bold(`SESSION: ${session.sessionId}`, styled));
   lines.push(`Date:    ${toLocalDateTimeStr(session.startTime)}`);
   if (session.apiDurationMs !== undefined) {
-    lines.push(`API time: ${fmtDurationMs(session.apiDurationMs)} (cumulative model compute)`);
+    const source = session.apiDurationSource === "logs" ? ", event log" : "";
+    lines.push(`API time: ${fmtDurationMs(session.apiDurationMs)} (cumulative model compute${source})`);
   }
   lines.push(dim(`Path:    ${session.eventsPath}`, styled));
   lines.push(`Source:  ${session.source === "otel" ? "OTel" : "log parser"}`);
@@ -139,7 +140,8 @@ function renderSessionBlock(session: NormalizedSession, styled: boolean): string
 
   if (session.totalCost !== undefined) {
     const numStr = session.totalCost.toFixed(2).padStart(12);
-    lines.push(`    ${"Cost:".padEnd(14)}${numStr} credits`);
+    const source = session.costSource ? ` (${session.costSource})` : "";
+    lines.push(`    ${"Cost:".padEnd(14)}${numStr} credits${source}`);
     if (session.modelCosts !== undefined) {
       for (const [model, cost] of Object.entries(session.modelCosts)) {
         const costStr = cost.toFixed(2).padStart(12);
@@ -187,22 +189,26 @@ export class TextRenderer implements Renderer {
       );
     }
 
-    const anyLogCost = sessionsWithData.some((s) => s.source === "logs" && s.totalCost !== undefined);
-
     if (report.source === "mixed") {
       const { otelCount, logsCount } = report.coverage;
-      const costDesc = anyLogCost
-        ? "cost available for OTel sessions; estimated credits for some log sessions"
-        : "cost available for OTel sessions only";
+      const costDesc =
+        report.coverage.costCoverage === "all"
+          ? "cost available for all sessions"
+          : report.coverage.costCoverage === "partial"
+            ? "cost available for some sessions"
+            : "cost data unavailable";
       process.stdout.write(`Sources: ${otelCount} OTel, ${logsCount} logs — ${costDesc}\n`);
     } else {
       const sourceLabel =
         report.source === "otel" ? "OpenTelemetry" : "event logs (historical)";
-      const costNote = report.source === "logs"
-        ? anyLogCost
-          ? " — estimated AI credits from event log where available"
-          : " — cost data unavailable"
-        : "";
+      const costNote =
+        report.coverage.costCoverage === "all"
+          ? " — AI credits available"
+          : report.coverage.costCoverage === "partial"
+            ? " — AI credits available for some sessions"
+            : report.costAvailable
+              ? " — AI credits available"
+              : " — cost data unavailable";
       process.stdout.write(`Source: ${sourceLabel}${costNote}\n`);
     }
   }

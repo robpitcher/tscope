@@ -39,6 +39,7 @@ interface RawModelUsage {
 
 interface RawModelMetrics {
   usage?: RawModelUsage;
+  totalNanoAiu?: number;
 }
 
 interface RawSessionShutdown {
@@ -234,6 +235,7 @@ export async function parseEventsFile(
   // shutdown per run, each reporting only that run's metrics, so the
   // cumulative session totals are the sum across runs.
   const models: Record<string, TokenCounts> = {};
+  const modelNanoAiu: Record<string, number> = {};
   // Cumulative API call time across runs. `totalApiDurationMs` is per-run
   // (each shutdown reports only that run's compute time), so summing gives
   // total compute time across resumed runs. Undefined if no shutdown
@@ -249,6 +251,10 @@ export async function parseEventsFile(
         models[modelName] = models[modelName]
           ? addTokenCounts(models[modelName], counts)
           : counts;
+        const modelCost = metrics.totalNanoAiu;
+        if (typeof modelCost === "number" && isFinite(modelCost) && modelCost >= 0) {
+          modelNanoAiu[modelName] = (modelNanoAiu[modelName] ?? 0) + modelCost;
+        }
       }
     }
     const runDuration = shutdown.data?.totalApiDurationMs;
@@ -262,6 +268,13 @@ export async function parseEventsFile(
   }
 
   const totalCost = totalNanoAiu !== undefined ? totalNanoAiu / 1e9 : undefined;
+  const modelCosts = Object.fromEntries(
+    Object.entries(modelNanoAiu).map(([model, nanoAiu]) => [model, nanoAiu / 1e9])
+  );
+  const modelCostTotal = Object.values(modelCosts).reduce((sum, cost) => sum + cost, 0);
+  const hasModelCosts =
+    Object.keys(modelCosts).length > 0 &&
+    (totalCost === undefined || Math.abs(modelCostTotal - totalCost) <= 1e-9);
 
   const session: ParsedSession = {
     sessionId,
@@ -271,7 +284,10 @@ export async function parseEventsFile(
     chronicleTips,
     inProgress: false,
     ...(apiDurationMs !== undefined ? { apiDurationMs } : {}),
+    ...(apiDurationMs !== undefined ? { apiDurationSource: "logs" as const } : {}),
     ...(totalCost !== undefined ? { totalCost } : {}),
+    ...(totalCost !== undefined ? { costSource: "logs" as const } : {}),
+    ...(hasModelCosts ? { modelCosts } : {}),
   };
 
   return session;

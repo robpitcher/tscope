@@ -36,6 +36,7 @@ function otelSession(id: string): NormalizedSession {
     inProgress: false,
     source: "otel",
     totalCost: 1.23,
+    costSource: "otel",
     modelCosts: { "gpt-4": 1.23 },
   };
 }
@@ -92,6 +93,44 @@ describe("mergeSessions", () => {
     const result = mergeSessions([otel], [logs]);
     expect(result).toHaveLength(1);
     expect(result[0].source).toBe("otel");
+  });
+
+  test("overlap: exact log cost and API time enrich the OTel record", () => {
+    const otel = otelSession("shared");
+    const logs: NormalizedSession = {
+      ...logsSession("shared"),
+      totalCost: 2.5,
+      costSource: "logs",
+      modelCosts: { "gpt-4": 2.5 },
+      apiDurationMs: 4669,
+      apiDurationSource: "logs",
+    };
+    const [merged] = mergeSessions([otel], [logs]);
+    expect(merged.source).toBe("otel");
+    expect(merged.models).toEqual(otel.models);
+    expect(merged.totalCost).toBe(2.5);
+    expect(merged.costSource).toBe("logs");
+    expect(merged.modelCosts).toEqual({ "gpt-4": 2.5 });
+    expect(merged.apiDurationMs).toBe(4669);
+    expect(merged.apiDurationSource).toBe("logs");
+  });
+
+  test("overlap: incomplete OTel cost falls back when logs have no cost", () => {
+    const [merged] = mergeSessions([otelSession("shared")], [logsSession("shared")]);
+    expect(merged.totalCost).toBe(1.23);
+    expect(merged.costSource).toBe("otel");
+    expect(merged.modelCosts).toEqual({ "gpt-4": 1.23 });
+  });
+
+  test("overlap: omits a per-model breakdown that does not reconcile to the chosen total", () => {
+    const logs: NormalizedSession = {
+      ...logsSession("shared"),
+      totalCost: 2.5,
+      costSource: "logs",
+    };
+    const [merged] = mergeSessions([otelSession("shared")], [logs]);
+    expect(merged.totalCost).toBe(2.5);
+    expect(merged.modelCosts).toBeUndefined();
   });
 
   test("overlap: no double-counting — token values from OTel session only", () => {
@@ -186,6 +225,14 @@ describe("computeSourceCoverage", () => {
     expect(cov.otelCount).toBe(0);
     expect(cov.logsCount).toBe(1);
     expect(cov.costCoverage).toBe("none");
+  });
+
+  test("logs-only sessions with costs → costCoverage: 'all'", () => {
+    const sessions = [
+      { ...logsSession("a"), totalCost: 1, costSource: "logs" as const },
+      { ...logsSession("b"), totalCost: 2, costSource: "logs" as const },
+    ];
+    expect(computeSourceCoverage(sessions).costCoverage).toBe("all");
   });
 });
 

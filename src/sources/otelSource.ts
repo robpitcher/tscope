@@ -247,6 +247,7 @@ export class OtelDataSource implements DataSource {
         source: "otel",
         modelCosts: hasCost ? { ...acc.modelCosts } : undefined,
         totalCost: hasCost ? totalCost : undefined,
+        costSource: hasCost ? "otel" : undefined,
         extended: hasExtended ? extended : undefined,
       });
     }

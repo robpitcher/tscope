@@ -3,8 +3,9 @@ import { Renderer } from "./Renderer";
 import { hasTokenData, tokenPartition } from "../tokens";
 
 /**
- * Schema version — bumped to v6.
- * v6 adds: optional `client` field per session (raw `clientName` from
+ * Schema version — bumped to v7.
+ * v7 adds field-level `costSource` and `apiDurationSource` provenance.
+ * v6 added: optional `client` field per session (raw `clientName` from
  * `workspace.yaml`, e.g. "github/cli", "github/autopilot", "sdk") and optional
  * `anomalous: true` in a model's `usage` block when `tokenPartition()` detects
  * that cache tokens exceed total input tokens by more than the 16-token
@@ -16,7 +17,7 @@ import { hasTokenData, tokenPartition } from "../tokens";
  *  v3: `summary.totalTokens` and per-session `totals.total` switched to
  *  `input + output` only. v2: removed credit estimation entirely.)
  */
-const SCHEMA_VERSION = "tscope/report/v6";
+const SCHEMA_VERSION = "tscope/report/v7";
 
 /** Convert UTC ISO string to local "YYYY-MM-DD HH:MM" or null if invalid */
 function toLocalDateTime(utcIso: string): string | null {
@@ -64,9 +65,13 @@ function serializeCompletedSession(session: NormalizedSession) {
     localDateTime: toLocalDateTime(session.startTime),
     inProgress: false as const,
     apiDurationMs: session.apiDurationMs ?? null,
+    ...(session.apiDurationSource !== undefined
+      ? { apiDurationSource: session.apiDurationSource }
+      : {}),
     source: session.source,
     ...(session.clientName !== undefined ? { client: session.clientName } : {}),
     ...(session.totalCost !== undefined ? { totalCost: session.totalCost } : {}),
+    ...(session.costSource !== undefined ? { costSource: session.costSource } : {}),
     ...(session.modelCosts !== undefined ? { modelCosts: session.modelCosts } : {}),
     ...(session.extended !== undefined ? { extended: session.extended } : {}),
     models,
@@ -87,17 +92,17 @@ function serializeCompletedSession(session: NormalizedSession) {
  *
  * Stdout receives only valid JSON (pipeable to jq, etc.).
  *
- * ## Schema: tscope/report/v6
+ * ## Schema: tscope/report/v7
  * Top-level fields:
  *   schema         — stable identifier, bump on breaking changes
  *   generatedAt    — ISO 8601 UTC timestamp of report generation
  *   source         — "otel" | "logs" | "mixed" — data source(s) in this report
- *   costAvailable  — true if any OTel sessions are present (otelCount > 0)
+ *   costAvailable  — true if any session has cost data
  *   coverage       — { otelCount, logsCount, costCoverage: "all"|"partial"|"none" }
  *                    N OTel / M logs session counts; costCoverage:
- *                      "all"     = all sessions have cost (pure OTel)
- *                      "partial" = mixed: some have cost (OTel), some don't (logs)
- *                      "none"    = no sessions have cost (pure logs or empty)
+ *                      "all"     = all sessions have cost
+ *                      "partial" = some sessions have cost
+ *                      "none"    = no sessions have cost
  *   filter         — description and reportDate of the active filter
  *   summary        — sessionCount, completedCount, inProgressCount, totalTokens
  *                    (in-progress sessions are silently excluded, so
@@ -109,11 +114,12 @@ function serializeCompletedSession(session: NormalizedSession) {
  *                    silently excluded — see JsonRenderer.render)
  *     sessionId, path, startTime (ISO UTC string), localDateTime (YYYY-MM-DD HH:MM string),
  *     inProgress (always false), apiDurationMs (cumulative model API ms across
- *     runs, or null when no shutdown reported it), source ("otel"|"logs"),
+ *     runs, or null when no shutdown reported it), apiDurationSource (optional),
+ *     source ("otel"|"logs"),
  *     client (optional — raw client_name from workspace.yaml, e.g. "github/cli",
  *     "github/autopilot", "sdk"; absent when workspace.yaml unreadable),
- *     totalCost (AI credits, when available), modelCosts (OTel only,
- *     per-model credits), models[], totals
+ *     totalCost (AI credits, when available), costSource (optional),
+ *     modelCosts (per-model credits when reconcilable), models[], totals
  *   models[]       — modelName, usage{input,output,cacheRead,cacheWrite,reasoning,
  *                    anomalous? (true when cache tokens exceed total input tokens
  *                    by more than the 16-token rounding tolerance, indicating

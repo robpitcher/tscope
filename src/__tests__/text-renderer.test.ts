@@ -529,9 +529,9 @@ describe("TextRenderer", () => {
       expect(out).toContain("Sources: 2 OTel, 3 logs");
     });
 
-    test("mixed report footer mentions OTel sessions only for cost", () => {
+    test("mixed report footer describes partial cost coverage", () => {
       const out = captureText(MIXED_REPORT);
-      expect(out).toContain("OTel sessions only");
+      expect(out).toContain("cost available for some sessions");
     });
 
     test("mixed report footer does not say 'Source: mixed' (old label gone)", () => {
@@ -553,41 +553,46 @@ describe("TextRenderer", () => {
     });
   });
 
-  describe("log-cost footer wording (estimated AI credits)", () => {
+  describe("cost-availability footer wording", () => {
     const LOGS_SESSION_WITH_COST: NormalizedSession = {
       ...SAMPLE_SESSION,
       sessionId: "logs-cost-0000-1111-2222-333344445555",
       source: "logs",
       totalCost: 1.23,
+      costSource: "logs",
     };
 
-    test("pure logs report with a log session that has totalCost shows the estimated-credits note", () => {
-      const out = captureText({ ...EMPTY_REPORT, sessions: [LOGS_SESSION_WITH_COST] });
+    test("pure logs report with cost says AI credits are available", () => {
+      const out = captureText({
+        ...EMPTY_REPORT,
+        costAvailable: true,
+        coverage: { otelCount: 0, logsCount: 1, costCoverage: "all" },
+        sessions: [LOGS_SESSION_WITH_COST],
+      });
       expect(out).toContain("Source: event logs (historical)");
-      expect(out).toContain("estimated AI credits from event log where available");
+      expect(out).toContain("AI credits available");
       expect(out).not.toContain("cost data unavailable");
     });
 
     test("pure logs report with no log cost still shows 'cost data unavailable'", () => {
       const out = captureText({ ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] });
       expect(out).toContain("cost data unavailable");
-      expect(out).not.toContain("estimated AI credits from event log where available");
+      expect(out).not.toContain("AI credits available");
     });
 
-    test("mixed report with a log session that has totalCost notes estimated credits for log sessions", () => {
+    test("mixed report with full coverage says cost is available for all sessions", () => {
       const mixed: Report = {
         ...EMPTY_REPORT,
         source: "mixed",
         costAvailable: true,
-        coverage: { otelCount: 1, logsCount: 1, costCoverage: "partial" },
+        coverage: { otelCount: 1, logsCount: 1, costCoverage: "all" },
         sessions: [OTEL_SESSION, LOGS_SESSION_WITH_COST],
       };
       const out = captureText(mixed);
-      expect(out).toContain("estimated credits for some log sessions");
-      expect(out).not.toContain("cost available for OTel sessions only");
+      expect(out).toContain("cost available for all sessions");
     });
 
-    test("mixed report with no log cost says 'cost available for OTel sessions only'", () => {
+    test("mixed report with incomplete coverage says cost is available for some sessions", () => {
       const mixed: Report = {
         ...EMPTY_REPORT,
         source: "mixed",
@@ -596,8 +601,7 @@ describe("TextRenderer", () => {
         sessions: [OTEL_SESSION, SAMPLE_SESSION],
       };
       const out = captureText(mixed);
-      expect(out).toContain("cost available for OTel sessions only");
-      expect(out).not.toContain("estimated credits for some log sessions");
+      expect(out).toContain("cost available for some sessions");
     });
   });
 
