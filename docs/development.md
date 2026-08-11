@@ -12,13 +12,16 @@ tscope/
 │   ├── filter.ts             # Date filtering and recency limiting
 │   ├── tokens.ts             # Token math / aggregation helpers
 │   ├── types.ts              # TypeScript types
-│   ├── otel.ts               # `tscope otel` subcommand (enable/disable/status)
+│   ├── args.ts               # CLI argument parsing (internal; not part of the public API)
+│   ├── otel.ts               # `tscope otel` subcommand (enable/disable/status/prune)
+│   ├── otelRotation.ts       # OTel file auto-rotation and pruning logic
+│   ├── workspace.ts          # workspace.yaml reader (client-name enrichment)
 │   ├── render/
 │   │   ├── Renderer.ts       # Renderer interface
 │   │   ├── index.ts          # Renderer registry and factory
 │   │   ├── style.ts          # ANSI text styling (bold/dim; respects NO_COLOR and TTY)
 │   │   ├── TextRenderer.ts   # Text output implementation
-│   │   ├── JsonRenderer.ts   # JSON output (schema v5)
+│   │   ├── JsonRenderer.ts   # JSON output (schema v7)
 │   │   └── HtmlRenderer.ts   # HTML dashboard
 │   ├── sources/
 │   │   ├── logsSource.ts     # Log-file data source (events.jsonl)
