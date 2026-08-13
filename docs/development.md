@@ -5,20 +5,23 @@
 ```
 tscope/
 ├── src/
-│   ├── index.ts              # CLI entry point, argument parsing
+│   ├── index.ts              # CLI entry point and orchestration
+│   ├── args.ts               # CLI argument parsing and validation
 │   ├── discovery.ts          # Session discovery logic
 │   ├── parser.ts             # events.jsonl parsing
 │   ├── jsonlReader.ts        # Shared JSONL stream reader (used by parser and OTel source)
 │   ├── filter.ts             # Date filtering and recency limiting
 │   ├── tokens.ts             # Token math / aggregation helpers
 │   ├── types.ts              # TypeScript types
-│   ├── otel.ts               # `tscope otel` subcommand (enable/disable/status)
+│   ├── workspace.ts          # workspace.yaml client-name resolution
+│   ├── otel.ts               # `tscope otel` subcommand (enable/disable/status/prune)
+│   ├── otelRotation.ts       # OTel file rotation and pruning logic
 │   ├── render/
 │   │   ├── Renderer.ts       # Renderer interface
 │   │   ├── index.ts          # Renderer registry and factory
 │   │   ├── style.ts          # ANSI text styling (bold/dim; respects NO_COLOR and TTY)
 │   │   ├── TextRenderer.ts   # Text output implementation
-│   │   ├── JsonRenderer.ts   # JSON output (schema v5)
+│   │   ├── JsonRenderer.ts   # JSON output (schema v7)
 │   │   └── HtmlRenderer.ts   # HTML dashboard
 │   ├── sources/
 │   │   ├── logsSource.ts     # Log-file data source (events.jsonl)
