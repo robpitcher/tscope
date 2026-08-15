@@ -38,9 +38,9 @@ interface OtelSpanAttributes {
   "gen_ai.request.model"?: string;
   "gen_ai.usage.input_tokens"?: number;
   "gen_ai.usage.output_tokens"?: number;
-  "gen_ai.usage.cache_read_input_tokens"?: number;
-  "gen_ai.usage.cache_creation_input_tokens"?: number;
-  "gen_ai.usage.reasoning_output_tokens"?: number;
+  "gen_ai.usage.cache_read.input_tokens"?: number;
+  "gen_ai.usage.cache_creation.input_tokens"?: number;
+  "gen_ai.usage.reasoning.output_tokens"?: number;
   "github.copilot.nano_aiu"?: number;
   [key: string]: unknown;
 }
@@ -167,9 +167,9 @@ export class OtelDataSource implements DataSource {
         const counts: TokenCounts = {
           inputTokens: numAttr(attrs, "gen_ai.usage.input_tokens"),
           outputTokens: numAttr(attrs, "gen_ai.usage.output_tokens"),
-          cacheReadTokens: numAttr(attrs, "gen_ai.usage.cache_read_input_tokens"),
-          cacheWriteTokens: numAttr(attrs, "gen_ai.usage.cache_creation_input_tokens"),
-          reasoningTokens: numAttr(attrs, "gen_ai.usage.reasoning_output_tokens"),
+          cacheReadTokens: numAttr(attrs, "gen_ai.usage.cache_read.input_tokens"),
+          cacheWriteTokens: numAttr(attrs, "gen_ai.usage.cache_creation.input_tokens"),
+          reasoningTokens: numAttr(attrs, "gen_ai.usage.reasoning.output_tokens"),
         };
         acc.models[model] = acc.models[model]
           ? addTokenCounts(acc.models[model], counts)
