@@ -12,7 +12,7 @@ description: |
   Supports documentation-as-code philosophy.
 
 on:
-  schedule: daily
+  schedule: 0 0 4 * *
   workflow_dispatch:
 
 # # This workflow runs often, so you can use a small model to keep costs down.
