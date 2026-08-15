@@ -7,6 +7,7 @@ on:
       - ".github/workflows/*.md"
       - ".github/workflows/*.lock.yml"
       - ".github/workflows/agentics-maintenance.yml"
+      - ".github/aw/actions-lock.json"
   workflow_dispatch:
 
 permissions:
@@ -32,19 +33,28 @@ jobs:
           version: v0.86.2
 
       - name: Recompile workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: gh aw compile
 
       - name: Fail on stale generated workflow files
         shell: bash
+        env:
+          GENERATED_PATHS: ".github/workflows/*.lock.yml .github/workflows/agentics-maintenance.yml .github/aw/actions-lock.json"
         run: |
           set -euo pipefail
-          if ! git diff --quiet -- '.github/workflows/*.lock.yml' .github/workflows/agentics-maintenance.yml; then
+          # shellcheck disable=SC2206
+          paths=($GENERATED_PATHS)
+          # --porcelain also reports untracked files, so newly generated
+          # .lock.yml files are caught in addition to modified ones.
+          changes="$(git status --porcelain --untracked-files=all -- "${paths[@]}")"
+          if [ -n "$changes" ]; then
             echo "::error title=Stale Agentic Workflow compile outputs::Detected generated workflow changes after 'gh aw compile'."
-            echo "::error::Run 'gh aw compile' locally and commit updated .lock.yml / agentics-maintenance.yml files."
+            echo "::error::Run 'gh aw compile' locally and commit updated .lock.yml / agentics-maintenance.yml / actions-lock.json files."
             echo "Changed generated files:"
-            git --no-pager diff --stat -- '.github/workflows/*.lock.yml' .github/workflows/agentics-maintenance.yml
+            echo "$changes"
             echo "::group::Full diff"
-            git --no-pager diff -- '.github/workflows/*.lock.yml' .github/workflows/agentics-maintenance.yml
+            git --no-pager diff -- "${paths[@]}"
             echo "::endgroup::"
             exit 1
           fi
