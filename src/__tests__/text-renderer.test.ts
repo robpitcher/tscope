@@ -612,6 +612,24 @@ describe("TextRenderer", () => {
       expect(out).toContain("Client:  Copilot CLI");
     });
 
+    describe("friendly session name", () => {
+      test("uses the friendly name as the heading and retains the full ID", () => {
+        const session: NormalizedSession = {
+          ...SAMPLE_SESSION,
+          sessionName: "Create Implementation Plan",
+        };
+        const out = captureText({ ...EMPTY_REPORT, sessions: [session] });
+        expect(out).toContain("SESSION: Create Implementation Plan");
+        expect(out).toContain(`ID:      ${SAMPLE_SESSION.sessionId}`);
+      });
+
+      test("preserves the existing heading when the name is absent", () => {
+        const out = captureText({ ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] });
+        expect(out).toContain(`SESSION: ${SAMPLE_SESSION.sessionId}`);
+        expect(out).not.toContain("ID:      ");
+      });
+    });
+
     test("Client: line shows friendly label for github/autopilot", () => {
       const session: NormalizedSession = { ...SAMPLE_SESSION, clientName: "github/autopilot" };
       const out = captureText({ ...EMPTY_REPORT, sessions: [session] });

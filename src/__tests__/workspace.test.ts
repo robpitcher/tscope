@@ -3,14 +3,16 @@
  * workspace.yaml and enriching sessions by sessionId.
  */
 
-import * as fs from "fs";
+import fs from "fs";
 import * as path from "path";
 import {
   readWorkspaceClientName,
+  readWorkspaceSessionName,
   resolveClientName,
-  enrichSessionsWithClient,
+  resolveSessionName,
+  enrichSessionsWithWorkspace,
 } from "../workspace";
-import { NormalizedSession } from "../types";
+import { InProgressSession, NormalizedSession } from "../types";
 import { makeTmpDir } from "./helpers/fs";
 
 /** Write a workspace.yaml into a session dir (created if needed). */
@@ -74,6 +76,48 @@ describe("readWorkspaceClientName", () => {
   });
 });
 
+describe("readWorkspaceSessionName", () => {
+  test("reads an unquoted session name", () => {
+    const dir = makeTmpDir();
+    const sessionDir = path.join(dir, "named");
+    writeWorkspaceYaml(sessionDir, "client_name: github/cli\nname: Create Implementation Plan\n");
+    expect(readWorkspaceSessionName(sessionDir)).toBe("Create Implementation Plan");
+  });
+
+  test("strips surrounding quotes and whitespace", () => {
+    const dir = makeTmpDir();
+    const sessionDir = path.join(dir, "quoted");
+    writeWorkspaceYaml(sessionDir, `name: "Fix the dashboard"  \n`);
+    expect(readWorkspaceSessionName(sessionDir)).toBe("Fix the dashboard");
+  });
+
+  test("does not mistake client_name for name", () => {
+    const dir = makeTmpDir();
+    const sessionDir = path.join(dir, "client-only");
+    writeWorkspaceYaml(sessionDir, "client_name: github/cli\n");
+    expect(readWorkspaceSessionName(sessionDir)).toBeUndefined();
+  });
+
+  test.each(["name:\n", "name:   \n", "id: no-name\n"])(
+    "returns undefined for an absent or empty value",
+    (body) => {
+      const dir = makeTmpDir();
+      const sessionDir = path.join(dir, "empty-name");
+      writeWorkspaceYaml(sessionDir, body);
+      expect(readWorkspaceSessionName(sessionDir)).toBeUndefined();
+    }
+  );
+
+  test("returns undefined when workspace.yaml is missing or unreadable", () => {
+    const dir = makeTmpDir();
+    expect(readWorkspaceSessionName(path.join(dir, "missing"))).toBeUndefined();
+
+    const sessionDir = path.join(dir, "unreadable");
+    fs.mkdirSync(path.join(sessionDir, "workspace.yaml"), { recursive: true });
+    expect(readWorkspaceSessionName(sessionDir)).toBeUndefined();
+  });
+});
+
 describe("resolveClientName", () => {
   test("resolves by sessionId under the session-state dir", () => {
     const stateDir = makeTmpDir();
@@ -100,24 +144,74 @@ describe("resolveClientName", () => {
   });
 });
 
-describe("enrichSessionsWithClient", () => {
-  test("attaches clientName where resolvable and leaves others unchanged", () => {
+describe("resolveSessionName", () => {
+  test("resolves by safe sessionId and rejects unsafe values", () => {
     const stateDir = makeTmpDir();
-    writeWorkspaceYaml(path.join(stateDir, "cli-sess"), "client_name: github/cli\n");
+    writeWorkspaceYaml(path.join(stateDir, "safe-id"), "name: Friendly session\n");
+    expect(resolveSessionName(stateDir, "safe-id")).toBe("Friendly session");
+    for (const unsafeId of ["", "..", "../safe-id", "safe/id", "safe\\id", "/safe-id"]) {
+      expect(resolveSessionName(stateDir, unsafeId)).toBeUndefined();
+    }
+  });
+});
+
+describe("enrichSessionsWithWorkspace", () => {
+  test("attaches both workspace fields and leaves unresolved sessions unchanged", () => {
+    const stateDir = makeTmpDir();
+    writeWorkspaceYaml(
+      path.join(stateDir, "cli-sess"),
+      "client_name: github/cli\nname: Dashboard work\n"
+    );
     // "no-ws-sess" intentionally has no workspace.yaml.
 
     const sessions = [makeSession("cli-sess"), makeSession("no-ws-sess")];
-    const enriched = enrichSessionsWithClient(sessions, stateDir);
+    const enriched = enrichSessionsWithWorkspace(sessions, stateDir);
 
     expect(enriched[0].clientName).toBe("github/cli");
+    expect(enriched[0].sessionName).toBe("Dashboard work");
     expect(enriched[1].clientName).toBeUndefined();
+    expect(enriched[1]).toBe(sessions[1]);
   });
 
   test("does not mutate the input sessions", () => {
     const stateDir = makeTmpDir();
     writeWorkspaceYaml(path.join(stateDir, "s"), "client_name: github/cli\n");
     const original = makeSession("s");
-    enrichSessionsWithClient([original], stateDir);
+    enrichSessionsWithWorkspace([original], stateDir);
     expect(original.clientName).toBeUndefined();
+  });
+
+  test("reads workspace.yaml once per session while extracting both fields", () => {
+    const stateDir = makeTmpDir();
+    writeWorkspaceYaml(
+      path.join(stateDir, "one-read"),
+      "client_name: github/cli\nname: Read once\n"
+    );
+    const readSpy = jest.spyOn(fs, "readFileSync");
+    try {
+      const enriched = enrichSessionsWithWorkspace([makeSession("one-read")], stateDir);
+      expect(enriched[0]).toMatchObject({
+        clientName: "github/cli",
+        sessionName: "Read once",
+      });
+      expect(readSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      readSpy.mockRestore();
+    }
+  });
+
+  test("enriches in-progress sessions with their friendly name", () => {
+    const stateDir = makeTmpDir();
+    writeWorkspaceYaml(path.join(stateDir, "active"), "name: Active dashboard work\n");
+    const active: InProgressSession = {
+      sessionId: "active",
+      eventsPath: "/x/active/events.jsonl",
+      startTime: "2026-06-02T20:00:00.000Z",
+      chronicleTips: [],
+      inProgress: true,
+    };
+    const [enriched] = enrichSessionsWithWorkspace([active], stateDir);
+    expect(enriched.sessionName).toBe("Active dashboard work");
+    expect(active.sessionName).toBeUndefined();
   });
 });

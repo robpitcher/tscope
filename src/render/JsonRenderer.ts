@@ -3,8 +3,9 @@ import { Renderer } from "./Renderer";
 import { hasTokenData, tokenPartition } from "../tokens";
 
 /**
- * Schema version — bumped to v7.
- * v7 adds field-level `costSource` and `apiDurationSource` provenance.
+ * Schema version — bumped to v8.
+ * v8 adds the optional `sessionName` field.
+ * v7 added field-level `costSource` and `apiDurationSource` provenance.
  * v6 added: optional `client` field per session (raw `clientName` from
  * `workspace.yaml`, e.g. "github/cli", "github/autopilot", "sdk") and optional
  * `anomalous: true` in a model's `usage` block when `tokenPartition()` detects
@@ -17,7 +18,7 @@ import { hasTokenData, tokenPartition } from "../tokens";
  *  v3: `summary.totalTokens` and per-session `totals.total` switched to
  *  `input + output` only. v2: removed credit estimation entirely.)
  */
-const SCHEMA_VERSION = "tscope/report/v7";
+const SCHEMA_VERSION = "tscope/report/v8";
 
 /** Convert UTC ISO string to local "YYYY-MM-DD HH:MM" or null if invalid */
 function toLocalDateTime(utcIso: string): string | null {
@@ -69,6 +70,7 @@ function serializeCompletedSession(session: NormalizedSession) {
       ? { apiDurationSource: session.apiDurationSource }
       : {}),
     source: session.source,
+    ...(session.sessionName !== undefined ? { sessionName: session.sessionName } : {}),
     ...(session.clientName !== undefined ? { client: session.clientName } : {}),
     ...(session.totalCost !== undefined ? { totalCost: session.totalCost } : {}),
     ...(session.costSource !== undefined ? { costSource: session.costSource } : {}),
@@ -92,7 +94,7 @@ function serializeCompletedSession(session: NormalizedSession) {
  *
  * Stdout receives only valid JSON (pipeable to jq, etc.).
  *
- * ## Schema: tscope/report/v7
+ * ## Schema: tscope/report/v8
  * Top-level fields:
  *   schema         — stable identifier, bump on breaking changes
  *   generatedAt    — ISO 8601 UTC timestamp of report generation
@@ -116,6 +118,7 @@ function serializeCompletedSession(session: NormalizedSession) {
  *     inProgress (always false), apiDurationMs (cumulative model API ms across
  *     runs, or null when no shutdown reported it), apiDurationSource (optional),
  *     source ("otel"|"logs"),
+ *     sessionName (optional — friendly name from workspace.yaml),
  *     client (optional — raw client_name from workspace.yaml, e.g. "github/cli",
  *     "github/autopilot", "sdk"; absent when workspace.yaml unreadable),
  *     totalCost (AI credits, when available), costSource (optional),

@@ -24,6 +24,8 @@ tscope --html report.html   # Generate dashboard at the specified path and open 
 - **Credits by Model** chart — OTel sessions only; shows AI credit totals grouped by model name
 - **Chronicle Insights** box — if any session ran `/chronicle tips` or `/chronicle cost-tips`, the most recent set of recommendations is parsed and shown in its own box, below the *Tokens Over Time* chart and above the session list (see below)
 - Per-session cards with:
+  - **Friendly session name** — the `name` from the session's `workspace.yaml` is shown as the card title when available. Long names are truncated visually and exposed in full on hover.
+  - **Copy-to-resume session ID** — click the session ID, or focus it and press **Enter** / **Space**, to copy `copilot --resume <id>`. The dashboard reports whether the copy succeeded and falls back for browsers without the modern Clipboard API.
   - **Source badge** — "OTel" (muted) or "log parser" (muted). For log-parser sessions with no cost data, the badge tooltip notes "cost data unavailable"; for those that do have cost (from `totalNanoAiu`), the tooltip omits the unavailable note.
   - **Client badge** — the agentic surface that produced the session, read from the session folder's `workspace.yaml` `client_name`: "Copilot CLI" (`github/cli`), "Copilot App" (`github/autopilot`), or "SDK" (`sdk`). Both "Copilot CLI" and "Copilot App" badges use the same orange color for visual consistency. The badge is omitted when `workspace.yaml` is missing or the client is unrecognized. (Also exported as a `client` column in the CSV.)
   - **Credit chip** (green) — shows `X.XX credits` and identifies whether the selected total came from OTel or the session shutdown log.
@@ -38,7 +40,7 @@ The HTML file is fully self-contained (no external dependencies, works offline).
 
 ## In-Progress Sessions
 
-In-progress sessions (those without a `session.shutdown` event, i.e. no token data) are **silently excluded** from the HTML dashboard. They do not appear in the stat cards, the *Tokens Over Time* chart, the session list, or Chronicle Insights. Completed sessions that recorded no token activity (empty `modelMetrics` or all-zero counts) are excluded for the same reason. This behavior matches the text and JSON output formats.
+In-progress sessions (those without a `session.shutdown` event) appear as muted cards so their friendly names remain visible and their resume commands can be copied. They contribute no tokens or credits. Completed sessions that recorded no token activity (empty `modelMetrics` or all-zero counts) remain excluded because they contribute nothing measurable.
 
 ## Interacting With the Timeline
 
@@ -60,7 +62,7 @@ If any session within the report's scope contains a `/chronicle tips` or `/chron
 A toolbar above the session list provides two controls:
 
 - **Sort** — a segmented control with a **Sort by** dropdown (Session date / Token count / AI credits) and an ascending/descending toggle (▲ / ▼). Selecting a new field or toggling direction immediately reorders the session cards in the page. Default order is session date, newest first.
-- **Export CSV** — downloads all embedded sessions as a CSV file (`tscope-sessions-YYYY-MM-DD.csv`), useful for offline analysis in a spreadsheet. Columns include `source` and `client` (the agentic surface) alongside token and cost fields.
+- **Export CSV** — downloads all embedded sessions as a CSV file (`tscope-sessions-YYYY-MM-DD.csv`), useful for offline analysis in a spreadsheet. Columns include `name`, `source`, and `client` (the agentic surface) alongside token and cost fields.
 
 ### Notes
 
