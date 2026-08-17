@@ -1026,7 +1026,7 @@ a:hover { text-decoration: underline; }
   outline: 2px solid var(--accent-blue);
   outline-offset: 2px;
 }
-.session-id--copy.copied { color: var(--accent-green); }
+.session-id--copy.copied { color: var(--accent-blue); }
 .session-id--copy.copy-failed { color: var(--accent-red); }
 
 .copy-feedback {
@@ -1040,7 +1040,7 @@ a:hover { text-decoration: underline; }
   border-radius: var(--radius);
   background: var(--bg-elevated);
   box-shadow: 0 4px 16px rgba(0,0,0,.24);
-  color: var(--accent-green);
+  color: var(--accent-blue);
   font-size: 12px;
   font-weight: 700;
   text-align: center;
