@@ -528,7 +528,7 @@ function sessionName(name: string | undefined): string {
 
 function copyableSessionId(sessionId: string): string {
   const command = `copilot --resume ${sessionId}`;
-  return `<span class="session-id session-id--copy" data-session-id="${esc(sessionId)}" role="button" tabindex="0" title="Click to copy: ${esc(command)}" aria-label="Copy resume command: ${esc(command)}">${esc(sessionId)}</span>`;
+  return `<span class="session-id session-id--copy" data-session-id="${esc(sessionId)}" role="button" tabindex="0" title="Click to copy: ${esc(command)}" aria-label="Copy resume command: ${esc(command)}"><span class="session-id-value">${esc(sessionId)}</span><span class="session-id-command" aria-hidden="true">${esc(command)}</span></span>`;
 }
 
 function buildSessionCard(session: NormalizedSession): string {
@@ -1012,16 +1012,24 @@ a:hover { text-decoration: underline; }
 
 .session-id--copy {
   position: relative;
+  display: grid;
   width: fit-content;
   max-width: 100%;
   cursor: pointer;
   border-radius: var(--radius-sm);
   transition: color .12s ease, background-color .12s ease;
 }
+.session-id-value,
+.session-id-command { grid-area: 1 / 1; }
+.session-id-command { visibility: hidden; }
 .session-id--copy:hover {
   color: var(--accent-blue);
   text-decoration: underline;
 }
+.session-id--copy:hover .session-id-value,
+.session-id--copy:focus-visible .session-id-value { visibility: hidden; }
+.session-id--copy:hover .session-id-command,
+.session-id--copy:focus-visible .session-id-command { visibility: visible; }
 .session-id--copy:focus-visible {
   outline: 2px solid var(--accent-blue);
   outline-offset: 2px;

@@ -204,8 +204,28 @@ describe("HtmlRenderer", () => {
         "html-test-copy-id-escape.html"
       );
       expect(html).toContain('data-session-id="bad&quot;&gt;&lt;script"');
-      expect(html).toContain(">bad&quot;&gt;&lt;script</span>");
+      expect(html).toContain(
+        '<span class="session-id-value">bad&quot;&gt;&lt;script</span>'
+      );
+      expect(html).toContain(
+        '<span class="session-id-command" aria-hidden="true">copilot --resume bad&quot;&gt;&lt;script</span>'
+      );
       expect(html).not.toContain(`data-session-id="${id}"`);
+    });
+
+    test("swaps the visible ID for the resume command on hover and focus", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-copy-hover-command.html"
+      );
+      expect(html).toContain(
+        `<span class="session-id-value">${SAMPLE_SESSION.sessionId}</span>`
+      );
+      expect(html).toContain(
+        `<span class="session-id-command" aria-hidden="true">copilot --resume ${SAMPLE_SESSION.sessionId}</span>`
+      );
+      expect(html).toContain(".session-id--copy:hover .session-id-value");
+      expect(html).toContain(".session-id--copy:focus-visible .session-id-command");
     });
 
     test("includes delegated keyboard handling and both clipboard paths", () => {
