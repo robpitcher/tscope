@@ -115,12 +115,13 @@ describe("HtmlRenderer", () => {
       expect(html).toContain("claude-haiku-4-5");
     });
 
-    test("excludes in-progress session id (silently dropped)", () => {
+    test("includes in-progress session cards", () => {
       const html = renderToString(
         { ...EMPTY_REPORT, inProgressSessions: [SAMPLE_IN_PROGRESS] },
         "html-test-in-progress.html"
       );
-      expect(html).not.toContain(SAMPLE_IN_PROGRESS.sessionId);
+      expect(html).toContain(SAMPLE_IN_PROGRESS.sessionId);
+      expect(html).toContain("Session is ongoing");
     });
 
     test("includes filter description", () => {
@@ -137,6 +138,110 @@ describe("HtmlRenderer", () => {
         "html-test-tokens-chip.html"
       );
       expect(html).toContain("tokens");
+    });
+
+    test("renders an escaped friendly name with the full value in title", () => {
+      const session: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        sessionName: `Fix <script> "dashboard"`,
+      };
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [session] },
+        "html-test-session-name.html"
+      );
+      expect(html).toContain(
+        `<span class="session-name" title="Fix &lt;script&gt; &quot;dashboard&quot;">`
+      );
+      expect(html).toContain("Fix &lt;script&gt; &quot;dashboard&quot;</span>");
+      expect(html).not.toContain(`Fix <script>`);
+    });
+
+    test("omits the session-name element when no name is available", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-no-session-name.html"
+      );
+      expect(html).not.toContain('<span class="session-name"');
+    });
+
+    test("renders friendly names on in-progress cards", () => {
+      const html = renderToString(
+        {
+          ...EMPTY_REPORT,
+          inProgressSessions: [{ ...SAMPLE_IN_PROGRESS, sessionName: "Active session" }],
+        },
+        "html-test-active-session-name.html"
+      );
+      expect(html).toContain(
+        '<span class="session-name" title="Active session">Active session</span>'
+      );
+    });
+  });
+
+  describe("copy-to-resume controls", () => {
+    test("completed and in-progress IDs expose accessible copy controls", () => {
+      const html = renderToString(
+        {
+          ...EMPTY_REPORT,
+          sessions: [SAMPLE_SESSION],
+          inProgressSessions: [SAMPLE_IN_PROGRESS],
+        },
+        "html-test-copy-controls.html"
+      );
+      for (const id of [SAMPLE_SESSION.sessionId, SAMPLE_IN_PROGRESS.sessionId]) {
+        expect(html).toContain(
+          `class="session-id session-id--copy" data-session-id="${id}" role="button" tabindex="0"`
+        );
+        expect(html).toContain(`title="Click to copy: copilot --resume ${id}"`);
+        expect(html).toContain(`aria-label="Copy resume command: copilot --resume ${id}"`);
+      }
+    });
+
+    test("escapes session IDs in copy-control text and attributes", () => {
+      const id = `bad"><script`;
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [{ ...SAMPLE_SESSION, sessionId: id }] },
+        "html-test-copy-id-escape.html"
+      );
+      expect(html).toContain('data-session-id="bad&quot;&gt;&lt;script"');
+      expect(html).toContain(
+        '<span class="session-id-value">bad&quot;&gt;&lt;script</span>'
+      );
+      expect(html).toContain(
+        '<span class="session-id-command" aria-hidden="true">copilot --resume bad&quot;&gt;&lt;script</span>'
+      );
+      expect(html).not.toContain(`data-session-id="${id}"`);
+    });
+
+    test("swaps the visible ID for the resume command on hover and focus", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-copy-hover-command.html"
+      );
+      expect(html).toContain(
+        `<span class="session-id-value">${SAMPLE_SESSION.sessionId}</span>`
+      );
+      expect(html).toContain(
+        `<span class="session-id-command" aria-hidden="true">copilot --resume ${SAMPLE_SESSION.sessionId}</span>`
+      );
+      expect(html).toContain(".session-id--copy:hover .session-id-value");
+      expect(html).toContain(".session-id--copy:focus-visible .session-id-command");
+    });
+
+    test("includes delegated keyboard handling and both clipboard paths", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-copy-script.html"
+      );
+      expect(html).toContain("'copilot --resume ' + sessionId");
+      expect(html).toContain("navigator.clipboard.writeText(text)");
+      expect(html).toContain("document.execCommand('copy')");
+      expect(html).toContain("target.closest('.session-id--copy')");
+      expect(html).toContain("e.preventDefault()");
+      expect(html).toContain("Copy failed");
+      expect(html).toContain('aria-live="polite"');
+      expect(html).toContain("transform: translate(-50%, -50%)");
+      expect(html).toContain("pointer-events: none");
     });
   });
 
@@ -484,7 +589,7 @@ describe("HtmlRenderer", () => {
       return JSON.parse(m[1]) as HtmlPayload;
     }
 
-    test("embeds a JSON payload with per-session token data (in-progress excluded)", () => {
+    test("embeds completed and in-progress sessions in the JSON payload", () => {
       const html = renderToString(
         {
           ...EMPTY_REPORT,
@@ -497,8 +602,7 @@ describe("HtmlRenderer", () => {
       expect(data.reportDate).toBe("2026-06-02");
       expect(typeof data.generatedAtIso).toBe("string");
       expect(Array.isArray(data.sessions)).toBe(true);
-      // In-progress sessions are silently excluded — only the completed one remains.
-      expect(data.sessions).toHaveLength(1);
+      expect(data.sessions).toHaveLength(2);
 
       const done = data.sessions.find((s) => !s.inProgress);
       if (!done) throw new Error("completed session not found");
@@ -513,9 +617,10 @@ describe("HtmlRenderer", () => {
       expect(done.input).toBe(500);
       expect(done.cacheRead).toBe(700);
 
-      // The in-progress session must not appear anywhere in the payload.
-      expect(data.sessions.find((s) => s.inProgress)).toBeUndefined();
-      expect(data.sessions.find((s) => s.id === SAMPLE_IN_PROGRESS.sessionId)).toBeUndefined();
+      const active = data.sessions.find((s) => s.inProgress);
+      if (!active) throw new Error("in-progress session not found");
+      expect(active.id).toBe(SAMPLE_IN_PROGRESS.sessionId);
+      expect(active.totalTokens).toBe(0);
     });
 
     test("renders an Export CSV button in the header with client-side wiring", () => {
@@ -683,7 +788,7 @@ describe("HtmlRenderer", () => {
       expect(html).toContain('"\'" + s');
     });
 
-    test("tags each session card with its session id (in-progress excluded)", () => {
+    test("tags completed and in-progress cards with their session ids", () => {
       const html = renderToString(
         {
           ...EMPTY_REPORT,
@@ -693,8 +798,7 @@ describe("HtmlRenderer", () => {
         "html-test-card-ids.html"
       );
       expect(html).toContain(`data-session-id="${SAMPLE_SESSION.sessionId}"`);
-      // In-progress sessions are silently excluded from the HTML.
-      expect(html).not.toContain(`data-session-id="${SAMPLE_IN_PROGRESS.sessionId}"`);
+      expect(html).toContain(`data-session-id="${SAMPLE_IN_PROGRESS.sessionId}"`);
     });
 
     test("wraps the timeline in a host element for re-rendering", () => {
@@ -847,7 +951,7 @@ describe("HtmlRenderer", () => {
       // Find the article element, not the SVG timeline bar (which also carries data-session-id)
       const cardStart = html.indexOf(`class="session-card" data-session-id="${OTEL_SESSION.sessionId}"`);
       expect(cardStart).toBeGreaterThan(-1);
-      const cardChips = html.slice(cardStart, cardStart + 800);
+      const cardChips = html.slice(cardStart, cardStart + 1500);
       expect(cardChips).toContain("source-badge--otel");
       expect(cardChips).toContain(">OTel<");
     });
@@ -859,7 +963,7 @@ describe("HtmlRenderer", () => {
       );
       const cardStart = html.indexOf(`class="session-card" data-session-id="${SAMPLE_SESSION.sessionId}"`);
       expect(cardStart).toBeGreaterThan(-1);
-      const cardChips = html.slice(cardStart, cardStart + 800);
+      const cardChips = html.slice(cardStart, cardStart + 1500);
       expect(cardChips).toContain("source-badge--logs");
       expect(cardChips).toContain("log parser");
     });
@@ -884,11 +988,11 @@ describe("HtmlRenderer", () => {
       expect(otelCardIdx).toBeGreaterThan(-1);
       expect(logsCardIdx).toBeGreaterThan(-1);
 
-      const otelChips = html.slice(otelCardIdx, otelCardIdx + 800);
+      const otelChips = html.slice(otelCardIdx, otelCardIdx + 1500);
       expect(otelChips).toContain("source-badge--otel");
       expect(otelChips).not.toContain("source-badge--logs");
 
-      const logsChips = html.slice(logsCardIdx, logsCardIdx + 800);
+      const logsChips = html.slice(logsCardIdx, logsCardIdx + 1500);
       expect(logsChips).toContain("source-badge--logs");
       expect(logsChips).not.toContain("source-badge--otel");
     });
@@ -899,7 +1003,7 @@ describe("HtmlRenderer", () => {
         "html-test-badge-before-tokens.html"
       );
       const cardStart = html.indexOf(`class="session-card" data-session-id="${SAMPLE_SESSION.sessionId}"`);
-      const chipsHtml = html.slice(cardStart, cardStart + 800);
+      const chipsHtml = html.slice(cardStart, cardStart + 1500);
       const badgeIdx = chipsHtml.indexOf("source-badge--logs");
       const tokensIdx = chipsHtml.indexOf("chip-tokens");
       expect(badgeIdx).toBeGreaterThan(-1);
@@ -912,7 +1016,7 @@ describe("HtmlRenderer", () => {
     function cardSliceFor(html: string, sessionId: string): string {
       const idx = html.indexOf(`class="session-card" data-session-id="${sessionId}"`);
       expect(idx).toBeGreaterThan(-1);
-      return html.slice(idx, idx + 900);
+      return html.slice(idx, idx + 1500);
     }
 
     test("CLI client renders a 'Copilot CLI' badge", () => {
@@ -1038,11 +1142,11 @@ describe("HtmlRenderer", () => {
       const otelCardIdx = html.indexOf(`class="session-card" data-session-id="${otelSession.sessionId}"`);
       const logsCardIdx = html.indexOf(`class="session-card" data-session-id="${logsSession.sessionId}"`);
 
-      const otelChips = html.slice(otelCardIdx, otelCardIdx + 800);
+      const otelChips = html.slice(otelCardIdx, otelCardIdx + 1500);
       expect(otelChips).toContain("chip-credits");
       expect(otelChips).not.toContain("chip-cost-unavail");
 
-      const logsChips = html.slice(logsCardIdx, logsCardIdx + 800);
+      const logsChips = html.slice(logsCardIdx, logsCardIdx + 1500);
       expect(logsChips).toContain("chip-cost-unavail");
       expect(logsChips).not.toContain("chip-credits");
     });
@@ -1066,7 +1170,7 @@ describe("HtmlRenderer", () => {
         `class="session-card" data-session-id="${LOGS_SESSION_WITH_COST.sessionId}"`
       );
       expect(cardStart).toBeGreaterThan(-1);
-      const cardChips = html.slice(cardStart, cardStart + 800);
+      const cardChips = html.slice(cardStart, cardStart + 1500);
       expect(cardChips).toContain("chip-credits");
       expect(cardChips).toContain("1.23 credits");
       expect(cardChips).not.toContain("chip-cost-unavail");
@@ -1119,7 +1223,7 @@ describe("HtmlRenderer", () => {
         `class="session-card" data-session-id="${LOGS_SESSION_WITH_COST.sessionId}"`
       );
       expect(logsCardIdx).toBeGreaterThan(-1);
-      const logsChips = html.slice(logsCardIdx, logsCardIdx + 800);
+      const logsChips = html.slice(logsCardIdx, logsCardIdx + 1500);
       expect(logsChips).toContain("chip-credits");
       expect(logsChips).toContain("AI credits from the session shutdown event log");
       expect(logsChips).not.toContain("chip-cost-unavail");
@@ -1380,6 +1484,33 @@ describe("HtmlRenderer", () => {
       expect(html).toContain("'contextWindowUsed'");
       expect(html).toContain("'contextWindowLimit'");
       expect(html).toContain("'contextWindowPct'");
+    });
+
+    test("CSV_COLUMNS includes name immediately after sessionId", () => {
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] },
+        "html-test-csv-name.html"
+      );
+      expect(html).toContain("'sessionId', 'name', 'startTime'");
+      expect(html).toContain("csvCell(s.id), csvCell(s.name || '')");
+    });
+
+    test("payload includes completed and in-progress friendly names", () => {
+      const html = renderToString(
+        {
+          ...EMPTY_REPORT,
+          sessions: [{ ...SAMPLE_SESSION, sessionName: "Completed name" }],
+          inProgressSessions: [{ ...SAMPLE_IN_PROGRESS, sessionName: "Active name" }],
+        },
+        "html-test-payload-name.html"
+      );
+      const data = extractPayload(html);
+      expect(data.sessions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: SAMPLE_SESSION.sessionId, name: "Completed name" }),
+          expect.objectContaining({ id: SAMPLE_IN_PROGRESS.sessionId, name: "Active name" }),
+        ])
+      );
     });
 
     test("allSummaries payload includes reasoningTokens for OTel session with reasoning", () => {

@@ -254,6 +254,8 @@ function buildCachePills(models: ModelEntry[]): string {
 
 interface SessionTokenSummary {
   id: string;
+  /** Friendly session name from workspace.yaml, or null when unavailable. */
+  name: string | null;
   /** ISO 8601 UTC start time, or null if unknown (some in-progress sessions). */
   start: string | null;
   label: string;
@@ -519,6 +521,16 @@ function clientBadge(clientName: string | undefined): string {
   return `<span class="client-badge client-badge--${esc(slug)}" title="Agentic surface: ${esc(clientName)}">${esc(label)}</span>`;
 }
 
+function sessionName(name: string | undefined): string {
+  if (!name) return "";
+  return `<span class="session-name" title="${esc(name)}">${esc(name)}</span>`;
+}
+
+function copyableSessionId(sessionId: string): string {
+  const command = `copilot --resume ${sessionId}`;
+  return `<span class="session-id session-id--copy" data-session-id="${esc(sessionId)}" role="button" tabindex="0" title="Click to copy: ${esc(command)}" aria-label="Copy resume command: ${esc(command)}"><span class="session-id-value">${esc(sessionId)}</span><span class="session-id-command" aria-hidden="true">${esc(command)}</span></span>`;
+}
+
 function buildSessionCard(session: NormalizedSession): string {
   const dateStr = toLocalDateTime(session.startTime);
   const modelEntries: ModelEntry[] = Object.entries(session.models).map(
@@ -543,7 +555,8 @@ function buildSessionCard(session: NormalizedSession): string {
 <article class="session-card" data-session-id="${esc(session.sessionId)}" data-sort-start="${esc(session.startTime || '')}" data-sort-tokens="${totalTokensForCard}" data-sort-cost="${session.totalCost !== undefined ? session.totalCost : ''}" data-sort-ctx="${cwPct}">
   <div class="session-header">
     <div class="session-meta">
-      <span class="session-id">${esc(session.sessionId)}</span>
+      ${sessionName(session.sessionName)}
+      ${copyableSessionId(session.sessionId)}
       <span class="session-datetime">${dateStr}</span>
     </div>
     <div class="session-summary-chips">
@@ -620,7 +633,8 @@ function buildInProgressCard(session: InProgressSession): string {
 <article class="session-card session-card--in-progress" data-session-id="${esc(session.sessionId)}" data-sort-start="${esc(session.startTime || '')}" data-sort-tokens="0" data-sort-cost="">
   <div class="session-header">
     <div class="session-meta">
-      <span class="session-id">${esc(session.sessionId)}</span>
+      ${sessionName(session.sessionName)}
+      ${copyableSessionId(session.sessionId)}
       <span class="session-datetime">${dateStr}</span>
     </div>
     <div class="session-summary-chips">
@@ -957,6 +971,7 @@ a:hover { text-decoration: underline; }
 }
 @media (prefers-reduced-motion: reduce) {
   .session-card--flash { animation-duration: .01ms; }
+  .session-id--copy { transition: none; }
 }
 
 /* Persistent selection ring applied when the user activates a timeline bar.
@@ -977,13 +992,71 @@ a:hover { text-decoration: underline; }
 
 .session-meta { display: flex; flex-direction: column; gap: 2px; }
 
+.session-name {
+  max-width: min(520px, 75vw);
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .session-id {
   font-family: 'SF Mono', 'Consolas', 'Liberation Mono', monospace;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--accent-blue);
+  font-size: 11px;
+  color: var(--text-muted);
   word-break: break-all;
 }
+
+.session-id--copy {
+  position: relative;
+  display: grid;
+  width: fit-content;
+  max-width: 100%;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: color .12s ease, background-color .12s ease;
+}
+.session-id-value,
+.session-id-command { grid-area: 1 / 1; }
+.session-id-command { visibility: hidden; }
+.session-id--copy:hover {
+  color: var(--accent-blue);
+  text-decoration: underline;
+}
+.session-id--copy:hover .session-id-value,
+.session-id--copy:focus-visible .session-id-value { visibility: hidden; }
+.session-id--copy:hover .session-id-command,
+.session-id--copy:focus-visible .session-id-command { visibility: visible; }
+.session-id--copy:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+.session-id--copy.copied { color: var(--accent-blue); }
+.session-id--copy.copy-failed { color: var(--accent-red); }
+
+.copy-feedback {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
+  min-width: 110px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  box-shadow: 0 4px 16px rgba(0,0,0,.24);
+  color: var(--accent-blue);
+  font-size: 12px;
+  font-weight: 700;
+  pointer-events: none;
+  text-align: center;
+}
+.copy-feedback[data-state="error"] { color: var(--accent-red); }
+.copy-feedback[hidden] { display: none; }
 
 .session-datetime {
   font-size: 12px;
@@ -1560,6 +1633,94 @@ const JS = `
 })();
 
 (function() {
+  var status = document.getElementById('copy-feedback');
+  var activeEl = null;
+  var resetTimer = null;
+
+  function legacyCopy(text) {
+    var textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    textarea.style.pointerEvents = 'none';
+    document.body.appendChild(textarea);
+    textarea.select();
+    var copied = false;
+    try {
+      copied = document.execCommand('copy');
+    } catch (e) {
+      copied = false;
+    }
+    document.body.removeChild(textarea);
+    return copied;
+  }
+
+  function showResult(el, copied) {
+    if (resetTimer !== null) clearTimeout(resetTimer);
+    if (activeEl) activeEl.classList.remove('copied', 'copy-failed');
+    activeEl = el;
+    el.classList.add(copied ? 'copied' : 'copy-failed');
+    if (status) {
+      status.textContent = copied ? 'Copied!' : 'Copy failed';
+      status.setAttribute('data-state', copied ? 'success' : 'error');
+      status.hidden = false;
+    }
+    resetTimer = setTimeout(function() {
+      el.classList.remove('copied', 'copy-failed');
+      if (activeEl === el) activeEl = null;
+      if (status) status.hidden = true;
+      resetTimer = null;
+    }, 1500);
+  }
+
+  function copySessionCommand(el) {
+    var sessionId = el.getAttribute('data-session-id');
+    if (!sessionId) {
+      showResult(el, false);
+      return;
+    }
+    var text = 'copilot --resume ' + sessionId;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        var write = navigator.clipboard.writeText(text);
+        if (write && typeof write.then === 'function') {
+          write.then(function() {
+            showResult(el, true);
+          }).catch(function() {
+            showResult(el, legacyCopy(text));
+          });
+        } else {
+          showResult(el, true);
+        }
+      } catch (e) {
+        showResult(el, legacyCopy(text));
+      }
+      return;
+    }
+    showResult(el, legacyCopy(text));
+  }
+
+  function copyTarget(e) {
+    var target = e.target;
+    if (!target || target.nodeType !== 1 || !target.closest) return null;
+    return target.closest('.session-id--copy');
+  }
+
+  document.addEventListener('click', function(e) {
+    var el = copyTarget(e);
+    if (el) copySessionCommand(el);
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+    var el = copyTarget(e);
+    if (!el) return;
+    e.preventDefault();
+    copySessionCommand(el);
+  });
+})();
+
+(function() {
   // Client-side CSV export of all sessions in the payload.
   var dataEl = document.getElementById('tscope-data');
   if (!dataEl) return;
@@ -1568,7 +1729,7 @@ const JS = `
   var SESSIONS = DATA.sessions || [];
 
   var CSV_COLUMNS = [
-    'sessionId', 'startTime', 'label', 'source', 'client', 'inProgress', 'models',
+    'sessionId', 'name', 'startTime', 'label', 'source', 'client', 'inProgress', 'models',
     'totalTokens', 'totalCost', 'freshInputTokens', 'cacheReadTokens',
     'cacheWriteTokens', 'outputTokens', 'apiDurationMs',
     'reasoningTokens', 'contextWindowUsed', 'contextWindowLimit', 'contextWindowPct'
@@ -1589,7 +1750,7 @@ const JS = `
     for (var i = 0; i < list.length; i++) {
       var s = list[i];
       var row = [
-        csvCell(s.id), csvCell(s.start || ''), csvCell(s.label),
+        csvCell(s.id), csvCell(s.name || ''), csvCell(s.start || ''), csvCell(s.label),
         csvCell(s.source || ''), csvCell(s.client || ''), csvCell(s.inProgress ? 'true' : 'false'),
         csvCell((s.models || []).join(';')), csvCell(s.totalTokens),
         csvCell(s.totalCost == null ? '' : s.totalCost), csvCell(s.input),
@@ -1769,6 +1930,7 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
       const cwPct = cw !== null ? clamp01(cw.utilizationRatio) * 100 : null;
       return {
         id: session.sessionId,
+        name: session.sessionName ?? null,
         start: session.startTime || null,
         label: session.sessionId.slice(0, 8),
         source: session.source,
@@ -1790,6 +1952,7 @@ function buildHtml(report: Report, generatedAt: string, generatedAtIso: string):
     }),
     ...inProgressSessions.map((s) => ({
       id: s.sessionId,
+      name: s.sessionName ?? null,
       start: s.startTime || null,
       label: s.sessionId.slice(0, 8),
       source: "logs" as const,
@@ -1914,6 +2077,7 @@ ${sessionCardsHtml}
 </footer>
 
 <div id="chart-tooltip" class="chart-tooltip" role="tooltip"></div>
+<div id="copy-feedback" class="copy-feedback" role="status" aria-live="polite" hidden></div>
 
 ${dataScript}
 <script>${JS}</script>
@@ -1934,13 +2098,11 @@ export class HtmlRenderer implements Renderer {
   constructor(private readonly outputPath: string) {}
 
   render(report: Report): void {
-    // Silently exclude sessions with no token data:
-    //   1. In-progress sessions (no shutdown event)
-    //   2. Completed sessions with empty models or all-zero input/output
+    // Silently exclude completed sessions with empty models or all-zero input/output.
+    // In-progress sessions remain visible so users can identify and resume them.
     const filteredReport: Report = {
       ...report,
       sessions: report.sessions.filter((s) => hasTokenData(s.models)),
-      inProgressSessions: [],
     };
     const now = new Date();
     const generatedAt = now.toLocaleString("en-US", {

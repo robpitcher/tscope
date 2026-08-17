@@ -94,7 +94,10 @@ function fmtDurationMs(ms: number): string {
 function renderSessionBlock(session: NormalizedSession, styled: boolean): string {
   const lines: string[] = [];
   lines.push(bold(HEAVY, styled));
-  lines.push(bold(`SESSION: ${session.sessionId}`, styled));
+  lines.push(bold(`SESSION: ${session.sessionName ?? session.sessionId}`, styled));
+  if (session.sessionName !== undefined) {
+    lines.push(`ID:      ${session.sessionId}`);
+  }
   lines.push(`Date:    ${toLocalDateTimeStr(session.startTime)}`);
   if (session.apiDurationMs !== undefined) {
     const source = session.apiDurationSource === "logs" ? ", event log" : "";

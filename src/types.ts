@@ -136,6 +136,11 @@ export interface NormalizedSession extends ParsedSession {
    * values to friendly labels.
    */
   clientName?: string;
+  /**
+   * Friendly session name read from the session folder's `workspace.yaml`
+   * `name` field. Undefined when the file is missing or has no name.
+   */
+  sessionName?: string;
 }
 
 /** Session where no shutdown event was found */
@@ -146,6 +151,8 @@ export interface InProgressSession {
   startTime: string | undefined;
   /** /chronicle tips insights captured in this session (chronological) */
   chronicleTips: ChronicleTip[];
+  /** Friendly session name from `workspace.yaml`; undefined when unavailable. */
+  sessionName?: string;
   inProgress: true;
 }
 

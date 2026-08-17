@@ -1,6 +1,6 @@
 /**
  * Tests for JsonRenderer — verifies JSON shape, field types, and edge cases.
- * Schema: tscope/report/v7 (adds metric provenance; v6 fields intact)
+ * Schema: tscope/report/v8 (adds friendly session names; v7 fields intact)
  */
 
 import { JsonRenderer } from "../render/JsonRenderer";
@@ -29,9 +29,9 @@ describe("JsonRenderer", () => {
   });
 
   describe("top-level schema fields", () => {
-    test("includes schema field with v7 value", () => {
+    test("includes schema field with v8 value", () => {
       const out = captureJson(EMPTY_REPORT);
-      expect(out.schema).toBe("tscope/report/v7");
+      expect(out.schema).toBe("tscope/report/v8");
     });
 
     test("includes source field matching report.source", () => {
@@ -571,6 +571,22 @@ describe("JsonRenderer", () => {
       const report: Report = { ...EMPTY_REPORT, sessions: [sessionWithClient] };
       const out = captureJson(report);
       expect(out.sessions[0].client).toBe("github/cli");
+    });
+
+    describe("sessionName field serialization", () => {
+      test("sessionName is included when available", () => {
+        const report: Report = {
+          ...EMPTY_REPORT,
+          sessions: [{ ...SAMPLE_SESSION, sessionName: "Friendly session" }],
+        };
+        const out = captureJson(report);
+        expect(out.sessions[0].sessionName).toBe("Friendly session");
+      });
+
+      test("sessionName is absent when unavailable", () => {
+        const out = captureJson({ ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] });
+        expect(out.sessions[0].sessionName).toBeUndefined();
+      });
     });
 
     test("client field reflects github/autopilot", () => {
