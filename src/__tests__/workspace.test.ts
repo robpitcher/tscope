@@ -3,7 +3,7 @@
  * workspace.yaml and enriching sessions by sessionId.
  */
 
-import fs from "fs";
+import fs = require("fs");
 import * as path from "path";
 import {
   readWorkspaceClientName,
@@ -213,5 +213,20 @@ describe("enrichSessionsWithWorkspace", () => {
     const [enriched] = enrichSessionsWithWorkspace([active], stateDir);
     expect(enriched.sessionName).toBe("Active dashboard work");
     expect(active.sessionName).toBeUndefined();
+  });
+
+  test("preserves existing metadata when workspace fields are absent", () => {
+    const stateDir = makeTmpDir();
+    writeWorkspaceYaml(path.join(stateDir, "partial"), "client_name: github/cli\n");
+    const original = {
+      ...makeSession("partial"),
+      clientName: "existing/client",
+      sessionName: "Existing name",
+    };
+
+    const [enriched] = enrichSessionsWithWorkspace([original], stateDir);
+
+    expect(enriched.clientName).toBe("github/cli");
+    expect(enriched.sessionName).toBe("Existing name");
   });
 });

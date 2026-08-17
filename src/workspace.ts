@@ -124,6 +124,10 @@ export function enrichSessionsWithWorkspace<T extends {
     if (fields.clientName === undefined && fields.sessionName === undefined) {
       return session;
     }
-    return { ...session, ...fields };
+    return {
+      ...session,
+      ...(fields.clientName !== undefined ? { clientName: fields.clientName } : {}),
+      ...(fields.sessionName !== undefined ? { sessionName: fields.sessionName } : {}),
+    };
   });
 }
