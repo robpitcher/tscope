@@ -1039,8 +1039,9 @@ a:hover { text-decoration: underline; }
 
 .copy-feedback {
   position: fixed;
-  right: 20px;
-  bottom: 20px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   z-index: 1000;
   min-width: 110px;
   padding: 8px 12px;
@@ -1051,6 +1052,7 @@ a:hover { text-decoration: underline; }
   color: var(--accent-blue);
   font-size: 12px;
   font-weight: 700;
+  pointer-events: none;
   text-align: center;
 }
 .copy-feedback[data-state="error"] { color: var(--accent-red); }

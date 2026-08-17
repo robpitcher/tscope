@@ -240,6 +240,8 @@ describe("HtmlRenderer", () => {
       expect(html).toContain("e.preventDefault()");
       expect(html).toContain("Copy failed");
       expect(html).toContain('aria-live="polite"');
+      expect(html).toContain("transform: translate(-50%, -50%)");
+      expect(html).toContain("pointer-events: none");
     });
   });
 
