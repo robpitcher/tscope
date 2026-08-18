@@ -1,5 +1,11 @@
 # tscope
 
+## 0.8.0
+
+### Minor Changes
+
+- 02c2abe: Display friendly workspace session names across reports and let dashboard users copy ready-to-run `copilot --resume` commands from completed or in-progress session cards.
+
 ## 0.7.1
 
 ### Patch Changes
