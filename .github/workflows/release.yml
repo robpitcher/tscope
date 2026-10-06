@@ -57,11 +57,11 @@ jobs:
           # Note: avoid naming this script `version` -- npm treats `version` as
           # a lifecycle hook for `npm version`, which would silently invoke
           # changesets on local `npm version <type>` calls.
-          version: npm run changeset:version
+          version-script: npm run changeset:version
           # Runs `npm run release` after the version PR is merged
           # (build + `changeset publish` -> npm publish + git tag).
-          publish: npm run release
-          commit: "chore(release): version packages"
-          title: "chore(release): version packages"
+          publish-script: npm run release
+          commit-message: "chore(release): version packages"
+          pr-title: "chore(release): version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
