@@ -4,7 +4,7 @@ Thanks for your interest! tscope is in **alpha** — feedback, bug reports, and 
 
 ## Dev environment
 
-**Requires Node.js 18+.**
+**Contributing requires Node.js 22.11+** because the release tooling uses Changesets CLI v3. The published `tscope` CLI continues to support Node.js 18+.
 
 ```bash
 git clone https://github.com/robpitcher/tscope.git
