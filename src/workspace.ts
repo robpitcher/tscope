@@ -17,12 +17,15 @@ import * as path from "path";
 const CLIENT_NAME_RE = /^client_name:\s*(.+?)\s*$/m;
 /** Matches only a top-level `name:` line, not keys such as `client_name:`. */
 const SESSION_NAME_RE = /^name:\s*(.+?)\s*$/m;
+/** Matches a top-level `repository:` line such as `owner/repo`. */
+const REPOSITORY_RE = /^repository:\s*(.+?)\s*$/m;
 /** Session IDs must be a single, safe folder name. */
 const SAFE_SESSION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 interface WorkspaceFields {
   clientName?: string;
   sessionName?: string;
+  repository?: string;
 }
 
 function parseWorkspaceValue(content: string, pattern: RegExp): string | undefined {
@@ -43,6 +46,7 @@ function readWorkspaceFields(sessionDir: string): WorkspaceFields {
   return {
     clientName: parseWorkspaceValue(content, CLIENT_NAME_RE),
     sessionName: parseWorkspaceValue(content, SESSION_NAME_RE),
+    repository: parseWorkspaceValue(content, REPOSITORY_RE),
   };
 }
 
@@ -58,6 +62,11 @@ export function readWorkspaceClientName(sessionDir: string): string | undefined 
 /** Read the friendly `name` from a session folder's `workspace.yaml`. */
 export function readWorkspaceSessionName(sessionDir: string): string | undefined {
   return readWorkspaceFields(sessionDir).sessionName;
+}
+
+/** Read the GitHub repository (`owner/repo`) associated with a session. */
+export function readWorkspaceRepository(sessionDir: string): string | undefined {
+  return readWorkspaceFields(sessionDir).repository;
 }
 
 function resolveWorkspaceFields(
@@ -88,6 +97,14 @@ export function resolveSessionName(
   return resolveWorkspaceFields(sessionStateDir, sessionId).sessionName;
 }
 
+/** Resolve the GitHub repository (`owner/repo`) for a safe session ID. */
+export function resolveRepository(
+  sessionStateDir: string,
+  sessionId: string
+): string | undefined {
+  return resolveWorkspaceFields(sessionStateDir, sessionId).repository;
+}
+
 /**
  * Friendly display labels for known `client_name` values from `workspace.yaml`.
  * Shared by all renderers so Text, JSON, and HTML display consistent names.
@@ -115,19 +132,25 @@ export function enrichSessionsWithWorkspace<T extends {
   sessionId: string;
   clientName?: string;
   sessionName?: string;
+  repository?: string;
 }>(
   sessions: T[],
   sessionStateDir: string
 ): T[] {
   return sessions.map((session) => {
     const fields = resolveWorkspaceFields(sessionStateDir, session.sessionId);
-    if (fields.clientName === undefined && fields.sessionName === undefined) {
+    if (
+      fields.clientName === undefined &&
+      fields.sessionName === undefined &&
+      fields.repository === undefined
+    ) {
       return session;
     }
     return {
       ...session,
       ...(fields.clientName !== undefined ? { clientName: fields.clientName } : {}),
       ...(fields.sessionName !== undefined ? { sessionName: fields.sessionName } : {}),
+      ...(fields.repository !== undefined ? { repository: fields.repository } : {}),
     };
   });
 }

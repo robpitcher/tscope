@@ -8,7 +8,6 @@
 import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
-import { createRequire } from "module";
 import { todayLocalDateString, sortSessionsByRecency, selectMostRecentSessions } from "./filter";
 import { hasTokenData } from "./tokens";
 import { Renderer, createRenderer } from "./render";
@@ -22,9 +21,7 @@ import { mergeSessions, computeSourceCoverage, computeReportSource } from "./sou
 import { getSessionStateDir } from "./discovery";
 import { enrichSessionsWithWorkspace } from "./workspace";
 import { parseArgs, validateArgs, buildDatePredicate, buildFilterDescription } from "./args";
-
-const packageJson = createRequire(__filename)("../package.json") as { version: string };
-const VERSION = packageJson.version;
+import { VERSION } from "./version";
 
 const HELP_TEXT = `
 tscope — GitHub Copilot session token usage viewer

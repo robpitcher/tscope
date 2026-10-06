@@ -663,6 +663,19 @@ describe("TextRenderer", () => {
     });
   });
 
+  describe("repository display in session block", () => {
+    test("Repo: line shows the session's repository", () => {
+      const session: NormalizedSession = { ...SAMPLE_SESSION, repository: "robpitcher/tscope" };
+      const out = captureText({ ...EMPTY_REPORT, sessions: [session] });
+      expect(out).toContain("Repo:    robpitcher/tscope");
+    });
+
+    test("Repo: line is absent when repository is not set", () => {
+      const out = captureText({ ...EMPTY_REPORT, sessions: [SAMPLE_SESSION] });
+      expect(out).not.toContain("Repo:");
+    });
+  });
+
   describe("per-model cost breakdown in session block", () => {
     test("shows per-model cost lines when modelCosts is present", () => {
       const session: NormalizedSession = {

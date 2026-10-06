@@ -1,6 +1,6 @@
 /**
  * Tests for JsonRenderer — verifies JSON shape, field types, and edge cases.
- * Schema: tscope/report/v8 (adds friendly session names; v7 fields intact)
+ * Schema: tscope/report/v9 (adds session repository metadata; v8 fields intact)
  */
 
 import { JsonRenderer } from "../render/JsonRenderer";
@@ -29,9 +29,9 @@ describe("JsonRenderer", () => {
   });
 
   describe("top-level schema fields", () => {
-    test("includes schema field with v8 value", () => {
+    test("includes schema field with v9 value", () => {
       const out = captureJson(EMPTY_REPORT);
-      expect(out.schema).toBe("tscope/report/v8");
+      expect(out.schema).toBe("tscope/report/v9");
     });
 
     test("includes source field matching report.source", () => {
@@ -219,6 +219,15 @@ describe("JsonRenderer", () => {
 
     test("session has correct sessionId", () => {
       expect(sessionOut.sessionId).toBe(SAMPLE_SESSION.sessionId);
+    });
+
+    test("session repository is serialized when present", () => {
+      const report: Report = {
+        ...EMPTY_REPORT,
+        sessions: [{ ...SAMPLE_SESSION, repository: "octo/demo" }],
+      };
+      const out = captureJson(report);
+      expect(out.sessions[0].repository).toBe("octo/demo");
     });
 
     test("session has correct path", () => {
