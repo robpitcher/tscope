@@ -239,6 +239,7 @@ are broken by `sessionId` ascending for deterministic output. Sessions whose
 |---|---|---|---|
 | `sessionId` | `string` | Always | Session UUID. |
 | `sessionName` | `string` | When `workspace.yaml` contains `name` | Friendly session name. **Absent** when the workspace file is unreadable or has no non-empty `name`. |
+| `repository` | `string` | When `workspace.yaml` contains `repository` | GitHub repository in `owner/repo` form. **Absent** when the workspace file is unreadable or has no non-empty `repository`. |
 | `path` | `string` | Always | Source file path (OTel: shared `otel.jsonl`; logs: per-session `events.jsonl`). |
 | `startTime` | `string` | Always | ISO 8601 UTC start time. |
 | `localDateTime` | `string \| null` | Always | Local `YYYY-MM-DD HH:MM` representation. |
@@ -288,18 +289,28 @@ Completed sessions whose `session.shutdown` event recorded no token activity (em
 
 ## Schema History
 
-- **v8** *(current)* — Added optional per-session `sessionName`, read from the `name` field in `workspace.yaml`.
+- **v9** *(current)* — Added optional per-session `repository`, read from the `repository` field in `workspace.yaml`.
+- **v8** — Added optional per-session `sessionName`, read from the `name` field in `workspace.yaml`.
 - **v7** — Added field-level `costSource` and `apiDurationSource` provenance. Auto-mode overlap now keeps OTel token/detail data while using complete shutdown cost and exact API-time fields when available. `costCoverage` now reflects actual cost presence.
 - **v6** — OTel-enriched metadata gaps closed. Added optional per-session `client` field (raw `client_name` from `workspace.yaml`; present for both OTel and log-parser sessions when resolvable). Added optional `anomalous: true` in model `usage` objects when `tokenPartition()` detects inconsistent cache vs. input token counts. All v5 fields preserved — changes are additive.
 - **v5** — OTel-primary pivot with merge support. Added top-level `source` (`"otel"` | `"logs"` | `"mixed"`) and `coverage` object. Per-session source badges and mixed-report cost indicators. OTel sessions include optional `totalCost`, `modelCosts`, and `extended`; log-parser sessions include `totalCost` when `totalNanoAiu` is present (Copilot CLI 1.0+). All v4 fields preserved — changes are additive.
 - **v4** — removed the per-session `premiumRequests` field. `tscope` no longer surfaces Copilot's `totalPremiumRequests` value because it's a legacy request-count metric with no actionable use in this tool.
 - **v3** — switched `summary.totalTokens` and per-session `totals.total` to `input + output` only (cache read/write are subsets of input, so adding them would double-count).
 
+## v8 → v9 Migration Note
+
+v9 is additive. Existing report fields are unchanged.
+
+1. `schema` is now `"tscope/report/v9"`.
+2. New optional per-session field: `repository`. It is absent, not `null`, when unavailable.
+
+Minimal migration: update the schema version guard and optionally read `session.repository`.
+
 ## v7 → v8 Migration Note
 
 v8 is additive. Existing report fields are unchanged.
 
-1. `schema` is now `"tscope/report/v9"`.
+1. `schema` is now `"tscope/report/v8"`.
 2. New optional per-session field: `sessionName`. It is absent, not `null`, when unavailable.
 
 Minimal migration: update the schema version guard and optionally read `session.sessionName`.

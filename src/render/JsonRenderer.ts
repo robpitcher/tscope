@@ -96,7 +96,7 @@ function serializeCompletedSession(session: NormalizedSession) {
  *
  * Stdout receives only valid JSON (pipeable to jq, etc.).
  *
- * ## Schema: tscope/report/v8
+ * ## Schema: tscope/report/v9
  * Top-level fields:
  *   schema         — stable identifier, bump on breaking changes
  *   generatedAt    — ISO 8601 UTC timestamp of report generation

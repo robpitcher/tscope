@@ -1117,6 +1117,65 @@ describe("HtmlRenderer", () => {
     });
   });
 
+  describe("per-session repository badge on session cards", () => {
+    test("renders the repository on completed session cards", () => {
+      const session: NormalizedSession = {
+        ...SAMPLE_SESSION,
+        repository: "robpitcher/tscope",
+      };
+      const html = renderToString(
+        { ...EMPTY_REPORT, sessions: [session] },
+        "html-test-repository-completed.html"
+      );
+      expect(html).toContain(
+        '<span class="chip chip-project" title="GitHub repository: robpitcher/tscope">robpitcher/tscope</span>'
+      );
+    });
+
+    test("renders the repository on in-progress session cards", () => {
+      const html = renderToString(
+        {
+          ...EMPTY_REPORT,
+          inProgressSessions: [
+            { ...SAMPLE_IN_PROGRESS, repository: "robpitcher/tscope" },
+          ],
+        },
+        "html-test-repository-in-progress.html"
+      );
+      expect(html).toContain(
+        '<span class="chip chip-project" title="GitHub repository: robpitcher/tscope">robpitcher/tscope</span>'
+      );
+    });
+
+    test("omits the repository badge when repository is absent", () => {
+      const html = renderToString(
+        {
+          ...EMPTY_REPORT,
+          sessions: [SAMPLE_SESSION],
+          inProgressSessions: [SAMPLE_IN_PROGRESS],
+        },
+        "html-test-repository-absent.html"
+      );
+      expect(html).not.toContain('<span class="chip chip-project"');
+    });
+
+    test("escapes repository values in badge text and attributes", () => {
+      const repository = `owner/<script>"&`;
+      const html = renderToString(
+        {
+          ...EMPTY_REPORT,
+          sessions: [{ ...SAMPLE_SESSION, repository }],
+        },
+        "html-test-repository-escape.html"
+      );
+      expect(html).toContain(
+        'title="GitHub repository: owner/&lt;script&gt;&quot;&amp;"'
+      );
+      expect(html).toContain(">owner/&lt;script&gt;&quot;&amp;</span>");
+      expect(html).not.toContain(repository);
+    });
+  });
+
   describe("cost unavailable chip on logs session cards", () => {
     test("logs session card shows chip-cost-unavail chip", () => {
       const html = renderToString(
