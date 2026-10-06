@@ -109,6 +109,9 @@ function renderSessionBlock(session: NormalizedSession, styled: boolean): string
     const label = resolveClientLabel(session.clientName) ?? session.clientName;
     lines.push(`Client:  ${label}`);
   }
+  if (session.repository !== undefined) {
+    lines.push(`Repo:    ${session.repository}`);
+  }
   lines.push(LIGHT);
 
   const modelEntries = Object.entries(session.models);

@@ -8,8 +8,10 @@ import * as path from "path";
 import {
   readWorkspaceClientName,
   readWorkspaceSessionName,
+  readWorkspaceRepository,
   resolveClientName,
   resolveSessionName,
+  resolveRepository,
   enrichSessionsWithWorkspace,
 } from "../workspace";
 import { InProgressSession, NormalizedSession } from "../types";
@@ -118,6 +120,22 @@ describe("readWorkspaceSessionName", () => {
   });
 });
 
+describe("readWorkspaceRepository", () => {
+  test("reads repository from workspace.yaml", () => {
+    const dir = makeTmpDir();
+    const sessionDir = path.join(dir, "repo-sess");
+    writeWorkspaceYaml(sessionDir, "repository: github/cli\n");
+    expect(readWorkspaceRepository(sessionDir)).toBe("github/cli");
+  });
+
+  test("returns undefined when repository is missing or blank", () => {
+    const dir = makeTmpDir();
+    const sessionDir = path.join(dir, "no-repo");
+    writeWorkspaceYaml(sessionDir, "client_name: github/cli\nrepository:\n");
+    expect(readWorkspaceRepository(sessionDir)).toBeUndefined();
+  });
+});
+
 describe("resolveClientName", () => {
   test("resolves by sessionId under the session-state dir", () => {
     const stateDir = makeTmpDir();
@@ -155,12 +173,21 @@ describe("resolveSessionName", () => {
   });
 });
 
+describe("resolveRepository", () => {
+  test("resolves repository by safe sessionId", () => {
+    const stateDir = makeTmpDir();
+    writeWorkspaceYaml(path.join(stateDir, "safe-id"), "repository: owner/repo\n");
+    expect(resolveRepository(stateDir, "safe-id")).toBe("owner/repo");
+    expect(resolveRepository(stateDir, "../safe-id")).toBeUndefined();
+  });
+});
+
 describe("enrichSessionsWithWorkspace", () => {
-  test("attaches both workspace fields and leaves unresolved sessions unchanged", () => {
+  test("attaches workspace fields including repository and leaves unresolved sessions unchanged", () => {
     const stateDir = makeTmpDir();
     writeWorkspaceYaml(
       path.join(stateDir, "cli-sess"),
-      "client_name: github/cli\nname: Dashboard work\n"
+      "client_name: github/cli\nname: Dashboard work\nrepository: robpitcher/tscope\n"
     );
     // "no-ws-sess" intentionally has no workspace.yaml.
 
@@ -169,6 +196,7 @@ describe("enrichSessionsWithWorkspace", () => {
 
     expect(enriched[0].clientName).toBe("github/cli");
     expect(enriched[0].sessionName).toBe("Dashboard work");
+    expect(enriched[0].repository).toBe("robpitcher/tscope");
     expect(enriched[1].clientName).toBeUndefined();
     expect(enriched[1]).toBe(sessions[1]);
   });
@@ -181,11 +209,11 @@ describe("enrichSessionsWithWorkspace", () => {
     expect(original.clientName).toBeUndefined();
   });
 
-  test("reads workspace.yaml once per session while extracting both fields", () => {
+  test("reads workspace.yaml once per session while extracting all supported fields", () => {
     const stateDir = makeTmpDir();
     writeWorkspaceYaml(
       path.join(stateDir, "one-read"),
-      "client_name: github/cli\nname: Read once\n"
+      "client_name: github/cli\nname: Read once\nrepository: owner/repo\n"
     );
     const readSpy = jest.spyOn(fs, "readFileSync");
     try {
@@ -193,6 +221,7 @@ describe("enrichSessionsWithWorkspace", () => {
       expect(enriched[0]).toMatchObject({
         clientName: "github/cli",
         sessionName: "Read once",
+        repository: "owner/repo",
       });
       expect(readSpy).toHaveBeenCalledTimes(1);
     } finally {

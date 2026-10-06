@@ -7,13 +7,13 @@ tscope --json | jq '.summary'
 tscope --all --json | jq '.sessions[].totals'
 ```
 
-## Schema: `tscope/report/v8`
+## Schema: `tscope/report/v9`
 
 ### Mixed report (OTel + logs merged, default `--source auto`)
 
 ```json
 {
-  "schema": "tscope/report/v8",
+  "schema": "tscope/report/v9",
   "generatedAt": "2026-06-10T20:00:00.000Z",
   "source": "mixed",
   "costAvailable": true,
@@ -39,6 +39,7 @@ tscope --all --json | jq '.sessions[].totals'
       "inProgress": false,
       "apiDurationMs": null,
       "source": "otel",
+      "repository": "robpitcher/tscope",
       "client": "github/cli",
       "totalCost": 2.34,
       "modelCosts": {
@@ -108,7 +109,7 @@ tscope --all --json | jq '.sessions[].totals'
 
 ```json
 {
-  "schema": "tscope/report/v8",
+  "schema": "tscope/report/v9",
   "generatedAt": "2026-06-10T20:00:00.000Z",
   "source": "otel",
   "costAvailable": true,
@@ -134,6 +135,7 @@ tscope --all --json | jq '.sessions[].totals'
       "inProgress": false,
       "apiDurationMs": null,
       "source": "otel",
+      "repository": "robpitcher/tscope",
       "client": "github/cli",
       "totalCost": 2.34,
       "modelCosts": {
@@ -184,7 +186,7 @@ When `--source logs` (or OTel is not configured and no merge occurs), the output
 
 ```json
 {
-  "schema": "tscope/report/v8",
+  "schema": "tscope/report/v9",
   "source": "logs",
   "costAvailable": false,
   "coverage": {
@@ -207,7 +209,7 @@ When `--source logs` (or OTel is not configured and no merge occurs), the output
 
 | Field | Type | Description |
 |---|---|---|
-| `schema` | `string` | Schema version identifier. Currently `"tscope/report/v8"`. |
+| `schema` | `string` | Schema version identifier. Currently `"tscope/report/v9"`. |
 | `generatedAt` | `string` | ISO 8601 UTC timestamp when the report was generated. |
 | `source` | `"otel"` \| `"logs"` \| `"mixed"` | Which data source produced the report. `"mixed"` when `--source auto` merges OTel and logs. |
 | `costAvailable` | `boolean` | `true` when at least one session has cost data. |
@@ -297,7 +299,7 @@ Completed sessions whose `session.shutdown` event recorded no token activity (em
 
 v8 is additive. Existing report fields are unchanged.
 
-1. `schema` is now `"tscope/report/v8"`.
+1. `schema` is now `"tscope/report/v9"`.
 2. New optional per-session field: `sessionName`. It is absent, not `null`, when unavailable.
 
 Minimal migration: update the schema version guard and optionally read `session.sessionName`.

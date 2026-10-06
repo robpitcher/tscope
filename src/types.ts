@@ -141,6 +141,11 @@ export interface NormalizedSession extends ParsedSession {
    * `name` field. Undefined when the file is missing or has no name.
    */
   sessionName?: string;
+  /**
+   * GitHub repository for the workspace, read from `workspace.yaml` as
+   * `repository: owner/repo`. Undefined when unavailable.
+   */
+  repository?: string;
 }
 
 /** Session where no shutdown event was found */
@@ -153,6 +158,8 @@ export interface InProgressSession {
   chronicleTips: ChronicleTip[];
   /** Friendly session name from `workspace.yaml`; undefined when unavailable. */
   sessionName?: string;
+  /** GitHub repository for the workspace, if recorded in `workspace.yaml`. */
+  repository?: string;
   inProgress: true;
 }
 

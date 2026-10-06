@@ -526,6 +526,11 @@ function sessionName(name: string | undefined): string {
   return `<span class="session-name" title="${esc(name)}">${esc(name)}</span>`;
 }
 
+function repositoryBadge(repository: string | undefined): string {
+  if (!repository) return "";
+  return `<span class="chip chip-project" title="GitHub repository: ${esc(repository)}">${esc(repository)}</span>`;
+}
+
 function copyableSessionId(sessionId: string): string {
   const command = `copilot --resume ${sessionId}`;
   return `<span class="session-id session-id--copy" data-session-id="${esc(sessionId)}" role="button" tabindex="0" title="Click to copy: ${esc(command)}" aria-label="Copy resume command: ${esc(command)}"><span class="session-id-value">${esc(sessionId)}</span><span class="session-id-command" aria-hidden="true">${esc(command)}</span></span>`;
@@ -563,6 +568,7 @@ function buildSessionCard(session: NormalizedSession): string {
       ${session.source === "otel"
         ? `<span class="source-badge source-badge--otel" title="Data source: OpenTelemetry">OTel</span>`
         : `<span class="source-badge source-badge--logs" title="Data source: event log parser${session.totalCost === undefined ? " — cost data unavailable" : ""}">log parser</span>`}
+      ${repositoryBadge(session.repository)}
       ${clientBadge(session.clientName)}
       ${session.apiDurationMs !== undefined ? `<span class="chip chip-duration" title="Cumulative model API time from ${session.apiDurationSource === "logs" ? "the event log" : "the source session"} (compute only — excludes idle / user think time)">${esc(fmtDuration(session.apiDurationMs))} API</span>` : ""}
       <span class="chip chip-tokens">${fmtNum(totalTokensForCard)} tokens</span>
@@ -639,6 +645,7 @@ function buildInProgressCard(session: InProgressSession): string {
     </div>
     <div class="session-summary-chips">
       <span class="chip chip-in-progress">In Progress</span>
+      ${repositoryBadge(session.repository)}
     </div>
   </div>
   <div class="session-path">${esc(session.eventsPath)}</div>
@@ -1073,6 +1080,7 @@ a:hover { text-decoration: underline; }
   white-space: nowrap;
 }
 .chip-tokens    { background: rgba(163,113,247,.12); color: var(--accent-purple); border: 1px solid rgba(163,113,247,.25); }
+.chip-project   { background: rgba(63,185,80,.12); color: var(--accent-green); border: 1px solid rgba(63,185,80,.25); }
 .chip-duration  { background: rgba(88,166,255,.10); color: var(--accent-blue); border: 1px solid rgba(88,166,255,.25); font-variant-numeric: tabular-nums; }
 .chip-in-progress { background: rgba(72,79,88,.3); color: var(--text-secondary); border: 1px solid var(--border); }
 
